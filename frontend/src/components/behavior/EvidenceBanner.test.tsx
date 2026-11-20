@@ -17,7 +17,7 @@ describe("every status states its meaning", () => {
     ["UNAVAILABLE", /exposes none of the requested fields/i],
     ["FAILED", /collection failed/i],
     ["PENDING", /still being collected/i],
-    ["NOT_REQUESTED", /Nothing has been looked at/i],
+    ["NOT_REQUESTED", /No evidence collection requested/i],
   ];
 
   for (const [status, expected] of cases) {
@@ -44,19 +44,18 @@ describe("honesty about incomplete evidence", () => {
   it("does not describe a partial package as healthy", () => {
     render(<EvidenceBanner status="PARTIAL" />);
     const text = screen.getByText(/unavailable or truncated/i).textContent ?? "";
-    expect(text).toMatch(/have not been checked/i);
-    expect(text).toMatch(/no conclusion follows from the absence/i);
+    expect(text).toMatch(/those dimensions are unchecked/i);
   });
 
   it("says a pending collection is a backlog rather than a finding", () => {
     render(<EvidenceBanner status="PENDING" />);
-    expect(screen.getByText(/backlog, not a finding/i)).toBeInTheDocument();
+    expect(screen.getByText(/still being collected/i)).toBeInTheDocument();
   });
 
   it("distinguishes a source property from a transient error", () => {
     render(<EvidenceBanner status="UNAVAILABLE" />);
     expect(
-      screen.getByText(/property of the source, not a transient error/i),
+      screen.getByText(/exposes none of the requested fields; no contributor analysis/i),
     ).toBeInTheDocument();
   });
 
@@ -71,14 +70,14 @@ describe("truncation", () => {
     render(
       <EvidenceBanner status="PARTIAL" truncatedDimensions={["Source port", "QID"]} />,
     );
-    const warning = screen.getByText(/Some results were limited to the top values/i);
+    const warning = screen.getByText(/Limited to the top values/i);
     expect(warning).toHaveTextContent("Source port, QID");
   });
 
   it("explains why counts are withheld rather than shown as zero", () => {
     render(<EvidenceBanner status="PARTIAL" truncatedDimensions={["Source port"]} />);
     expect(
-      screen.getByText(/look new simply because it fell below the cap/i),
+      screen.getByText(/new, disappeared and cardinality counts are withheld/i),
     ).toBeInTheDocument();
   });
 

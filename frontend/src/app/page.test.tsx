@@ -205,12 +205,12 @@ describe("Dashboard page", () => {
     const { container } = render(<HomePage />);
     await widgetsLoaded(container);
     expect(screen.getByRole("heading", { level: 1, name: "SOC Overview" })).toBeInTheDocument();
-    expect(screen.getByText(/24 h view of fleet volume/)).toBeInTheDocument();
+    expect(screen.queryByText(/24 h view of fleet volume/)).toBeNull();
     expect(screen.getAllByRole("heading").map((heading) => heading.textContent)).toEqual([
       "SOC Overview",
       "Total EPS, 24 h",
       "Log sources, now",
-      "Open offenses, latest snapshot",
+      "Open offenses",
       "Active anomalies, now",
       "Fleet EPS24 h",
       "EPS by source class24 h",
@@ -235,13 +235,13 @@ describe("Dashboard page", () => {
     const { container } = render(<HomePage />);
     await widgetsLoaded(container);
     expect(screen.getAllByText(/No class has a complete bucket in this window/)).toHaveLength(2);
-    expect(screen.getByText(/No monitored log source; there is nothing to judge yet/)).toBeInTheDocument();
-    expect(screen.getByText(/The window holds no step\. No line is drawn/)).toBeInTheDocument();
+    expect(screen.getAllByText(/No monitored log source\./).length).toBeGreaterThan(0);
+    expect(screen.getByText(/The window holds no step\. Nothing is drawn as zero/)).toBeInTheDocument();
     expect(screen.getByText(/No log source has a complete bucket/)).toBeInTheDocument();
     expect(screen.getByText("No anomaly opened in the last 24 h.")).toBeInTheDocument();
-    expect(screen.getAllByText(/No monitored log sources?\. Enable monitoring/)).toHaveLength(2);
-    expect(screen.getByText(/No active anomalies\. Sources with no baseline/)).toBeInTheDocument();
-    expect(screen.getAllByText(/No offense snapshot has been collected yet/)).toHaveLength(2);
+    expect(screen.getAllByText(/^No monitored log sources?\.$/)).toHaveLength(3);
+    expect(screen.getByText(/No active anomalies; 0 sources not judged/)).toBeInTheDocument();
+    expect(screen.getAllByText(/No offense snapshot collected yet/)).toHaveLength(2);
     expect(container.querySelector(".kpi-value")?.textContent).toBe("—");
     expect(container.textContent).not.toContain("0.00 EPS");
   });
@@ -264,7 +264,7 @@ describe("Dashboard page", () => {
     expect(alerts).toHaveLength(13);
     for (const alert of alerts) {
       expect(alert).toHaveTextContent(/Refresh|next refresh/);
-      expect(alert).toHaveTextContent(/backend is reachable/);
+      expect(alert).toHaveTextContent(/Use Refresh in the top bar/);
     }
     expect(screen.getByRole("heading", { level: 1, name: "SOC Overview" })).toBeInTheDocument();
   });
@@ -276,7 +276,7 @@ describe("Dashboard page", () => {
     expect(screen.getAllByText(/Insufficient data/).length).toBeGreaterThanOrEqual(3);
     expect(screen.getAllByText(/No class has a complete bucket/)).toHaveLength(2);
     expect(screen.getAllByText(/No monitored source has a verdict yet/)).toHaveLength(2);
-    expect(screen.getByText(/not zero traffic/)).toBeInTheDocument();
+    expect(screen.getByText(/Nothing is drawn as zero/)).toBeInTheDocument();
     expect(container.querySelector(".hc-chart[role='img']")).toBeNull();
     expect(container.textContent).not.toContain("0.00 EPS");
   });

@@ -221,7 +221,7 @@ describe("the filter over a long list", () => {
     twoSources();
     routes[ENDPOINTS("s1")] = { body: { items: many, total: 450, limit: 200, offset: 0 } };
     open(placed({ waf_source: "s1" }));
-    expect(await screen.findByText(/first 12 of 450 endpoints/)).toBeInTheDocument();
+    expect(await screen.findByText(/First 12 of 450 endpoints/)).toBeInTheDocument();
   });
 });
 
@@ -240,7 +240,7 @@ describe("the read's own states", () => {
     const alert = await screen.findByRole("alert");
     expect(alert).toHaveTextContent("The WAF sources could not be read.");
     expect(alert).toHaveTextContent("HTTP 500");
-    expect(alert).toHaveTextContent("open it again");
+    expect(alert).toHaveTextContent("reopen this drawer");
     expect(apply()).toBeDisabled();
   });
 

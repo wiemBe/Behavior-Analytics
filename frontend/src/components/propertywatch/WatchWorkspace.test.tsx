@@ -120,7 +120,7 @@ describe("the selection and its series", () => {
     fireEvent.click(plot("b"));
     const alert = await screen.findByRole("alert");
     expect(alert).toHaveTextContent("could not be loaded");
-    expect(alert).toHaveTextContent("stay on screen");
+    expect(alert).toHaveTextContent("Drawn values stay");
     expect(chartProps().series.map((x) => x.value_key)).toEqual(["a"]);
     await act(async () => {
       fireEvent.click(within(alert).getByRole("button", { name: "Try again" }));
@@ -148,8 +148,8 @@ describe("the selection and its series", () => {
 describe("the states of the values tab", () => {
   it("says an empty window is an absence of collection", () => {
     render(<WatchWorkspace {...props({ buckets: [], values: paged([]), initialSelected: [], initialSeries: [] })} />);
-    expect(chartProps().emptyText).toMatch(/absence of collection, not an observation of zero/);
-    expect(screen.getByText("No value is tracked for this watch in this window.")).toBeInTheDocument();
+    expect(chartProps().emptyText).toMatch(/not zero events/);
+    expect(screen.getByText("No value tracked in this window.")).toBeInTheDocument();
   });
 
   it("asks for a selection when values exist and none is plotted", () => {
@@ -160,7 +160,7 @@ describe("the states of the values tab", () => {
   it("says the values could not be loaded instead of listing none", () => {
     render(<WatchWorkspace {...props({ values: null, initialSelected: [], initialSeries: [] })} />);
     expect(screen.getByText("The tracked values could not be loaded.")).toBeInTheDocument();
-    expect(screen.queryByText("No value is tracked for this watch in this window.")).toBeNull();
+    expect(screen.queryByText("No value tracked in this window.")).toBeNull();
   });
 
   it("offers the four windows as links, marking the current one", () => {
@@ -178,14 +178,14 @@ describe("the states of the values tab", () => {
 
   it("states the unparsed remainder of the last bucket and never as a value", () => {
     render(<WatchWorkspace {...props({ buckets: [bucket(0), bucket(1)] })} />);
-    expect(screen.getByText(/40 of 1,000 events in scope carried no/)).toBeInTheDocument();
-    expect(screen.getByText(/never as a zero/)).toBeInTheDocument();
+    expect(screen.getByText(/40 of 1,000 events carried no/)).toBeInTheDocument();
+    expect(screen.queryByText(/never as a zero/)).toBeNull();
   });
 
   it("puts the honesty line in the values tab", () => {
     render(<WatchWorkspace {...props({ catalog: catalog({ collection_enabled: false }) })} />);
     const honesty = screen.getByRole("group", { name: /not known/ });
-    expect(honesty).toHaveTextContent("PW_COLLECTION_ENABLED");
+    expect(honesty).toHaveTextContent("Collection is off");
     expect(
       honesty.compareDocumentPosition(screen.getByRole("region", { name: "Series chart" })) &
         Node.DOCUMENT_POSITION_FOLLOWING,
@@ -228,7 +228,8 @@ describe("the tabs", () => {
   it("shows the generated query on the Definition tab", () => {
     render(<WatchWorkspace {...props()} />);
     fireEvent.click(screen.getByRole("tab", { name: "Definition" }));
-    expect(screen.getByText(/Generated query text\. The collector adds the time range/)).toBeInTheDocument();
+    expect(screen.queryByText(/Generated query text\./)).toBeNull();
+    expect(screen.getByText("Generated query")).toBeInTheDocument();
   });
 
   it("lists this watch's incidents with their lifecycle state", () => {
@@ -245,8 +246,8 @@ describe("the tabs", () => {
   it("says no incident is not 'all normal', and that a failed read is not 'none'", () => {
     const { unmount } = render(<WatchWorkspace {...props()} />);
     fireEvent.click(screen.getByRole("tab", { name: "Incidents (0)" }));
-    expect(screen.getByText(/No incident was detected/)).toBeInTheDocument();
-    expect(screen.getByText(/not a statement that every value is normal/)).toBeInTheDocument();
+    expect(screen.getByText(/No incident in the last/)).toBeInTheDocument();
+    expect(screen.getByText(/empty is not normal/)).toBeInTheDocument();
     unmount();
     render(<WatchWorkspace {...props({ incidents: null, incidentsTotal: null })} />);
     fireEvent.click(screen.getByRole("tab", { name: "Incidents" }));
@@ -272,7 +273,7 @@ describe("the tabs", () => {
     expect(screen.getByRole("list", { name: "Membership changes" })).toHaveTextContent("grace window");
     expect(screen.getByRole("list", { name: "Member names" })).toHaveTextContent("fw-dmz-02");
     expect(screen.getByText(/2 h ago/)).toBeInTheDocument();
-    expect(screen.getByText(/2 listed, sorted|2 of 37 are listed/)).toBeInTheDocument();
+    expect(screen.getByText(/2 listed, sorted|2 of 37 listed/)).toBeInTheDocument();
   });
 
   it("says a stale scope is stale and states no count it was not given", () => {
@@ -292,13 +293,13 @@ describe("the tabs", () => {
   it("says the membership could not be loaded instead of drawing none", () => {
     render(<WatchWorkspace {...props({ scope: null })} />);
     fireEvent.click(screen.getByRole("tab", { name: "Definition" }));
-    expect(screen.getByText(/membership could not be loaded/)).toBeInTheDocument();
+    expect(screen.getByText(/Membership could not be loaded/)).toBeInTheDocument();
   });
 
   it("says when the caps could not be read", () => {
     render(<WatchWorkspace {...props({ catalog: null })} />);
     fireEvent.click(screen.getByRole("tab", { name: "Definition" }));
-    expect(screen.getByRole("alert")).toHaveTextContent("cardinality caps could not be read");
+    expect(screen.getByRole("alert")).toHaveTextContent("Caps could not be read");
   });
 });
 
@@ -308,9 +309,10 @@ describe("the window line when only history was read", () => {
     expect(screen.getByText(/Latest bucket read from QRadar history/)).toBeInTheDocument();
   });
 
-  it("keeps the plain wording for a live bucket", () => {
+  it("says nothing about a live bucket (the header names it)", () => {
     render(<WatchWorkspace {...props({ buckets: [{ ...bucket(0), origin: "LIVE" }] })} />);
     expect(screen.queryByText(/read from QRadar history/)).toBeNull();
-    expect(screen.getByText(/Latest bucket/)).toBeInTheDocument();
+    expect(screen.queryByText(/Latest bucket read from/)).toBeNull();
+    expect(screen.queryByText(/^Last 24 h to .* Latest bucket/)).toBeNull();
   });
 });

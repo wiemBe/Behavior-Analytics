@@ -224,7 +224,7 @@ describe("alert detail contents", () => {
     expect(screen.getByRole("heading", { name: "Event volume spike on Core Firewall", level: 1 })).toBeInTheDocument();
     expect(screen.getByText("HIGH")).toHaveClass("crit");
     expect(screen.getByText("OPEN")).toBeInTheDocument();
-    expect(screen.getByText(/repeated 4× while open/)).toBeInTheDocument();
+    expect(screen.getByText(/repeated 4×/)).toBeInTheDocument();
     expect(screen.getByText("vol:227:1789").tagName).toBe("CODE");
   });
 
@@ -232,7 +232,7 @@ describe("alert detail contents", () => {
     vi.spyOn(api, "alert").mockResolvedValue(alert({ occurrence_count: 1200 }));
     vi.spyOn(api, "alertNotifications").mockResolvedValue([]);
     await renderPage();
-    expect(screen.getByText(/repeated 1,200× while open/)).toBeInTheDocument();
+    expect(screen.getByText(/repeated 1,200×/)).toBeInTheDocument();
   });
 
   it("reads a count of 1 as not repeated and never uses the old counter words", async () => {
@@ -338,7 +338,7 @@ describe("alert detail contents", () => {
     await renderPage();
     const lifecycle = screen.getByText("Lifecycle", { selector: ".k" }).closest(".card") as HTMLElement;
     const bucket = within(lifecycle).getByText(/Last anomaly bucket:/).closest("p") as HTMLElement;
-    expect(bucket).toHaveTextContent("— not recorded in this alert's evidence");
+    expect(bucket).toHaveTextContent("— not recorded");
     expect(bucket).not.toHaveTextContent("08:30");
     expect(lifecycle).toHaveTextContent("Last evaluated: 2026-10-15 08:30:00 UTC");
   });
@@ -347,7 +347,7 @@ describe("alert detail contents", () => {
     vi.spyOn(api, "alert").mockResolvedValue(alert({ evidence_snapshot: { interval_end: "not a time" } }));
     await renderPage();
     const lifecycle = screen.getByText("Lifecycle", { selector: ".k" }).closest(".card") as HTMLElement;
-    expect(lifecycle).toHaveTextContent("— not recorded in this alert's evidence");
+    expect(lifecycle).toHaveTextContent("— not recorded");
   });
 
   it("offers acknowledge and resolve while an alert is open", async () => {
@@ -362,7 +362,7 @@ describe("alert detail contents", () => {
     vi.spyOn(api, "alertNotifications").mockResolvedValue([]);
     await renderPage();
     expect(screen.queryByRole("button", { name: "Acknowledge" })).toBeNull();
-    expect(screen.getByText("This alert is resolved. No further action is available.")).toBeInTheDocument();
+    expect(screen.getByText("Resolved. No further action.")).toBeInTheDocument();
     const lifecycle = screen.getByText("Lifecycle", { selector: ".k" }).closest(".card") as HTMLElement;
     expect(lifecycle).toHaveTextContent("Resolved by: analyst@example.com");
   });
@@ -445,7 +445,7 @@ describe("alert detail honesty", () => {
   it("says what failed and what to do as an alert", async () => {
     vi.spyOn(api, "alert").mockRejectedValue(new ApiError(404, "secret"));
     await renderPage("a-9");
-    expect(screen.getByRole("alert")).toHaveTextContent("reload the page");
+    expect(screen.getByRole("alert")).toHaveTextContent("Reload to retry");
     expect(screen.getByRole("heading", { name: "Alert Detail", level: 1 })).toBeInTheDocument();
   });
 

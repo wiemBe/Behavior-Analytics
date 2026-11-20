@@ -91,7 +91,7 @@ export function WatchDefinition({
         <h2 id="pw-def-run" className="section-title">{t("propertyWatch.definition.collection")}</h2>
         <dl className="dimension-meta pw-dl">
           <div><dt>{t("propertyWatch.definition.enabled")}</dt><dd>{t(watch.enabled ? "propertyWatch.common.yes" : "propertyWatch.common.no")}</dd></div>
-          <div><dt>{t("propertyWatch.definition.version")}</dt><dd className="num">{formatCount(watch.watch_version, i18n.locale)}<span className="muted">{t("propertyWatch.definition.versionNote")}</span></dd></div>
+          <div><dt>{t("propertyWatch.definition.version")}</dt><dd className="num">{formatCount(watch.watch_version, i18n.locale)}</dd></div>
           <div>
             <dt>{t("propertyWatch.definition.cadence")}</dt>
             <dd>{t("propertyWatch.definition.cadenceBeforeLink", { duration: formatExactDuration(watch.cadence_seconds, i18n) })}<Link href="/admin/search-cadence">{t("propertyWatch.definition.searchCadence")}</Link>{t("propertyWatch.definition.cadenceAfterLink")}</dd>
@@ -110,7 +110,6 @@ export function WatchDefinition({
           <TimeSpan label={t("propertyWatch.definition.requestedWindow")} start={watch.history.target_start} end={watch.history.end} missing={t("propertyWatch.common.notRecorded")} />
           <TimeSpan label={t("propertyWatch.definition.readFrom")} start={watch.history.floor} end={watch.history.through} missing={t("propertyWatch.definition.readSpanMissing")} />
           <div><dt>{t("propertyWatch.definition.historyFloor")}</dt><dd className="num">{watch.history.floor ? <UtcTime value={watch.history.floor} /> : t("propertyWatch.common.notRecorded")}</dd></div>
-          <div><dt>{t("propertyWatch.definition.membershipBasis")}</dt><dd>{t("propertyWatch.definition.membershipBasisBody")}</dd></div>
         </dl>
         {(watch.history.gaps ?? []).length > 0 && (
           <div><h3 className="pw-subtitle">{t("propertyWatch.definition.historyGaps")}</h3>

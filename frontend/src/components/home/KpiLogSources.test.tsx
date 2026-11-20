@@ -59,8 +59,8 @@ describe("KpiLogSources", () => {
     render(<KpiLogSources />);
     expect(screen.getByText(/2 silent/)).toBeInTheDocument();
     // The definition is in the tooltip and in the accessible description.
-    expect(screen.getByTitle(/NO_EVENTS anomaly/)).toBeInTheDocument();
-    expect(screen.getByRole("article")).toHaveAccessibleDescription(/NO_EVENTS anomaly/);
+    expect(screen.getByTitle(/no events where some were expected/)).toBeInTheDocument();
+    expect(screen.getByRole("article")).toHaveAccessibleDescription(/Monitored log sources and how many are judged/);
   });
 
   it("shows an em dash, not 0 judged normal, when nothing is judged", () => {
@@ -79,9 +79,7 @@ describe("KpiLogSources", () => {
     mocks.states[OVERVIEW] = ok(overview(3));
     const { container } = render(<KpiLogSources />);
     expect(
-      screen.getByText(
-        "No monitored log source. Enable monitoring on a source to start collecting its volume baseline.",
-      ),
+      screen.getByText("No monitored log source."),
     ).toBeInTheDocument();
     expect(screen.getAllByText(/No monitored log source/)).toHaveLength(1);
     expect(container.querySelector(".kpi-health")).toBeNull();
@@ -101,7 +99,7 @@ describe("KpiLogSources", () => {
     mocks.states[SOURCES] = ok(sources);
     mocks.states[OVERVIEW] = failed(500);
     render(<KpiLogSources />);
-    expect(screen.getByText("Total log sources unavailable.")).toBeInTheDocument();
+    expect(screen.getByText("Total unavailable.")).toBeInTheDocument();
   });
 
   it("shows the inventory failure and no monitored count of zero when the fleet is empty", () => {
@@ -112,7 +110,7 @@ describe("KpiLogSources", () => {
     const alert = screen.getByRole("alert");
     expect(alert).toHaveTextContent("The log source health could not be read.");
     expect(alert).toHaveTextContent(
-      "The inventory sync failed, so this is not a monitored count of zero.",
+      "Inventory sync failed; monitored count unknown.",
     );
     expect(screen.queryByText(/of 0 monitored/)).not.toBeInTheDocument();
     expect(screen.queryByText("0")).not.toBeInTheDocument();
@@ -128,7 +126,7 @@ describe("KpiLogSources", () => {
     mocks.states[OVERVIEW] = ok(overview(0, "NOT_COLLECTED"));
     render(<KpiLogSources />);
     expect(screen.getByText("Not collected.")).toBeInTheDocument();
-    expect(screen.getByText(/has not been collected, so there is no monitored count/)).toBeInTheDocument();
+    expect(screen.getByText(/Inventory not collected; no monitored count/)).toBeInTheDocument();
     expect(screen.queryByText("0")).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: "View log sources" })).toHaveAttribute(
       "href",
@@ -185,7 +183,7 @@ describe("KpiLogSources", () => {
       "The log source health could not be read.",
     );
     expect(alert.querySelector(".widget-error-action")).toHaveTextContent(
-      "HTTP 500. Nothing was changed. Use Refresh",
+      "HTTP 500. Use Refresh",
     );
   });
 

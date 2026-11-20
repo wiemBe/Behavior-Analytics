@@ -77,7 +77,7 @@ describe("the range chips", () => {
   it("says the default window when no range is set", async () => {
     await renderList();
     expect(screen.getByRole("group", { name: "Time window shown" })).toHaveTextContent(
-      "Default window, last 24 hours: 2026-11-04 19:05 UTC to 2026-11-05 19:05 UTC",
+      "Last 24 h: 2026-11-04 19:05 UTC to 2026-11-05 19:05 UTC",
     );
     expect(listed.mock.calls[0][0].since).toBeUndefined();
   });

@@ -309,14 +309,14 @@ describe("empty and error states", () => {
   it("distinguishes a filtered empty result from an empty fleet", async () => {
     await renderPage({ state: "OPEN" }, []);
     expect(
-      screen.getByText(/filtered view, not a statement about the fleet/i),
+      screen.getByText(/No anomalies match these filters/i),
     ).toBeInTheDocument();
   });
 
   it("points an unfiltered empty result at the unbaselined count", async () => {
     await renderPage({}, []);
     expect(
-      screen.getByText(/Sources without an adequate baseline are not being judged/i),
+      screen.getByText(/Sources without a baseline are not judged/i),
     ).toBeInTheDocument();
   });
 
@@ -325,7 +325,7 @@ describe("empty and error states", () => {
     vi.spyOn(api, "sourceBehaviors").mockResolvedValue(SOURCES);
     render(await AnomaliesPage({ searchParams: Promise.resolve({}) }));
 
-    expect(screen.getByRole("alert")).toHaveTextContent(/backend may be unreachable/i);
+    expect(screen.getByRole("alert")).toHaveTextContent(/Reload the page to retry/i);
   });
 
   it("reports a forbidden response as a permission problem", async () => {
@@ -333,7 +333,7 @@ describe("empty and error states", () => {
     vi.spyOn(api, "sourceBehaviors").mockResolvedValue(SOURCES);
     render(await AnomaliesPage({ searchParams: Promise.resolve({}) }));
 
-    expect(screen.getByRole("alert")).toHaveTextContent(/do not have permission/i);
+    expect(screen.getByRole("alert")).toHaveTextContent(/permission read:anomalies/i);
   });
 
   it("still renders the table when only the source list fails", async () => {
@@ -343,7 +343,7 @@ describe("empty and error states", () => {
 
     expect(screen.queryByRole("alert")).toBeNull();
     expect(screen.getByRole("status")).toHaveTextContent(
-      "The source list could not be loaded, so the source filter is unavailable; the anomaly list below is complete.",
+      "Source filter unavailable: the source list could not be loaded.",
     );
     expect(screen.queryByLabelText("Log source")).toBeNull();
     expect(screen.getByRole("row", { name: /LAB Firewall/ })).toBeInTheDocument();
@@ -374,7 +374,7 @@ describe("accessibility", () => {
   it("gives the table an accessible caption", async () => {
     await renderPage();
     expect(
-      screen.getByText(/Detected anomalies with lifecycle state/i),
+      screen.getByText(/^Detected anomalies$/i),
     ).toBeInTheDocument();
   });
 });
@@ -418,17 +418,17 @@ describe("empty list", () => {
 
   it("names the window the page asked for and how to widen it", async () => {
     await renderEmpty({}, page([], 0));
-    const notice = screen.getByText(/No anomalies were detected in the window/);
-    expect(notice).toHaveTextContent(/the last 24 h, \d{4}-\d{2}-\d{2} [\d:]+ UTC to \d{4}-\d{2}-\d{2} [\d:]+ UTC/);
-    expect(notice).toHaveTextContent("Set the Start time (UTC) filter to look further back.");
-    expect(notice).toHaveTextContent("Sources without an adequate baseline are not being judged");
+    const notice = screen.getByText(/No anomalies in the last 24 h/);
+    expect(notice).toHaveTextContent(/the last 24 h \(\d{4}-\d{2}-\d{2} [\d:]+ UTC to \d{4}-\d{2}-\d{2} [\d:]+ UTC\)/);
+    expect(notice).toHaveTextContent("Set Start time (UTC) to look further back.");
+    expect(notice).toHaveTextContent("Sources without a baseline are not judged");
     expect(screen.queryByRole("link", { name: /Show every active anomaly/ })).toBeNull();
     expect(notice).not.toHaveTextContent("No anomalies have been detected.");
   });
 
   it("counts every active anomaly outside the window, whatever its age, and links to the list without a start time", async () => {
     const spy = await renderEmpty({}, page([anomaly()], 4));
-    expect(screen.getByText(/4 active anomalies were detected before this window/)).toBeInTheDocument();
+    expect(screen.getByText(/4 active anomalies were detected earlier/)).toBeInTheDocument();
     const link = screen.getByRole("link", { name: "Show every active anomaly" });
     const href = new URL(link.getAttribute("href")!, "http://x");
     expect(href.pathname).toBe("/anomalies");
@@ -441,12 +441,12 @@ describe("empty list", () => {
 
   it("uses the singular for one", async () => {
     await renderEmpty({}, page([anomaly()], 1));
-    expect(screen.getByText(/1 active anomaly was detected before this window/)).toBeInTheDocument();
+    expect(screen.getByText(/1 active anomaly was detected earlier/)).toBeInTheDocument();
   });
 
   it("says no number, and never a zero, when the count could not be read", async () => {
     await renderEmpty({}, new ApiError(500, "boom"));
-    const notice = screen.getByText(/No anomalies were detected in the window/);
+    const notice = screen.getByText(/No anomalies in the last 24 h/);
     expect(notice).not.toHaveTextContent(/\d+ active/);
     expect(screen.queryByRole("link", { name: /Show every active anomaly/ })).toBeNull();
   });

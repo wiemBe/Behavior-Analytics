@@ -1,7 +1,7 @@
 {
   "title": "Queue",
   "meta": "Queue",
-  "description": "What is new or changed since your last visit, and what is waiting on you.",
+  "description": "Queue.",
   "boundary": {
     "title": "Queue",
     "loading": "the queue",
@@ -10,18 +10,18 @@
   "loading": "Loading the queue…",
   "loadFailed": {
     "title": "The queue could not be loaded.",
-    "network": "The backend did not answer. Your marker was not moved. Reload to try again; if it keeps failing, check that the backend is reachable.",
-    "forbidden": "Your account may not open the queue. Ask an administrator for access.",
-    "expired": "Your session has expired. Sign in again to continue.",
+    "network": "The backend did not answer. Your marker was not moved.",
+    "forbidden": "Your account may not open the queue.",
+    "expired": "Your session has expired. Sign in again.",
     "rejected": "The backend refused this view: {reason}",
-    "server": "The backend failed while building the queue. Your marker was not moved. Reload to try again; if it keeps failing, check the backend log."
+    "server": "The backend failed while building the queue. Your marker was not moved."
   },
   "reload": "Reload",
   "marker": {
     "label": "Comparison",
-    "stored": "Showing what changed since {time} (your last visit)",
-    "first": "Showing what changed since {time} (last 24 h — first visit)",
-    "override": "Showing what changed since {time} (compared with {chip} ago)",
+    "stored": "Since {time} (your last visit)",
+    "first": "Since {time} (last 24 h, first visit)",
+    "override": "Since {time} ({chip} ago)",
     "chipsLabel": "Compare with",
     "chip": {
       "8h": "8 h",
@@ -35,15 +35,15 @@
     },
     "back": "Back to last visit",
     "reload": "Reload",
-    "advanced": "Your marker moved to {time}. The New and Updated labels still compare with the visit before.",
-    "keptOverride": "Your marker was not moved while a comparison time is chosen.",
-    "keptNarrowed": "Your marker was not moved because this view is narrowed by a scope, filter or page. Open the unfiltered first page to move it.",
-    "keptFailed": "Your marker was kept at {marker} because {sources} did not load.",
-    "keptFailedNone": "Your marker was kept (none is stored yet) because {sources} did not load.",
-    "changed": "Another session moved your marker to {time}. Reload to compare with it.",
-    "changedUnknown": "Another session moved your marker. Reload to compare with it.",
-    "refused": "The server did not move your marker because a source failed to load. It stays where it was.",
-    "postFailed": "Your marker could not be moved. It stays where it was; the labels below are unaffected. Reload to try again.",
+    "advanced": "Marker moved to {time}.",
+    "keptOverride": "Marker not moved: a comparison time is chosen.",
+    "keptNarrowed": "Marker not moved: this view is narrowed.",
+    "keptFailed": "Marker kept at {marker}: {sources} did not load.",
+    "keptFailedNone": "Marker kept (none stored): {sources} did not load.",
+    "changed": "Another session moved your marker to {time}. Reload to compare.",
+    "changedUnknown": "Another session moved your marker. Reload to compare.",
+    "refused": "Marker not moved: a source failed to load.",
+    "postFailed": "Marker could not be moved. Reload to retry.",
     "ignored": {
       "scope": "Ignored an unknown scope.",
       "kind": "Ignored an unknown kind.",
@@ -68,27 +68,27 @@
     "newCount": "{count} new or updated",
     "loaded": "Loaded",
     "atLeastShort": "at least {count}",
-    "lowerBound": "A source failed, so the total is a lower bound.",
-    "notApplicable": "does not apply to this scope or severity filter",
-    "failed": "failed to load. Its rows are missing and the total below is a lower bound. Reload; if it keeps failing, check the backend log.",
-    "forbidden": "not shown. Needs the {permission} permission.",
-    "forbiddenUnknown": "not shown. Your account lacks the permission to read it.",
+    "lowerBound": "Total is a lower bound.",
+    "notApplicable": "not applicable to this filter",
+    "failed": "failed to load. Rows missing; total is a lower bound.",
+    "forbidden": "not shown. Needs {permission}.",
+    "forbiddenUnknown": "not shown. Permission missing.",
     "notCollected": {
-      "NO_CONSOLE": "not collected. No QRadar console is configured. Add one under Administration.",
-      "CONSOLE_UNCOLLECTED": "not collected. No console has completed a collection yet. It is collected on the console's cadence.",
-      "default": "not collected. Nothing was read, so nothing is claimed about it."
+      "NO_CONSOLE": "not collected. No console configured.",
+      "CONSOLE_UNCOLLECTED": "not collected. No console has completed a collection.",
+      "default": "not collected."
     },
     "stale": {
-      "COLLECTION_STALE": "stale. Last collected {age} ago ({time}). The rows are from that run.",
-      "COLLECTION_FAILING": "stale. The latest collection failed. The rows are from the last good run ({time}, {age} ago).",
-      "default": "stale. The rows are from the last collection ({time}, {age} ago)."
+      "COLLECTION_STALE": "stale. Last collected {age} ago ({time}).",
+      "COLLECTION_FAILING": "stale. Latest collection failed; rows from {time} ({age} ago).",
+      "default": "stale. Rows from {time} ({age} ago)."
     },
-    "staleNoTime": "stale. The rows are from the last collection; its time is not known.",
+    "staleNoTime": "stale. Collection time unknown.",
     "partial": {
-      "OWNER_UNMAPPED": "owner mapping unavailable. This account has no QRadar username, so offenses cannot be matched to it. Mine shows no offenses.",
-      "ALERT_LINK_FAILED": "counted in full, but the alert link could not be looked up. Anomaly rows may be missing their alert chip.",
-      "ALERTS_NOT_READABLE": "counted in full. Alert chips are not shown because this account lacks the read:alerts permission.",
-      "default": "partly read. Some of it is missing."
+      "OWNER_UNMAPPED": "owner unmapped. No QRadar username on this account; Mine shows no offenses.",
+      "ALERT_LINK_FAILED": "alert links unavailable; some alert chips missing.",
+      "ALERTS_NOT_READABLE": "alert chips hidden; needs read:alerts.",
+      "default": "partly read; some rows missing."
     }
   },
   "scope": {
@@ -153,15 +153,15 @@
   "showing": "Showing {from}–{to} of {total}",
   "pageRangeAtLeast": "{from}–{to} of at least {total}",
   "showingAtLeast": "Showing {from}–{to} of at least {total}",
-  "capped": "The queue holds more than 1000 rows. Narrow it with a filter.",
+  "capped": "More than 1000 rows. Narrow with a filter.",
   "empty": {
-    "all": "Nothing is waiting. Every source you may read loaded at {time}.",
-    "scope": "Nothing is waiting in {scope}. Every source you may read loaded at {time}.",
+    "all": "Nothing is waiting. All sources loaded at {time}.",
+    "scope": "Nothing is waiting in {scope}. All sources loaded at {time}.",
     "newOnly": "Nothing new or updated in {scope} since {time}.",
     "newOnlyAll": "Nothing new or updated since {time}.",
     "showAll": "Show everything that is waiting",
-    "filtered": "Nothing waiting matches these filters. Use Clear filters above to widen the view.",
-    "unread": "No rows are shown, and that is not a clean result: {sources} could not be read in full. See the sources above.",
+    "filtered": "Nothing waiting matches these filters.",
+    "unread": "No rows shown; {sources} could not be read in full.",
     "scopeNames": {
       "mine": "Mine",
       "unassigned": "Unassigned",

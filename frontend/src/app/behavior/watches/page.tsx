@@ -12,7 +12,6 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { getTranslations } from "next-intl/server";
 
-import { CadenceLatency, canReadSearchCadence } from "@/components/cadence/CadenceLatency";
 import { PwStatus } from "@/components/propertywatch/PwStatus";
 import {
   propertyWatchAccessFrom,
@@ -20,7 +19,6 @@ import {
 } from "@/components/propertywatch/authoring";
 import {
   coverageText,
-  pwLatencyFrom,
   propertiesText,
   relativeAge,
   scopeText,
@@ -51,7 +49,6 @@ async function PropertyWatchesPage() {
   let forbidden = false;
   let failed = false;
   let access: PropertyWatchAccess = "unknown";
-  let canLink = false;
   try {
     watches = await api.propertyWatches();
   } catch (error) {
@@ -67,7 +64,6 @@ async function PropertyWatchesPage() {
     catalog = await api.propertyWatchCatalog().catch(() => null);
     const caller = await api.caller().catch(() => null);
     access = caller ? propertyWatchAccessFrom(caller) : "unknown";
-    canLink = canReadSearchCadence(caller);
   }
   const now = new Date();
   const rows = sortWatches(watches);
@@ -129,16 +125,12 @@ async function PropertyWatchesPage() {
                   </div>
                 )}
                 {catalog.alerting_mode === "shadow" && (
-                  <div className="banner" role="status">
-                    <span>
-                      <strong>{t("list.shadowTitle")}</strong>{" "}
-                      {t.rich("list.shadowBody", { setting: (chunks) => <code>{chunks}</code> })}
-                    </span>
-                  </div>
+                  <p className="pw-write-note" role="status">
+                    <strong>{t("list.shadowTitle")}</strong> {t("list.shadowBody")}
+                  </p>
                 )}
               </>
             )}
-            <CadenceLatency className="pw-latency" parts={pwLatencyFrom(catalog?.cadence, i18n)} canLink={canLink} />
             {access !== "writer" && (
               <p className="pw-write-note" role={access === "unknown" ? "alert" : undefined}>
                 {access === "unknown" ? t("list.permissionsUnread") : ""}

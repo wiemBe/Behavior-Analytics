@@ -72,7 +72,7 @@ import {
   type WafMetricBucket,
 } from "@/lib/api";
 import { ratioSpecFor } from "@/components/waf/wafSeries";
-import { dimensionLabel, hasConfidenceLimitation, stateMeaningIn } from "@/lib/behavior";
+import { dimensionLabel, hasConfidenceLimitation } from "@/lib/behavior";
 import { getBehaviorI18n, getEnumLabels } from "@/lib/behaviorI18n.server";
 import type { BehaviorI18n } from "@/lib/behaviorI18n";
 import { summarizeAnomaly, summarizeTimeline } from "@/lib/summarize";
@@ -571,7 +571,6 @@ async function AnomalyDetailPage({
       {/* --- B. deterministic summary ------------------------------------ */}
       <p className="incident-summary">{summary.text}</p>
       {summary.caveat && <p className="subtitle">{summary.caveat}</p>}
-      <p className="subtitle">{stateMeaningIn(anomaly.state, i18n)}</p>
 
       {/* --- B2. the analyst's triage: who has this and what was decided --- */}
       {triageBlock}
@@ -612,9 +611,6 @@ async function AnomalyDetailPage({
       {/* --- E. what changed --------------------------------------------- */}
       <section>
         <h2 className="section-title">{t("whatChanged")}</h2>
-        <p className="subtitle">
-          {t("whatChangedNote")}
-        </p>
         <TopContributors
           packaged={pkg}
           anomalyType={anomaly.anomaly_type}

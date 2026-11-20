@@ -110,7 +110,7 @@ describe("IncidentMetrics", () => {
   it("states a confidence limitation where confidence is read", () => {
     const { container } = view(anomaly(), true);
     expect(container.querySelector(".measure-foot")).toHaveTextContent(
-      /Confidence limited because baseline variability is zero/,
+      /Confidence limited: baseline variability is zero/,
     );
   });
 

@@ -63,7 +63,7 @@ describe("the preview", () => {
   it("is loading text first, then the rows with a Watch checkbox each", async () => {
     mocks.preview.mockReturnValue(new Promise(() => {}));
     mount();
-    expect(screen.getByText("Reading the rows that would be frozen…")).toBeInTheDocument();
+    expect(screen.getByText("Loading rows…")).toBeInTheDocument();
     expect(screen.queryByRole("table")).toBeNull();
   });
 
@@ -77,7 +77,7 @@ describe("the preview", () => {
   it("says what failed, keeps the form and recovers on Retry", async () => {
     mocks.preview.mockRejectedValueOnce(new ApiError(500, "x")).mockResolvedValueOnce(body({ items: rows(1), total: 1 }));
     mount();
-    expect(await screen.findByText(/The rows to freeze could not be loaded/)).toBeInTheDocument();
+    expect(await screen.findByText(/Rows to freeze could not be loaded/)).toBeInTheDocument();
     expect(note()).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
     expect(await screen.findByRole("table", { name: "Rows that will be frozen" })).toBeInTheDocument();
@@ -89,7 +89,7 @@ describe("the preview", () => {
     );
     mocks.preview.mockResolvedValue(body({ sources, items: rows(1), total: 1 }));
     mount();
-    expect(await screen.findByText(/Some sources could not be read for this preview/)).toBeInTheDocument();
+    expect(await screen.findByText(/Some sources were not read; they will be marked as such/)).toBeInTheDocument();
     expect(screen.getByText(/Offenses: not read.*read:offenses/)).toBeInTheDocument();
   });
 
@@ -107,13 +107,13 @@ describe("the preview", () => {
     mount();
     expect(
       await screen.findByText(
-        "Offenses: not read. Your account lacks read:offenses, so its rows would not be in this handover.",
+        "Offenses: not read; you lack read:offenses.",
       ),
     ).toBeInTheDocument();
     expect(
-      screen.getByText(/failed to load for this preview, so its rows would be missing, not absent/),
+      screen.getByText(/failed to load; its rows would be missing/),
     ).toBeInTheDocument();
-    expect(screen.getByText("7 h so far")).toBeInTheDocument();
+    expect(screen.getByText("7 h")).toBeInTheDocument();
     const text = document.body.textContent ?? "";
     expect(text).not.toMatch(/when written|when this was written|author's account/);
   });
@@ -121,7 +121,7 @@ describe("the preview", () => {
   it("says nothing would be frozen when the queue is empty and every source read", async () => {
     mocks.preview.mockResolvedValue(body({ items: [], total: 0 }));
     mount();
-    expect(await screen.findByText("No open rows would be frozen right now.")).toBeInTheDocument();
+    expect(await screen.findByText("No open rows to freeze.")).toBeInTheDocument();
   });
 });
 
@@ -180,7 +180,7 @@ describe("watching", () => {
     await screen.findByRole("table", { name: "Rows that will be frozen" });
     for (let i = 0; i < 20; i += 1) fireEvent.click(screen.getByRole("checkbox", { name: `Watch Row ${i}` }));
     expect(screen.getByText("20 of 20 watched")).toBeInTheDocument();
-    expect(screen.getByText(/20 rows are watched, the most a handover holds/)).toBeInTheDocument();
+    expect(screen.getByText(/20 rows watched, the maximum/)).toBeInTheDocument();
     expect(screen.getByRole("checkbox", { name: "Watch Row 20" })).toBeDisabled();
     // A checked box stays enabled so one can be cleared, which frees a place.
     const first = screen.getByRole("checkbox", { name: "Watch Row 0" });
@@ -215,7 +215,7 @@ describe("saving", () => {
     await fill();
     fireEvent.click(screen.getByRole("button", { name: "Save handover" }));
     expect(
-      await screen.findByText(/1 watched rows were not in the snapshot and were not frozen: alert gone-1/),
+      await screen.findByText(/1 watched rows not frozen \(not in snapshot\): alert gone-1/),
     ).toBeInTheDocument();
     expect(screen.getByText("Written by ada")).toBeInTheDocument();
   });
@@ -247,14 +247,14 @@ describe("saving", () => {
     mocks.create.mockRejectedValue(new ApiError(403, "forbidden"));
     await fill();
     fireEvent.click(screen.getByRole("button", { name: "Save handover" }));
-    expect(await screen.findByRole("alert")).toHaveTextContent("The handover was not saved. You need the anomaly:triage permission.");
+    expect(await screen.findByRole("alert")).toHaveTextContent("Not saved. Needs the anomaly:triage permission.");
   });
 
   it("says a network failure kept the note", async () => {
     mocks.create.mockRejectedValue(new TypeError("fetch failed"));
     await fill();
     fireEvent.click(screen.getByRole("button", { name: "Save handover" }));
-    expect(await screen.findByRole("alert")).toHaveTextContent("Your note is still here");
+    expect(await screen.findByRole("alert")).toHaveTextContent("Your note is kept");
     expect(screen.getByRole("button", { name: "Save handover" })).toBeEnabled();
   });
 

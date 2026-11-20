@@ -110,7 +110,7 @@ describe("SearchResultsWidget", () => {
     renderWidget({ search_id: "s-1", metric_key: null });
     const alert = await screen.findByRole("alert");
     expect(alert).toHaveTextContent("read:searches");
-    expect(alert).toHaveTextContent(/administrator/i);
+    expect(alert).toHaveTextContent(/permission read:searches/);
   });
 
   it("passes the widget body's height to the chart", async () => {

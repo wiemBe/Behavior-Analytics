@@ -46,12 +46,12 @@ describe("KpiAnomalies", () => {
     expect(
       Array.from(lifecycle.querySelectorAll(".kpi-line-part"), (part) => part.textContent),
     ).toEqual(["1\u00a0open \u00b7", "1\u00a0candidate \u00b7", "1\u00a0recovering"]);
-    expect(screen.getByText(/4 log sources not judged; they are not in these counts/)).toBeInTheDocument();
+    expect(screen.getByText(/4 log sources not judged/)).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "View active anomalies" })).toHaveAttribute(
       "href",
       "/anomalies?active_only=true",
     );
-    expect(screen.getByRole("article")).toHaveAccessibleDescription(/candidate, open or recovering/);
+    expect(screen.getByRole("article")).toHaveAccessibleDescription(/Active anomalies across log sources/);
   });
 
   it("counts every family: the total, the family parts and the lifecycle parts agree", () => {
@@ -149,7 +149,7 @@ describe("KpiAnomalies", () => {
     expect(also).toHaveTextContent("WAF not read");
     expect(also).toHaveTextContent("1 IPS");
     expect(also).toHaveTextContent("0 property watches");
-    expect(screen.getByText(/At least this many/)).toBeInTheDocument();
+    expect(screen.getByText(/At least: a family could not be read/)).toBeInTheDocument();
   });
 
   it("counts the rule-match family in the total and names it in the breakdown", () => {
@@ -168,7 +168,7 @@ describe("KpiAnomalies", () => {
     render(<KpiAnomalies />);
     expect(screen.getByText("4", { selector: ".kpi-value" })).toBeInTheDocument();
     expect(screen.getByText(/Also:/).closest("p")).toHaveTextContent("3 rule matches");
-    expect(screen.queryByText(/At least this many/)).toBeNull();
+    expect(screen.queryByText(/At least: a family could not be read/)).toBeNull();
   });
 
   it("names the rule family as not read when its count is absent, and marks the total a floor", () => {
@@ -210,7 +210,7 @@ describe("KpiAnomalies", () => {
     );
     render(<KpiAnomalies />);
     expect(screen.getByText("1", { selector: ".kpi-value" })).toBeInTheDocument();
-    expect(screen.queryByText(/nothing to judge yet/)).toBeNull();
+    expect(screen.queryByText(/No monitored log source\./)).toBeNull();
   });
 
   it("does not read the capped active list and draws no severity list", () => {
@@ -225,7 +225,7 @@ describe("KpiAnomalies", () => {
     mocks.states[SUMMARY] = ok(summary({ open_anomalies: 0, insufficient_data_sources: 1 }));
     render(<KpiAnomalies />);
     expect(screen.getByText("0", { selector: ".kpi-value" })).toBeInTheDocument();
-    expect(screen.getByText(/1 log source not judged; it is not in these counts/)).toBeInTheDocument();
+    expect(screen.getByText(/1 log source not judged/)).toBeInTheDocument();
   });
 
   it("does not present a fresh install with no monitored source as a measured zero", () => {
@@ -233,7 +233,7 @@ describe("KpiAnomalies", () => {
     render(<KpiAnomalies />);
     expect(screen.getByText("—", { selector: ".kpi-value" })).toBeInTheDocument();
     expect(screen.getByText("Insufficient data")).toBeInTheDocument();
-    expect(screen.getByText(/nothing to judge yet/)).toBeInTheDocument();
+    expect(screen.getByText(/No monitored log source\./)).toBeInTheDocument();
     expect(screen.queryByText("0", { selector: ".kpi-value" })).toBeNull();
   });
 
@@ -248,7 +248,7 @@ describe("KpiAnomalies", () => {
     mocks.states[SUMMARY] = forbidden;
     render(<KpiAnomalies />);
     expect(
-      screen.getByText("Your role cannot read anomalies (permission read:anomalies). Nothing was changed."),
+      screen.getByText("Your role cannot read anomalies (permission read:anomalies)."),
     ).toBeInTheDocument();
   });
 
@@ -260,7 +260,7 @@ describe("KpiAnomalies", () => {
       "The anomalies could not be read.",
     );
     expect(alert.querySelector(".widget-error-action")).toHaveTextContent(
-      "HTTP 503. Nothing was changed. Use Refresh",
+      "HTTP 503. Use Refresh",
     );
   });
 

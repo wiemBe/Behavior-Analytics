@@ -51,7 +51,7 @@ describe("WidgetFrame", () => {
   it("renders forbidden with the required permission", () => {
     frame({ status: "forbidden", httpStatus: 403 });
     expect(screen.getByRole("status")).toHaveTextContent(
-      "Your role cannot read the fleet state (permission read:fleet). Nothing was changed.",
+      "Your role cannot read the fleet state (permission read:fleet).",
     );
   });
 
@@ -59,7 +59,7 @@ describe("WidgetFrame", () => {
     frame({ status: "error", httpStatus: 503 });
     const alert = screen.getByRole("alert");
     expect(alert).toHaveTextContent("The backend answered with HTTP 503");
-    expect(alert).toHaveTextContent("check that the backend is reachable");
+    expect(alert).toHaveTextContent("Use Refresh in the top bar");
     expect(alert.querySelectorAll("p")).toHaveLength(2);
     expect(alert.querySelector(".widget-error-title strong")).toHaveTextContent(
       "The fleet state could not be read.",
@@ -74,9 +74,9 @@ describe("WidgetFrame", () => {
     frame({ status: "error", httpStatus: 429, retryAfter });
     const alert = screen.getByRole("alert");
     expect(alert).toHaveTextContent("The fleet state could not be read.");
-    expect(alert).toHaveTextContent("Too many requests came from this address within a minute.");
+    expect(alert).toHaveTextContent("Too many requests from this address.");
     expect(alert).toHaveTextContent(wait);
-    expect(alert).not.toHaveTextContent("check that the backend is reachable");
+    expect(alert).not.toHaveTextContent("Use Refresh in the top bar");
   });
 
   it("uses the same two-part error structure at panel and KPI density", () => {
@@ -217,7 +217,7 @@ describe("WidgetFrame, the UR.5.4 state union", () => {
   it("renders forbidden with the permission and no data", () => {
     view({ kind: "forbidden", permission: "read:offenses" });
     expect(screen.getByRole("status")).toHaveTextContent(
-      "Your role cannot read the union data (permission read:offenses). Nothing was changed.",
+      "Your role cannot read the union data (permission read:offenses).",
     );
   });
 

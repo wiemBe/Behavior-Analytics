@@ -173,7 +173,9 @@ export function WatchValuesTable({
                 {v.pinned && <span className="cell-sub">{t("pinned")}</span>}
                 {v.truncated && <span className="cell-sub">{t("truncated")}</span>}
                 {!v.active && <span className="cell-sub">{t("inactive")}</span>}
-                <span className="cell-sub">{baselineText(v, i18n)}</span>
+                {v.baseline_state !== "RELIABLE" && (
+                  <span className="cell-sub">{baselineText(v, i18n)}</span>
+                )}
                 {open.map((a) => (
                   <span key={a.id} className="cell-sub">
                     <span className={`pill pill-quiet ${stateTone(a.state)}`}>

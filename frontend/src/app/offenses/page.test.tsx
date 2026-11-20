@@ -110,7 +110,7 @@ describe("offense list states", () => {
     await renderPage();
     expect(
       screen.getByText(
-        "No offenses have been collected from QRadar yet, so this list is empty. Offense collection is set up by an administrator.",
+        "No offenses collected from QRadar yet.",
       ),
     ).toBeInTheDocument();
     expect(screen.queryByText(/OPS-R10/)).toBeNull();
@@ -138,7 +138,7 @@ describe("offense list contents", () => {
   it("labels the filtered total apart from the open instance counts", async () => {
     await renderPage();
     const card = (label: string) => screen.getByText(label).closest(".card") as HTMLElement;
-    expect(screen.getByRole("heading", { name: "Open offenses, whole instance" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "All open offenses" })).toBeInTheDocument();
     expect(within(card("Matching offenses")).getByText("1")).toBeInTheDocument();
     expect(within(card("Active")).getByText("7")).toBeInTheDocument();
     expect(within(card("Critical (mag 8+)")).getByText("2")).toBeInTheDocument();
@@ -288,7 +288,7 @@ describe("nullable aggregate counts", () => {
       expect(value).not.toHaveClass("warn");
       expect(value).not.toHaveTextContent("0");
     }
-    const notes = screen.getAllByText(/No offense snapshot has been collected yet/);
+    const notes = screen.getAllByText(/No offense snapshot yet/);
     expect(notes).toHaveLength(1);
     expect(notes[0].closest("[role='status']")).not.toBeNull();
     const matching = card("Matching offenses");
@@ -303,7 +303,7 @@ describe("nullable aggregate counts", () => {
     );
     await renderPage();
     expect(within(card("Matching offenses")).getByText("0")).toBeInTheDocument();
-    expect(screen.queryByText(/No offense snapshot has been collected yet/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/No offense snapshot yet/)).not.toBeInTheDocument();
   });
 
   it("keeps a measured zero as 0, with no alarm tone and no not-collected note", async () => {

@@ -76,7 +76,7 @@ describe("a property-watch row", () => {
 
   it("does not offer evidence collection for it", async () => {
     await renderPage();
-    expect(screen.getAllByText(/Evidence collection does not apply to property watch anomalies/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/Evidence n\/a for property watch/).length).toBeGreaterThan(0);
   });
 
   it("opens the investigation by the anomaly id", async () => {

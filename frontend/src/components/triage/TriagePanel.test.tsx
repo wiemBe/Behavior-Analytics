@@ -58,13 +58,13 @@ describe("the state", () => {
     expect(screen.getByRole("heading", { name: "Triage" })).toBeInTheDocument();
     expect(screen.getByText("New")).toBeInTheDocument();
     expect(screen.getByText("Unassigned")).toBeInTheDocument();
-    expect(screen.getByText("Nobody has acted on this anomaly yet.")).toBeInTheDocument();
+    expect(screen.getByText("Not yet acted on.")).toBeInTheDocument();
     expect(screen.getByText(/No activity yet/)).toBeInTheDocument();
   });
 
   it("keeps the analyst's status apart from the detector's state", () => {
     panel();
-    expect(screen.getByText(/separate from the detector's state/)).toBeInTheDocument();
+    expect(screen.queryByText(/separate from the detector's state/)).not.toBeInTheDocument();
     expect(screen.getByText("Triage status")).toBeInTheDocument();
   });
 
@@ -162,7 +162,7 @@ describe("assign", () => {
     const user = userEvent.setup();
     panel();
     await user.click(screen.getByRole("button", { name: "Assign" }));
-    await user.type(screen.getByLabelText(/Owner \(any name or sign-in/), "  m.chen ");
+    await user.type(screen.getByLabelText(/Owner \(up to/), "  m.chen ");
     await user.click(screen.getByRole("button", { name: "Save owner" }));
     await waitFor(() =>
       expect(patch).toHaveBeenCalledWith("log_source", "a-1", { owner: "m.chen", expected_version: 0 }),
@@ -174,7 +174,7 @@ describe("assign", () => {
     const user = userEvent.setup();
     panel({ initial: triage({ status: "IN_PROGRESS", owner: "k.osei", version: 1 }) });
     await user.click(screen.getByRole("button", { name: "Assign" }));
-    await user.clear(screen.getByLabelText(/Owner \(any name or sign-in/));
+    await user.clear(screen.getByLabelText(/Owner \(up to/));
     await user.click(screen.getByRole("button", { name: "Save owner" }));
     await waitFor(() =>
       expect(patch).toHaveBeenCalledWith("log_source", "a-1", { owner: null, expected_version: 1 }),
@@ -351,7 +351,7 @@ describe("a 409 conflict", () => {
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
     expect(screen.getAllByText("In progress").length).toBeGreaterThan(0);
     await user.click(screen.getByRole("button", { name: "Assign" }));
-    await user.type(screen.getByLabelText(/Owner \(any name or sign-in/), "x");
+    await user.type(screen.getByLabelText(/Owner \(up to/), "x");
     await user.click(screen.getByRole("button", { name: "Save owner" }));
     await waitFor(() => expect(patch).toHaveBeenCalledTimes(2));
     expect(patch.mock.calls[1][2]).toMatchObject({ expected_version: 2 });
@@ -364,7 +364,7 @@ describe("a 409 conflict", () => {
     panel();
     await user.click(screen.getByRole("button", { name: "Take it" }));
     expect(await screen.findByRole("alert")).toHaveTextContent(
-      /their version could not be read\. Your change was not saved\. Reload the page/,
+      /could not be read\. Your change was not saved\. Reload/,
     );
     expect(screen.queryByRole("button", { name: "Load their version" })).not.toBeInTheDocument();
   });
@@ -376,7 +376,7 @@ describe("without anomaly:triage", () => {
       access: "read",
       initial: triage({ status: "IN_PROGRESS", owner: "k.osei", version: 1 }),
     });
-    expect(screen.getByText(/Changing it needs the anomaly:triage permission/)).toBeInTheDocument();
+    expect(screen.getByText(/changing triage needs the anomaly:triage permission/)).toBeInTheDocument();
     expect(screen.queryByRole("button")).not.toBeInTheDocument();
     expect(screen.queryByLabelText(/Add a comment/)).not.toBeInTheDocument();
     expect(screen.getByText("k.osei", { selector: "dd" })).toBeInTheDocument();
@@ -384,7 +384,7 @@ describe("without anomaly:triage", () => {
 
   it("switches changes off, and says why, when the grants could not be read", () => {
     panel({ access: "unknown" });
-    expect(screen.getByText(/permissions could not be checked/)).toBeInTheDocument();
+    expect(screen.getByText(/Permissions unreadable; changes are off/)).toBeInTheDocument();
     expect(screen.queryByRole("button")).not.toBeInTheDocument();
   });
 });
@@ -490,7 +490,7 @@ describe("states", () => {
     const read = vi.spyOn(api, "triage").mockResolvedValue(triage({ status: "IN_PROGRESS", version: 1 }));
     const user = userEvent.setup();
     panel({ initial: null });
-    expect(screen.getByRole("status")).toHaveTextContent(/triage of this anomaly could not be loaded/);
+    expect(screen.getByRole("status")).toHaveTextContent(/Triage could not be loaded/);
     expect(screen.queryByText("New")).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Try again" }));
     await waitFor(() => expect(read).toHaveBeenCalled());
@@ -499,7 +499,7 @@ describe("states", () => {
 
   it("says triage is not available for a kind without it", () => {
     render(<TriageUnavailable />);
-    expect(screen.getByText(/Triage is not available for this kind of anomaly/)).toBeInTheDocument();
+    expect(screen.getByText(/Triage does not cover this kind of anomaly/)).toBeInTheDocument();
     expect(screen.queryByRole("button")).not.toBeInTheDocument();
   });
 });

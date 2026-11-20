@@ -6,7 +6,7 @@ import { TopContributors } from "./TopContributors";
 describe("TopContributors without contributors", () => {
   it("refers a failed collection to the banner instead of restating it", () => {
     render(<TopContributors packaged={null} anomalyType="VOLUME_SPIKE" evidenceStatus="FAILED" />);
-    expect(screen.getByText(/evidence collection failed \(see the notice below\)/i)).toBeInTheDocument();
+    expect(screen.getByText(/No contributors: evidence collection failed/i)).toBeInTheDocument();
     expect(screen.queryByText(/lifecycle below are unaffected/i)).toBeNull();
   });
 
@@ -14,6 +14,6 @@ describe("TopContributors without contributors", () => {
     render(
       <TopContributors packaged={null} anomalyType="VOLUME_SPIKE" evidenceStatus="NOT_REQUESTED" />,
     );
-    expect(screen.getByText(/nothing has been ruled out/i)).toBeInTheDocument();
+    expect(screen.getByText(/nothing is ruled out/i)).toBeInTheDocument();
   });
 });

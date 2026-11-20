@@ -128,9 +128,9 @@ describe("the address becomes the request", () => {
 
   it("drops an invalid value, says so, and still shows the list", async () => {
     await renderAt({ severity: ["BOGUS", "HIGH"], range: "2d", sort: "colour" });
-    const note = screen.getByText(/Ignored an unknown severity value\./);
-    expect(note).toHaveTextContent("Ignored an unknown sort value.");
-    expect(note).toHaveTextContent("Ignored an unknown range value");
+    const note = screen.getByText(/Unknown severity ignored\./);
+    expect(note).toHaveTextContent("Unknown sort ignored.");
+    expect(note).toHaveTextContent("Unknown range ignored");
     expect(list.mock.calls[0][0].severity).toEqual(["HIGH"]);
     expect(JSON.stringify(list.mock.calls[0][0])).not.toMatch(/BOGUS|colour|2d/);
     expect(screen.getByRole("link", { name: /Event volume spike/ })).toBeInTheDocument();
@@ -164,7 +164,7 @@ describe("facet counts", () => {
   it("draws no count at all when the count read failed, and says so", async () => {
     counts.mockRejectedValue(new ApiError(500, "boom"));
     await renderAt();
-    expect(screen.getByText(/Counts are unavailable/)).toBeInTheDocument();
+    expect(screen.getByText(/Counts unavailable/)).toBeInTheDocument();
     const severity = screen.getByRole("group", { name: "Severity" });
     for (const link of within(severity).getAllByRole("link")) {
       expect(link.textContent).not.toMatch(/\d/);
@@ -237,7 +237,7 @@ describe("facet counts", () => {
   it("keeps the list when the log source read failed and drops the picker", async () => {
     vi.spyOn(api, "logSources").mockRejectedValue(new ApiError(500, "boom"));
     await renderAt();
-    expect(screen.getByText(/log source list could not be loaded/)).toBeInTheDocument();
+    expect(screen.getByText(/source list could not be loaded/)).toBeInTheDocument();
     expect(screen.queryByLabelText("Log source")).toBeNull();
     expect(screen.getByRole("link", { name: /Event volume spike/ })).toBeInTheDocument();
   });
@@ -390,7 +390,7 @@ describe("states", () => {
     await renderAt({ since: "2020-01-01T00:00:00Z" });
     const alertBox = screen.getByRole("alert");
     expect(alertBox).toHaveTextContent("The backend refused these filters: range exceeds the maximum of 365 days");
-    expect(alertBox).toHaveTextContent("Change the filters or clear them.");
+    expect(alertBox).toHaveTextContent("Change or clear them.");
     expect(alertBox.textContent).not.toMatch(/422/);
   });
 

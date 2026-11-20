@@ -69,14 +69,14 @@ describe("RecentAnomalies", () => {
   it("names how many sources are not judged when there is nothing active", () => {
     setup(ok(page([])));
     render(<RecentAnomalies />);
-    expect(screen.getByText(/No active anomalies\. Sources with no baseline are not being judged: 3 sources/)).toBeInTheDocument();
+    expect(screen.getByText(/No active anomalies; 3 sources not judged/)).toBeInTheDocument();
     expect(screen.getByText("0 active")).toBeInTheDocument();
   });
 
   it("does not invent the not-judged count when the summary failed", () => {
     setup(ok(page([])), failed());
     render(<RecentAnomalies />);
-    expect(screen.getByText(/could not be read/)).toBeInTheDocument();
+    expect(screen.getByText(/Not-judged count unreadable/)).toBeInTheDocument();
   });
 
   it("is loading text in a polite live region", () => {

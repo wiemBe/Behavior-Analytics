@@ -79,7 +79,7 @@ describe("a full record", () => {
   it("words the waiting age as of the time it was written", async () => {
     mocks.latest.mockResolvedValue({ handover: record({ body: body({ items: [item({ age_seconds: 25200 })] }) }) });
     mount();
-    expect(await screen.findByText("7 h when written")).toBeInTheDocument();
+    expect(await screen.findByText("7 h")).toBeInTheDocument();
     expect(screen.queryByText(/so far/)).toBeNull();
   });
 
@@ -111,7 +111,7 @@ describe("a full record", () => {
       handover: record({ body: body({ watch_dropped: [{ kind: "alert", id: "missing-9" }] }) }),
     });
     mount();
-    expect(await screen.findByText(/Not frozen, because they were not in the snapshot: alert missing-9/)).toBeInTheDocument();
+    expect(await screen.findByText(/Watched rows not frozen \(not in snapshot\): alert missing-9/)).toBeInTheDocument();
   });
 });
 
@@ -125,12 +125,12 @@ describe("sources that were not read cleanly", () => {
     const section = await screen.findByRole("region", { name: "Sources not read cleanly" });
     expect(
       within(section).getByText(
-        "Offenses: not read. The author's account lacks read:offenses, so its rows are not in this record.",
+        "Offenses: not read; the author lacked read:offenses.",
       ),
     ).toBeInTheDocument();
     expect(screen.queryByText(/so far|for this preview/)).toBeNull();
     // The empty list is not read as "nothing was waiting".
-    expect(screen.getByText(/No open rows were frozen\. Check the source lines below/)).toBeInTheDocument();
+    expect(screen.getByText(/No open rows were frozen; see the sources below/)).toBeInTheDocument();
     expect(screen.queryByText("No open rows were waiting when this was written.")).toBeNull();
     expect(screen.queryByText(/^0 open$/)).toBeNull();
   });
@@ -148,17 +148,17 @@ describe("sources that were not read cleanly", () => {
       }),
     });
     mount();
-    expect(await screen.findByText("The actions of this window could not be listed. See the source lines below.")).toBeInTheDocument();
+    expect(await screen.findByText("Actions could not be listed; see the sources below.")).toBeInTheDocument();
     expect(screen.queryByText(/No recorded action by ada/)).toBeNull();
     const section = screen.getByRole("region", { name: "Sources not read cleanly" });
-    expect(within(section).getByText(/Triage actions: not read\. It failed to load/)).toBeInTheDocument();
+    expect(within(section).getByText(/Triage actions: failed to load; its rows are missing/)).toBeInTheDocument();
     expect(within(section).getByText("Reason: LOAD_FAILED.", { exact: false })).toBeInTheDocument();
   });
 
   it("says an OK window with no action recorded none", async () => {
     mocks.latest.mockResolvedValue({ handover: record({ body: body({ acted_on: [] }) }) });
     mount();
-    expect(await screen.findByText("No recorded action by ada in this window.")).toBeInTheDocument();
+    expect(await screen.findByText("No actions recorded in this window.")).toBeInTheDocument();
   });
 });
 
@@ -194,7 +194,7 @@ describe("empty", () => {
 
   it("says there is no handover and links to the queue; Write is not offered without the permission", async () => {
     mount();
-    expect(await screen.findByText("No handover yet. The queue lists what is waiting.")).toBeInTheDocument();
+    expect(await screen.findByText("No handover yet.")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Open the queue" })).toHaveAttribute("href", "/queue");
     expect(screen.queryByRole("link", { name: "Write the first handover" })).toBeNull();
   });
@@ -223,13 +223,13 @@ describe("error", () => {
     mocks.one.mockRejectedValue(new ApiError(404, "handover was not found"));
     mount("gone");
     expect(await screen.findByText(/This handover does not exist/)).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Back to the latest handover" })).toHaveAttribute("href", "/handover");
+    expect(screen.getByRole("link", { name: "Back to latest" })).toHaveAttribute("href", "/handover");
   });
 
   it("says the account may not read when the backend answers 403", async () => {
     mocks.latest.mockRejectedValue(new ApiError(403, "no"));
     mount();
-    expect(await screen.findByText(/may not read the handover log/)).toBeInTheDocument();
+    expect(await screen.findByText(/may not read handovers/)).toBeInTheDocument();
   });
 });
 
@@ -240,7 +240,7 @@ describe("a chosen record and the earlier list", () => {
     expect(await screen.findByText("Written by sam")).toBeInTheDocument();
     expect(mocks.one).toHaveBeenCalledWith("old-1");
     expect(mocks.latest).not.toHaveBeenCalled();
-    expect(screen.getAllByRole("link", { name: "Back to the latest handover" })[0]).toHaveAttribute("href", "/handover");
+    expect(screen.getAllByRole("link", { name: "Back to latest" })[0]).toHaveAttribute("href", "/handover");
   });
 
   it("lists earlier handovers without the one on screen, each linking to its id", async () => {

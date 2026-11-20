@@ -53,7 +53,7 @@ describe("completeness", () => {
 
   it("reports an empty audit trail as unexpected, not as normal", () => {
     render(<LifecycleTimeline policyVersion={1} transitions={[]} />);
-    expect(screen.getByText(/itself unexpected/i)).toBeInTheDocument();
+    expect(screen.getByText(/the audit trail is empty/i)).toBeInTheDocument();
   });
 });
 

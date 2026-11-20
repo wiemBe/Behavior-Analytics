@@ -27,7 +27,7 @@ describe("investigation read failures", () => {
 
   it("tells the analyst to reload when the backend cannot be reached", async () => {
     await failWith(500);
-    expect(screen.getByRole("alert")).toHaveTextContent(/reload the page to try again/i);
+    expect(screen.getByRole("alert")).toHaveTextContent(/Reload the page to retry/i);
   });
 
   it("names the missing grant on a 403", async () => {

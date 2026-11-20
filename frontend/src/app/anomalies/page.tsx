@@ -199,7 +199,6 @@ async function AnomaliesPage({
       <PageHeader
         guide={guideFor("/anomalies")}
         title={t("title")}
-        description={t("description")}
         actions={
           <>
             <ExportCsv href={anomaliesCsvUrl({ ...filterParams })} label={t("exportCsv")} />

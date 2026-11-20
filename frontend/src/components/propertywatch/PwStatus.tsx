@@ -34,12 +34,14 @@ export function PwStatus({
     status === "READING_HISTORY" && history
       ? historyReadingReason(history, i18n)
       : codedStatusReason(status, reason, i18n, { code: reasonCode, params: reasonParams });
+  // OK and DISABLED say everything the pill says; a reason beside them would repeat it per row.
+  const showReason = status !== "OK" && status !== "DISABLED";
   return (
     <div className={inline ? "pw-status pw-status-inline" : "pw-status"}>
       <span className={`pill${strong ? " pill-strong" : ""} ${statusTone(status)}`}>
         {statusLabel(status, i18n)}
       </span>
-      <span className="pw-status-reason">{shownReason}</span>
+      {showReason && <span className="pw-status-reason">{shownReason}</span>}
     </div>
   );
 }

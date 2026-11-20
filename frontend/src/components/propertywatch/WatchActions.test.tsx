@@ -20,8 +20,8 @@ describe("property-watch enable, disable and delete", () => {
     render(<WatchActions watch={watch({ enabled: false })} catalog={catalog({ collection_enabled: false })} />);
     fireEvent.click(screen.getByRole("button", { name: "Enable" }));
     const confirmation = screen.getByRole("group", { name: "Enable watch confirmation" });
-    expect(confirmation).toHaveTextContent("family switch is off");
-    expect(confirmation).toHaveTextContent("2 of 10 enabled-watch slots");
+    expect(confirmation).toHaveTextContent("Collection switch: off");
+    expect(confirmation).toHaveTextContent("2 of 10 watch slots");
     expect(confirmation).toHaveTextContent("4 of 20 searches per tick");
     expect(within(confirmation).getByText("PW_COLLECTION_ENABLED").tagName).toBe("CODE");
   });
@@ -54,7 +54,7 @@ describe("property-watch enable, disable and delete", () => {
     fireEvent.click(screen.getByRole("button", { name: "Enable" }));
     fireEvent.click(screen.getByRole("button", { name: "Enable watch" }));
     expect(await screen.findByRole("group", { name: "Enable without history" })).toHaveTextContent(
-      "learns forward only",
+      "QRadar's past is not read",
     );
     fireEvent.click(screen.getByRole("button", { name: "Enable without history" }));
     await waitFor(() => expect(api.updatePropertyWatch).toHaveBeenCalledTimes(2));
@@ -144,11 +144,11 @@ describe("property-watch enable, disable and delete", () => {
     fireEvent.click(screen.getByRole("button", { name: "Delete" }));
     const confirm = screen.getByRole("group", { name: "Delete watch confirmation" });
     expect(confirm).toHaveTextContent("Delete VPN usernames");
-    expect(confirm).toHaveTextContent("aggregate values, baselines and incident history");
+    expect(confirm).toHaveTextContent("values, baselines and incident history");
     fireEvent.click(within(confirm).getByRole("button", { name: "Delete this property watch" }));
     const refusal = await screen.findByText(/cannot delete the watch/);
     expect(refusal).toHaveTextContent("Deny flood");
-    expect(screen.getByRole("alert")).toHaveTextContent("custom rules pin its values. Rules to detach first:");
+    expect(screen.getByRole("alert")).toHaveTextContent("custom rules pin its values. Detach first:");
     expect(screen.queryByRole("group", { name: "Delete watch confirmation" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Delete this property watch" })).toBeNull();
     expect(screen.getByRole("alert")).toHaveClass("banner", "crit");

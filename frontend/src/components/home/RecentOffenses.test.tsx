@@ -74,7 +74,7 @@ describe("RecentOffenses", () => {
     setup(ok(page([])), ok(page([], 0)));
     render(<RecentOffenses />);
     expect(screen.getByText("Not collected")).toBeInTheDocument();
-    expect(screen.getByText(/No offense snapshot has been collected yet/)).toBeInTheDocument();
+    expect(screen.getByText(/No offense snapshot collected yet/)).toBeInTheDocument();
     expect(screen.queryByText(/No open offenses/)).toBeNull();
   });
 
@@ -87,7 +87,7 @@ describe("RecentOffenses", () => {
   it("fails closed when the snapshot probe failed", () => {
     setup(ok(page([])), failed());
     render(<RecentOffenses />);
-    expect(screen.getByText(/Could not confirm that an offense snapshot exists/)).toBeInTheDocument();
+    expect(screen.getByText(/Offense snapshot could not be confirmed/)).toBeInTheDocument();
     expect(screen.queryByText(/No open offenses/)).toBeNull();
   });
 

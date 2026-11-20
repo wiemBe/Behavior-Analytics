@@ -95,17 +95,17 @@ async function save() {
 describe("the pin sentence", () => {
   const cadence = { family: "PROPERTY_WATCH" as const, cadence_seconds: 3600, bucket_seconds: 300, settle_seconds: 120 };
 
-  it("promises no number without a cadence", () => {
+  it("states no pin-availability sentence without a cadence", () => {
     render(<WatchEditor catalog={catalog()} mode="create" />);
-    expect(screen.getByText(/A new pin can be used in a rule after the next property-watch collection\./)).toBeInTheDocument();
+    expect(screen.queryByText(/A new pin can be used in a rule/)).toBeNull();
   });
 
-  it("states the figure from the catalog's cadence", () => {
+  it("states no pin-availability figure even when the catalog has a cadence", () => {
     render(<WatchEditor catalog={catalog({ cadence })} mode="create" />);
-    expect(screen.getByText(/which runs up to 1 h 7 min after the events arrive/)).toBeInTheDocument();
+    expect(screen.queryByText(/which runs up to/)).toBeNull();
   });
 
-  it("prefers the watch's own cadence", () => {
+  it("states no pin-availability figure from the watch's own cadence either", () => {
     render(
       <WatchEditor
         catalog={catalog({ cadence })}
@@ -114,7 +114,7 @@ describe("the pin sentence", () => {
         initialScope={scope()}
       />,
     );
-    expect(screen.getByText(/which runs up to 22 min after the events arrive/)).toBeInTheDocument();
+    expect(screen.queryByText(/which runs up to/)).toBeNull();
   });
 });
 
@@ -136,7 +136,7 @@ describe("property-watch save and preview", () => {
     expect(body).not.toHaveProperty("enabled");
     expect(body).not.toHaveProperty("aql");
     expect(api.previewPropertyWatch).toHaveBeenCalledWith(watch().id);
-    expect(await screen.findByText(/saved disabled and the stored definition was previewed/)).toBeInTheDocument();
+    expect(await screen.findByText(/Saved disabled; stored definition previewed/)).toBeInTheDocument();
   });
 
   it("sends an explicit zero after the operator turns history off", async () => {
@@ -200,7 +200,7 @@ describe("property-watch save and preview", () => {
     expect(screen.getByText("33.3 %")).toBeInTheDocument();
     expect(screen.getByText(/parsed on 90\.0 % of events/)).toBeInTheDocument();
     expect(screen.getByText(/at most 100 events/)).toBeInTheDocument();
-    expect(screen.getByText(/catalog consulted 3 types/)).toBeInTheDocument();
+    expect(screen.queryByText(/catalog consulted/i)).toBeNull();
     expect(screen.getAllByText(/at least 600/).length).toBeGreaterThan(0);
     // The preview has one aggregate per value, so no time series is drawn for it.
     expect(screen.queryByText(/chart|Not collected/i)).toBeNull();
@@ -211,7 +211,7 @@ describe("property-watch save and preview", () => {
     [
       "scope silence",
       { total_events: 0, parsed_events: 0, unparsed_events: 0, coverage: null, property_parses: null, rows: [] },
-      /scope sent no events/,
+      /No events in the last closed hour/,
     ],
     [
       "not applicable",
@@ -221,7 +221,7 @@ describe("property-watch save and preview", () => {
     [
       "not measured",
       { outcome: "NOT_MEASURED", total_events: null, parsed_events: null, unparsed_events: null, coverage: null, property_parses: null, rows_measurement: null, rows: [] },
-      /measured no bucket/,
+      /No bucket measured/,
     ],
   ])("designs the %s empty preview", async (_name, over, words) => {
     vi.spyOn(api, "previewPropertyWatch").mockResolvedValue(preview(over as Partial<PwPreview>));
@@ -250,7 +250,7 @@ describe("property-watch history controls", () => {
       />,
     );
     expect(screen.getByRole("checkbox", { name: /Read history from QRadar/ })).toBeDisabled();
-    expect(screen.getByText("History reading is switched off on this server.")).toBeInTheDocument();
+    expect(screen.getByText("History reading is off on this server.")).toBeInTheDocument();
   });
 
   it("uses the per-reading setting for a pinned watch but permits an unpinned step", () => {
@@ -262,7 +262,7 @@ describe("property-watch history controls", () => {
     expect(screen.getByRole("checkbox", { name: historyRequestName })).toBeDisabled();
     expect(
       screen.getByText(
-        "History needs 3 searches per tick for this watch; this server gives a history reading at most 2 (PW_BOOTSTRAP_SEARCHES_PER_TICK).",
+        "History needs 3 searches per tick; server allows 2.",
       ),
     ).toBeInTheDocument();
 
@@ -279,7 +279,7 @@ describe("property-watch history controls", () => {
     addPinnedValue();
     expect(screen.getByRole("checkbox", { name: historyRequestName })).toBeDisabled();
     expect(
-      screen.getByText("History needs 3 free searches per tick for this watch; 2 are free."),
+      screen.getByText("History needs 3 free searches per tick; 2 are free."),
     ).toBeInTheDocument();
   });
 
@@ -311,10 +311,10 @@ describe("property-watch history controls", () => {
   it("states the free and needed searches for pinned and unpinned watches", () => {
     const low = catalog({ history: { ...catalog().history, searches_free: 1 } });
     const first = render(<WatchEditor catalog={low} mode="create" />);
-    expect(screen.getByText("History needs 2 free searches per tick for this watch; 1 is free.")).toBeInTheDocument();
+    expect(screen.getByText("History needs 2 free searches per tick; 1 is free.")).toBeInTheDocument();
     first.unmount();
     render(<WatchEditor catalog={low} mode="edit" watch={watch({ coverage: null, collected_through: null, evaluated_through: null })} initialScope={scope()} />);
-    expect(screen.getByText("History needs 3 free searches per tick for this watch; 1 is free.")).toBeInTheDocument();
+    expect(screen.getByText("History needs 3 free searches per tick; 1 is free.")).toBeInTheDocument();
   });
 
   it("shows unchecked, says nothing of history and sends zero when the budget is short", async () => {
@@ -328,13 +328,13 @@ describe("property-watch history controls", () => {
     expect(api.createPropertyWatch).toHaveBeenCalledWith(expect.objectContaining({ history_days: 0 }));
   });
 
-  it("locks an existing watch after collection and states all three limitations", () => {
+  it("locks an existing watch after collection and carries no limitation list (the Guide holds it)", () => {
     render(<WatchEditor catalog={catalog()} mode="edit" watch={watch()} initialScope={scope()} />);
     expect(screen.getByRole("checkbox", { name: /Read history from QRadar/ })).toBeDisabled();
-    expect(screen.getByText(/cannot change after history or collected buckets exist/)).toBeInTheDocument();
-    expect(screen.getByText(/Events whose property was not parsed then/)).toBeInTheDocument();
-    expect(screen.getByText(/membership of a group is today's/)).toBeInTheDocument();
-    expect(screen.getByText(/Nothing is judged until the reading finishes/)).toBeInTheDocument();
+    expect(screen.getByText(/Fixed once history or buckets exist/)).toBeInTheDocument();
+    expect(screen.queryByText(/Events whose property was not parsed then/)).toBeNull();
+    expect(screen.queryByText(/membership of a group is today's/)).toBeNull();
+    expect(screen.queryByText(/Nothing is judged until the reading finishes/)).toBeNull();
   });
 });
 
@@ -343,7 +343,7 @@ describe("property-watch editor on an enabled watch", () => {
     const { unmount } = render(
       <WatchEditor catalog={catalog()} mode="edit" watch={watch({ enabled: true })} initialScope={scope()} />,
     );
-    expect(screen.getAllByText(/Saving here disables it until you enable it again/)).toHaveLength(1);
+    expect(screen.getAllByText(/Saving disables it until you enable it again/)).toHaveLength(1);
     unmount();
     render(<WatchEditor catalog={catalog()} mode="edit" watch={watch({ enabled: false })} initialScope={scope()} />);
     expect(screen.queryByText(/Saving here disables it/)).toBeNull();
@@ -373,7 +373,7 @@ describe("property-watch editor refusals", () => {
     );
     render(<WatchEditor catalog={catalog()} mode="edit" watch={watch()} initialScope={scope()} />);
     fireEvent.click(screen.getByRole("button", { name: "Save as disabled and preview" }));
-    expect(await screen.findByText(/changed by grace/)).toBeInTheDocument();
+    expect(await screen.findByText(/Changed by grace/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Reload the current watch" }));
     expect(navigation.refresh).toHaveBeenCalled();
   });
@@ -402,8 +402,8 @@ describe("property-watch editor refusals", () => {
     fireEvent.click(screen.getByRole("button", { name: "Save as disabled and preview" }));
     const alert = await screen.findByRole("alert");
     expect(alert).toHaveTextContent("rate limited to 5/minute");
-    expect(alert).toHaveTextContent("Try again in about a minute");
-    expect(alert).toHaveTextContent("saved disabled");
+    expect(alert).toHaveTextContent("Retry in about a minute");
+    expect(alert).toHaveTextContent("Saved disabled");
   });
 
   it("shows collection off and inline pin reasons without inventing a preview", () => {
@@ -417,7 +417,7 @@ describe("property-watch editor refusals", () => {
     );
     expect(screen.getByText("PW_COLLECTION_ENABLED").tagName).toBe("CODE");
     expect(screen.getByText("COLLECTION OFF.")).toBeInTheDocument();
-    expect(screen.getByText(/Quotes, backslashes/)).toBeInTheDocument();
-    expect(screen.getByText("No preview has run for this draft.")).toBeInTheDocument();
+    expect(screen.getByText(/No quotes, backslashes/)).toBeInTheDocument();
+    expect(screen.getByText("No preview yet.")).toBeInTheDocument();
   });
 });

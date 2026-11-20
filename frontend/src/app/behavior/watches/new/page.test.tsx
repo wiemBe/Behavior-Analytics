@@ -26,23 +26,23 @@ async function renderPage() {
 }
 
 describe("new property-watch route", () => {
-  it("renders the editor for a writer and the latency statement once", async () => {
+  it("renders the editor for a writer and no latency statement", async () => {
     await renderPage();
     expect(screen.getByRole("heading", { level: 1, name: "New property watch" })).toBeInTheDocument();
     expect(screen.getByLabelText("property-watch editor")).toBeInTheDocument();
-    expect(screen.getAllByText(/Watches are judged on collected 5-minute buckets, after each collection of their family/)).toHaveLength(1);
+    expect(screen.queryByText(/Watches are judged on collected 5-minute buckets/)).toBeNull();
   });
 
-  it("states the figure from the catalog's cadence, and the old words without one", async () => {
+  it("states no latency figure even when the catalog has a cadence", async () => {
     vi.spyOn(api, "propertyWatchCatalog").mockResolvedValue(
       catalog({ cadence: { family: "PROPERTY_WATCH", cadence_seconds: 900, bucket_seconds: 300, settle_seconds: 120 } }),
     );
     await renderPage();
-    expect(screen.getAllByText(/Watches are judged on collected 5-minute buckets, up to 22 min after the events arrive/)).toHaveLength(1);
-    expect(screen.queryByText(/after each collection of their family/)).toBeNull();
+    expect(screen.queryByText(/Watches are judged on collected 5-minute buckets/)).toBeNull();
+    expect(screen.queryByText(/22 min after the events arrive/)).toBeNull();
   });
 
-  it("links Search cadence only to a reader of read:search_cadence", async () => {
+  it("links Search cadence to no caller (the Guide holds the sentence)", async () => {
     await renderPage();
     expect(screen.queryByRole("link", { name: "Search cadence" })).toBeNull();
     cleanup();
@@ -53,10 +53,7 @@ describe("new property-watch route", () => {
       effective_permissions: ["read:property_watches", "property_watch:write", "read:search_cadence"],
     });
     await renderPage();
-    expect(screen.getByRole("link", { name: "Search cadence" })).toHaveAttribute(
-      "href",
-      "/admin/search-cadence",
-    );
+    expect(screen.queryByRole("link", { name: "Search cadence" })).toBeNull();
   });
 
   it("hides the editor from a reader and names property_watch:write", async () => {
@@ -74,7 +71,7 @@ describe("new property-watch route", () => {
   it("fails closed when permissions cannot be read", async () => {
     vi.spyOn(api, "caller").mockRejectedValue(new ApiError(500, "down"));
     await renderPage();
-    expect(screen.getByRole("alert")).toHaveTextContent("Permissions could not be read");
+    expect(screen.getByRole("alert")).toHaveTextContent("Permissions unreadable");
     expect(screen.queryByLabelText("property-watch editor")).toBeNull();
   });
 
@@ -87,7 +84,7 @@ describe("new property-watch route", () => {
   it("does not expose a failed catalog response", async () => {
     vi.spyOn(api, "propertyWatchCatalog").mockRejectedValue(new ApiError(500, "secret"));
     await renderPage();
-    expect(screen.getByRole("alert")).toHaveTextContent("catalog of switches and bounds is unavailable");
+    expect(screen.getByRole("alert")).toHaveTextContent("The catalog is unavailable");
     expect(screen.queryByText("secret")).toBeNull();
   });
 });

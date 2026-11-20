@@ -183,7 +183,7 @@ async function PropertyWatchPage({
               strong
               inline
             />
-            {watch.status !== "READING_HISTORY" && (
+            {watch.status !== "READING_HISTORY" && watch.history.state !== "NOT_REQUESTED" && (
               <>
                 <span className="muted" aria-hidden="true">·</span>
                 <span>{historyHeaderText(watch.history, i18n)}</span>
@@ -197,10 +197,6 @@ async function PropertyWatchPage({
               ·
             </span>
             <span className="pw-prop-name">{propertiesText(watch)}</span>
-            <span className="muted" aria-hidden="true">
-              ·
-            </span>
-            <span>{t("detail.bucketWidth")}</span>
             <span className="muted" aria-hidden="true">
               ·
             </span>

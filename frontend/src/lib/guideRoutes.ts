@@ -26,6 +26,7 @@ export const GUIDE_ROUTES = {
   "/behavior/watches/[id]": "property-watches",
   "/behavior/watches/new": "property-watch-setup",
   "/geography": "geography",
+  "/queue": "queue",
   "/handover": "handover",
   "/reports": "reports",
   "/fleet": "fleet",
@@ -73,7 +74,6 @@ export const GUIDE_EXCLUDED: Readonly<Record<string, string>> = {
   "/login": "Signed-out page: it renders before the shell, and the Guide needs a session.",
   "/admin": "The administration index: the route map gives it no section.",
   "/guide": "The Guide's own index.",
-  "/queue": "The queue has no Guide section yet; its page states what each label means.",
   "/guide/[section]": "A Guide section: it is the destination of the links.",
   "/account/password": "Omitted by the route map: the password change belongs to the Account section.",
 };

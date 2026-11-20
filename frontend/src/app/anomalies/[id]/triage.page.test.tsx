@@ -184,7 +184,7 @@ describe("the caller's access", () => {
   it("switches changes off when the grants cannot be read", async () => {
     vi.spyOn(api, "caller").mockRejectedValue(new ApiError(500, "boom"));
     await renderFor(phaseA(), "log_source");
-    expect(screen.getByText(/permissions could not be checked/)).toBeInTheDocument();
+    expect(screen.getByText(/Permissions unreadable; changes are off/)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Take it" })).not.toBeInTheDocument();
   });
 });
@@ -197,7 +197,7 @@ describe("failures never break the investigation", () => {
       await AnomalyDetailPage({ params: Promise.resolve({ id: "a-1" }) }),
     );
     expect(container.querySelector("h1")).toHaveTextContent("LAB Firewall");
-    expect(screen.getByText(/triage of this anomaly could not be loaded/)).toBeInTheDocument();
+    expect(screen.getByText(/Triage could not be loaded/)).toBeInTheDocument();
     expect(screen.queryByText("New")).not.toBeInTheDocument();
   });
 
@@ -208,7 +208,7 @@ describe("failures never break the investigation", () => {
     const read = vi.spyOn(api, "triage");
     render(await AnomalyDetailPage({ params: Promise.resolve({ id: "a-1" }) }));
     expect(read).not.toHaveBeenCalled();
-    expect(screen.getByText(/Triage is not available for this kind of anomaly/)).toBeInTheDocument();
+    expect(screen.getByText(/Triage does not cover this kind of anomaly/)).toBeInTheDocument();
   });
 });
 

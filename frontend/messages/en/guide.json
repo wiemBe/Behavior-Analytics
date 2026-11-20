@@ -157,12 +157,24 @@
           "p": "**Dashboards** opens your saved dashboards, the shared ones and the templates. **Manage** holds rename, duplicate, share, default and delete."
         },
         {
+          "p": "Times are UTC. **Total EPS** is the mean EPS over the chosen range, summed over source classes, from complete intervals only; *expected* is the sum of the baselines of the classes that have one, and classes without a complete bucket are left out of the sum. In **Fleet EPS** the dashed line is the sum of per-source expected EPS, drawn only where every source has a reliable baseline; it is not a range. Shaded intervals were not measured, which is not zero traffic, and a step hatched as read from QRadar history is not judged."
+        },
+        {
+          "p": "**Log sources**: *judged* excludes sources with insufficient data, and *silent* means the detector saw no events where some were expected (a NO_EVENTS anomaly). **Open offenses** counts the latest collected snapshot; *critical* is a magnitude at or above the product's threshold, and an offense with no magnitude or no age is counted apart, in neither the critical or below count nor the over SLA count. **Active anomalies** counts the candidate, open and recovering states across log sources, WAF endpoints, IPS, property watches and rule matches; a log source without a baseline gets no verdict, so it raises none and is not counted. When a family could not be read the total reads *at least*."
+        },
+        {
+          "p": "**Anomalies by severity** reads the latest 200 anomalies; when the list was capped every count is a lower bound and an empty window is not a measured zero. Tables show the latest rows and the expanded view shows the rest of what the widget read; the owning page lists everything. **Log source health** categories: silent (no events where some were expected), exceeding expected volume (active spikes), newly discovered (not yet reviewed), conflicting class (classification rules disagree), unclassified (no rule matched), in maintenance (anomalies recorded, not notified). A floor on **Top log sources** means the class window has missing or partial intervals."
+        },
+        {
           "p": "In the expanded **Fleet EPS** widget, the **EMA 3**, **EMA 5**, **EMA 10** and **EMA 20** buttons overlay exponential moving averages of the observed fleet EPS line, with the same choice the other charts remember. The tile does not draw them. An average is for display only, and it stops at a step that was not fully collected rather than bridging the gap."
         }
       ],
       "states": [
         {
           "p": "**Template, not saved**; **Unsaved changes.**; **A dashboard holds at most 24 widgets.**; **Widen the window to customize**; a widget's stale or forbidden state."
+        },
+        {
+          "p": "**Not collected** on a fresh install: no source is monitored until monitoring is enabled on a log source, and the offense snapshot and inventory arrive with the first collections; nothing is drawn as zero. A failed read changes nothing; refresh from the top bar. **PW_COLLECTION_ENABLED is false** sends no property watch search, so no new bucket is drawn; the watch page shows the history. A widget that reads one watch, search, endpoint or source is set under **Customize**, then **Configure**; Apply stays off until every choice comes from what its read returned."
         }
       ]
     },
@@ -194,18 +206,18 @@
       "answers": "Which anomalies exist, and which are still active?",
       "body": [
         {
-          "p": "The list shows every detected anomaly, active or closed. **Active only** restricts it to CANDIDATE, OPEN and RECOVERING. The other filters are **Subject kind**, **Lifecycle state**, **Detector type**, **Severity**, **Start time (UTC)**, **End time (UTC)**, and, under **More filters**, **Log source**, **QRadar instance** and **Evidence status**. **Filter** applies them; each applied filter appears as a chip, and **Clear all** removes them."
+          "p": "The list shows every detected anomaly, active or closed. **Active only** restricts it to CANDIDATE, OPEN and RECOVERING. The other filters are **Subject kind**, **Lifecycle state**, **Detector type**, **Severity**, **Start time (UTC)**, **End time (UTC)**, and, under **More filters**, **Log source**, **QRadar instance** and **Evidence status**. **Filter** applies them; each applied filter appears as a chip, and **Clear all** removes them. Times are UTC. The default window is the last 24 hours; set **Start time (UTC)** to look further back. The list asks for 24 hours; active anomalies older than that appear under **Active only**."
         },
         {
           "p": "The table columns are **Subject**, **Detector**, **State**, **Observed → Expected** (in EPS for volume), **Deviation**, **Severity**, **Started**, **Evidence** and **Actions**. **Open** opens the investigation. The **Evidence** column carries NOT_REQUESTED, PENDING, COMPLETE, PARTIAL, UNAVAILABLE or FAILED."
         },
         {
-          "p": "An empty result is either a filtered view or a fleet with no anomalies; the page says which. Sources without an adequate baseline are not judged and do not appear as clean."
+          "p": "An empty result is either a filtered view or a fleet with no anomalies; the page says which. Sources without an adequate baseline are not judged and do not appear as clean. An empty list does not mean the fleet is healthy: sources without a baseline are not judged, and the behavioral overview counts them. A failed read, an expired session or a missing read:anomalies permission is stated as such and never drawn as an empty list. Unknown or oversized filter values are ignored and the page says which."
         }
       ],
       "states": [
         {
-          "p": "**No anomalies match these filters. This is a filtered view, not a statement about the fleet.**; **No anomalies have been detected.**; the forbidden notice."
+          "p": "**No anomalies match these filters.**; **No anomalies detected.**; the forbidden notice."
         }
       ]
     },
@@ -214,13 +226,13 @@
       "answers": "What changed, by how much, and what explains it?",
       "body": [
         {
-          "p": "The header names the subject, detector, state, severity and interval. **Incident measurements** carries **Observed**, **Expected**, **Deviation**, **Duration** and **Detector confidence**, each with its unit. **Duration** is the interval length; a running incident says **Still running** and has no duration."
+          "p": "The header names the subject, detector, state, severity and interval. **Incident measurements** carries **Observed**, **Expected**, **Deviation**, **Duration** and **Detector confidence**, each with its unit. **Duration** is the interval length; a running incident says **Still running** and has no duration. Observed is for the anomalous interval; Expected is the seasonal baseline for that UTC weekday and hour. Detector confidence is limited when the baseline variability is zero. State meanings: CANDIDATE is one abnormal interval, not yet an incident; OPEN is a confirmed incident, enough consecutive abnormal intervals to rule out a single-bucket artefact; RECOVERING is back inside the band but held open until enough normal intervals confirm it; RESOLVED closed after sustained normal behavior; SUPPRESSED was detected during maintenance, recorded for history and never notified."
         },
         {
-          "p": "The **Timeline** draws the observed series, the expected range as a band, the anomalous interval and lifecycle transitions. A gap is an interval that was not fully collected, not zero traffic."
+          "p": "The **Timeline** draws the observed series, the expected range as a band, the anomalous interval and lifecycle transitions. A gap is an interval that was not fully collected, not zero traffic. A gap is not zero traffic and not a verdict. The Triage panel records the analyst decision (status, owner, disposition, note, comments); it never changes the detector state, and changing it needs the anomaly:triage permission. Triage covers log-source, WAF, IPS and property-watch anomalies."
         },
         {
-          "p": "**What changed** lists the strongest contributors, at most one per dimension. Each is a measured share of the change, not a cause. **Evidence** says which dimensions were collected, which were unavailable or failed, and which counts were withheld under a cap. **Lifecycle** is the transition audit trail. **Technical details** holds the expected range at detection, the robust z and its status, the thresholds, baseline samples and completeness, the baseline and policy versions, and the Ariel queries."
+          "p": "**What changed** lists the strongest contributors, at most one per dimension. Each is a measured share of the change, not a cause. **Evidence** says which dimensions were collected, which were unavailable or failed, and which counts were withheld under a cap. **Lifecycle** is the transition audit trail. **Technical details** holds the expected range at detection, the robust z and its status, the thresholds, baseline samples and completeness, the baseline and policy versions, and the Ariel queries. Contributors are the values that moved most during the interval, one per dimension: a measured share of the change, not a statement of cause. A dimension that was not collected (failed query, unpopulated field, a DSM that exposes none of the fields) has not been checked and nothing is ruled out; a capped dimension shows the top of the list and its new, disappeared and cardinality counts are withheld, because a value can look new only because it fell below the cap in the other window. Related activity lists offenses, other anomalies and rules around the window, as last collected: an empty list is only empty for what was collected, and offense times and magnitudes are QRadar's. Ariel query structure is shown without credentials or raw payloads."
         },
         {
           "p": "WAF, IPS and property-watch incidents add their own measurement blocks; a WAF incident also shows **Endpoint coverage** and request counts."
@@ -354,13 +366,28 @@
       "answers": "Which watched property values are being counted, and which watches need attention?",
       "body": [
         {
-          "p": "A property watch counts the values of one or two QRadar properties in each 5-minute bucket, learns what is normal for each value, and reports a value that appears, disappears or changes. The list shows **Name**, **Status and reason**, **Scope**, **Properties**, **Coverage, last bucket**, **Open incidents**, **Last bucket (UTC)** and **Enabled**. Watches that need an analyst sort first."
+          "p": "A property watch counts the values of one or two QRadar properties in each 5-minute bucket, learns what is normal for each value, and reports a value that appears, disappears or changes. The list shows **Name**, **Status**, **Scope**, **Properties**, **Coverage (%)**, **Open**, **Last bucket** and **Enabled**. Watches that need an analyst sort first. A status line follows the pill only when the status is not OK or Disabled; the meanings are below."
         },
         {
-          "p": "The detail page draws the pinned values and the top values of the last bucket in events per bucket, with the scope's coverage, and lists the active incidents. **Edit watch** opens the editor. The header states the history state, the scope, the properties and the last collected bucket."
+          "p": "Statuses: **Never run** (no bucket collected yet, so nothing is judged); **Not enabled** (the collection switch is off, so no search is sent); **Disabled** (switched off; history and incidents are kept); **Scope empty** (the scope resolves to no synced log source); **Scope stale** (the synced inventory is older than the staleness limit, so no bucket is collected and open incidents hold); **Scope too large** (the scope needs more searches per run than one watch may use); **Not applicable** (the property parsed on no event in scope, so values are not measured and no verdict is given); **Stale** (no bucket stored within the cadence); **Reading history** (nothing is judged until the history read finishes); **Incident open** and **Recovering** (an incident is held open until it is confirmed); **OK** (the last collected bucket was judged)."
         },
         {
-          "p": "Two banners qualify the list: **COLLECTION OFF.** when `PW_COLLECTION_ENABLED` is false, so no search is sent for any watch, and **SHADOW MODE.** when incidents are recorded but nothing pages until `PW_ALERTING_ENABLED` is on. A watch that is disabled sends no search."
+          "p": "Watches are judged on collected 5-minute buckets, a set time after events arrive; the schedule is the PROPERTY_WATCH family's setting in **Search cadence**. This is not a seconds-level correlation engine: for alerting within seconds, use QRadar's own rules. A threshold rule on a pinned value can use a new pin after the next property-watch collection."
+        },
+        {
+          "p": "Two notices qualify the list: **COLLECTION OFF.** when `PW_COLLECTION_ENABLED` is false, so no search is sent for any watch whatever a row says, and **SHADOW MODE.** when incidents are recorded but nothing pages until `PW_ALERTING_ENABLED` is on. **SWITCHES NOT READ.** means the page could not say whether watches are being collected. Editing needs `property_watch:write`; reading needs `read:property_watches`."
+        },
+        {
+          "p": "The detail page draws the pinned values and the top values of the last bucket in events per 5-minute bucket, with the scope's coverage (the parsed share of the scope's events, with the coverage floor) in a lower panel, and lists the active incidents. **Edit watch** opens the editor. The header states the status, the history state when one was requested, the scope, the properties and the last collected bucket. The window buttons choose 1 hour to 7 days."
+        },
+        {
+          "p": "Reading the chart: gaps in a line are buckets that were not collected, values that were unknown in a lower-bound bucket, or times the value was not tracked. They are not zero events; a line at 0 is a measured zero. The expected range for the hour of the week is drawn as a band for one value at a time, so select a single value to see it. At most five values are drawn. Below the chart, the latest bucket's unparsed remainder says how many events in scope carried none of the property; they are counted there, never as a value and never as a zero."
+        },
+        {
+          "p": "The notice above the chart lists what is not known about the window: **HISTORY** state and **HISTORY GAP** (periods QRadar did not return, never claimed as zero), **TRUNCATED** (buckets that were lower bounds, so absent values are unknown), **PARTIAL** (buckets without a complete count, so the parsed share is unknown), **NOT COLLECTED** (gaps, not zero events), **ADMISSION** (values refused because the watch already tracks its maximum; they are counted in the bucket, not plotted) and **MEMBERSHIP CHANGED**. Buckets inside the grace window after a membership change are insufficient data, not normal."
+        },
+        {
+          "p": "In the values table, a **Learning** or **No baseline yet** tag means the expected range is not reliable yet; a value with no tag has a reliable baseline (168 reliable hour-of-week cells). Hover an events figure for what the reading means: counted, measured zero, unknown (a lower-bound bucket lacking the value) or not tracked then. An empty Incidents tab is not a statement that every value is normal, because values that are still learning and buckets that were lower bounds or not collected are not judged. The Definition tab holds the scope's membership, the version (a new scope or property set starts a new version; values of another version are never compared), the history facts and the cardinality caps: a value beyond a cap is counted in its bucket and never plotted or judged."
         },
         {
           "p": "The **EMA 3**, **EMA 5**, **EMA 10** and **EMA 20** buttons above the chart overlay exponential moving averages of the single selected value (the legend names it). With several values plotted no average is drawn, and the chart says so; your choice of periods is kept. The periods are counted in buckets, and the legend gives each one's span in time. All are off until you switch them on, and the browser remembers your choice, shared with the other charts. An average is drawn in your browser for display only. It takes no part in detection, and it stops at a bucket that was not fully observed, or counted only as a lower bound, rather than bridging the gap."
@@ -368,7 +395,7 @@
       ],
       "states": [
         {
-          "p": "**No bucket has been collected for this watch yet.**; a property that parsed on no event; **Not applicable**; partial buckets and lower bounds; a history reading in progress."
+          "p": "**Never run** (no bucket collected yet); a property that parsed on no event; **Not applicable**; partial buckets and lower bounds; a history reading in progress."
         }
       ]
     },
@@ -451,7 +478,7 @@
       "answers": "What offenses is QRadar reporting, and what does each contain?",
       "body": [
         {
-          "p": "The page is a read-only view of offenses collected from QRadar. It issues no writes: offenses are triaged in QRadar, not here. The figures are **Active**, **Critical (mag 7+)** and **Over 24h SLA** at the default thresholds, plus **Unassigned** and **Oldest**. An offense with no magnitude or no age is counted apart from those figures and is not treated as zero."
+          "p": "The page is a read-only view of offenses collected from QRadar, and the line under the title says so: offense times and magnitudes are QRadar's as last collected. It issues no writes: offenses are triaged in QRadar, not here. With no offense snapshot, the figures read as an em dash and the page says it is not collected; an empty list with filters set is a measured empty result. The figures are **Active**, **Critical (mag 7+)** and **Over 24h SLA** at the default thresholds, plus **Unassigned** and **Oldest**. An offense with no magnitude or no age is counted apart from those figures and is not treated as zero."
         },
         {
           "p": "The filters are a search over description, source and assignee, and a status filter with **Open**, **Hidden** and **Closed**. The table columns are **ID**, **Description**, **Mag**, **Sev**, **Status**, **Assigned**, **Events**, **Started (UTC)** and **Age**. The detail page adds **Scores**, **Attributes**, **Entities**, **Categories**, contributing rule and log-source IDs, and **History**. A history entry is written only when the offense changes, so a stable offense has a single entry."
@@ -459,7 +486,7 @@
       ],
       "states": [
         {
-          "p": "**No offense snapshot has been collected yet.**; **No offenses match these filters.**; a missing or not-yet-collected offense; a failed history read."
+          "p": "**No offense snapshot yet.**; **No offenses match these filters.**; a missing or not-yet-collected offense; a failed history read."
         }
       ]
     },
@@ -468,18 +495,41 @@
       "answers": "Which alerts are open, and what has been done about them?",
       "body": [
         {
-          "p": "The lifecycle is OPEN → ACKNOWLEDGED → RESOLVED. Repeated detections update the open alert and add to its **Detections while open** count rather than creating duplicates. **Alert status** filters **All statuses**, **Open**, **Acknowledged** and **Resolved**. The table shows **Title**, **Severity**, **Status**, **Detections while open**, **First seen** and **Last seen**."
+          "p": "The lifecycle is OPEN → ACKNOWLEDGED → RESOLVED. Repeated detections update the open alert and add to its **Detections** count rather than creating duplicates. **Alert status** filters **All statuses**, **Open**, **Acknowledged** and **Resolved**. The table shows **Title**, **Severity**, **Status**, **Detections**, **First seen** and **Last seen**. The list answers what is open and needs action. Times are UTC. The search matches part of a title, ignoring case, up to 100 characters. The counts beside each filter follow the filters above. When the count read fails, the list stays complete and only the counts are missing. When the log source list fails, only the picker is missing. An alert detail shows **repeated N×** when detections updated it while open."
         },
         {
           "p": "The detail page carries **Evidence**, **Lifecycle**, **Source anomalies** and **Notification Delivery History**. **Operator Actions** offers **Acknowledge**, which moves an OPEN alert to ACKNOWLEDGED and records who and when, and **Resolve**, with an optional **Resolution reason**. The confirmation says **Resolve this alert? A resolved alert cannot be reopened.** A resolved alert offers no further action."
         },
         {
-          "p": "Acknowledging an alert that is not OPEN changes nothing. Resolving an OPEN or ACKNOWLEDGED alert records who, when and the reason. Notification rows show PENDING, SENT, FAILED, DEAD_LETTER or SUPPRESSED."
+          "p": "Acknowledging an alert that is not OPEN changes nothing. Resolving an OPEN or ACKNOWLEDGED alert records who, when and the reason. Notification rows show PENDING, SENT, FAILED, DEAD_LETTER or SUPPRESSED. A resolved alert cannot be reopened. Evidence shows the observed and expected values, the baseline range, deviation, threshold, samples and confidence, each with its unit; **Last anomaly bucket** is the bucket the detector judged, and **not recorded** means the alert evidence holds none."
         }
       ],
       "states": [
         {
-          "p": "**No open alerts.** and the other per-status empty notices; **This alert is resolved. No further action is available.**; **No notifications for this alert.**"
+          "p": "**No open alerts.** and the other per-status empty notices; **Resolved. No further action.**; **No notifications for this alert.**"
+        }
+      ]
+    },
+    "queue": {
+      "title": "Queue",
+      "answers": "What should I pick up next?",
+      "body": [
+        {
+          "p": "The queue lists what is new or changed since your last visit, and what is waiting, in the server's order: severity first, then the longest wait. It reads anomalies, alerts, offenses, source reviews and catch-all senders. The line at the top says which instant **New** and **Updated** are measured against: your stored marker (your last visit), the last 24 h on a first visit, or a time you chose with the **8 h**, **24 h** and **7 d** chips. A chip changes this view only; **Back to last visit** returns to the marker. Times are UTC, and **Waiting since (UTC)** carries the age beside the time."
+        },
+        {
+          "p": "Opening the queue moves your marker to now, once per visit, so the next visit compares with this one. The labels you saw stay put while you filter and page. The marker is not moved while a source failed to load (its rows were not seen), while a comparison time is chosen, or while the view is narrowed by a scope, filter or page: open the unfiltered first page to move it. If another session moved the marker, reload to compare with it. If the move itself fails, the labels on the page are unaffected."
+        },
+        {
+          "p": "Under **Sources**, each line names a source, its count and how many are new or updated, and links to the page that owns it. A source that did not load has no count: it is failed, not shown (the account lacks its permission), not collected (no console configured, or no collection completed yet), stale (the rows come from the last collection, which is timestamped) or partly read. A failed or not-collected source makes the total a lower bound, shown as \"at least\". **Mine** shows no offenses when the account has no QRadar username mapped. **Loaded** is the time the page was read."
+        },
+        {
+          "p": "**Mine**, **Unassigned** and **All** are scopes; the kind, family and severity chips and **New or updated only** narrow further, and **Clear filters** removes them. The address holds the whole view, so **Copy link** shares it. A filter value the page does not know is ignored and the page says so. The queue holds at most 1000 rows; past that, narrow it with a filter. An empty queue says which sources loaded; if a source could not be read, the empty list is not a clean result."
+        }
+      ],
+      "states": [
+        {
+          "p": "\"Nothing is waiting\" with the time every source loaded; \"No rows shown\" naming the sources that could not be read; \"Marker not moved\" with the reason; the per-source lines above."
         }
       ]
     },
@@ -488,7 +538,7 @@
       "answers": "What did the last shift leave, and how do I leave the next one a record?",
       "body": [
         {
-          "p": "A handover is a written record, frozen when it was saved. It holds the author, the time in UTC, a **Note**, the rows marked **Watch**, the other open rows the queue listed at that moment (**Open when this was written**) and what the author did in the window (**Acted on by {author} in this window**). It does not update afterwards: the rows show the state they had when the handover was written, and each links to the page where the live state is. Nothing can be edited or deleted; a correction is a new handover."
+          "p": "A handover is a written record, frozen when it was saved. It holds the author, the time in UTC, a **Note**, the rows marked **Watch**, the other open rows the queue listed at that moment (**Open when this was written**) and what the author did in the window (**Acted on by {author} in this window**). It does not update afterwards: the rows show the state they had when the handover was written, and each links to the page where the live state is. Nothing can be edited or deleted; a correction is a new handover. The age beside each time is the age when the handover was written; in the write form it is the age now."
         },
         {
           "p": "Each open row carries flags: **Unassigned**, **Over SLA**, **New** and **Updated**. A row appears once, so a watched row is under **Watch** and not again below. When the queue held more rows than were frozen, the count reads \"50 of N\", or \"50 of at least N\" when N is itself a lower bound, and **See all in the queue** opens the live queue."
@@ -497,7 +547,7 @@
           "p": "Under the lists, **Sources not read cleanly** names every source that was failed, forbidden, stale or not collected when the handover was written. A source in that list is missing rows, not empty: do not read the lists above it as the whole picture. **Earlier handovers** lists the older records, and **Show earlier** loads more."
         },
         {
-          "p": "Reading needs only a signed-in account. Writing needs the `anomaly:triage` permission: without it the page offers no **Write handover** button, and opening the write form directly says so and saves nothing. Saving a handover does not change any triage, alert or the queue's last-visit marker."
+          "p": "A source line shows a reason code behind **Details**. Reading needs only a signed-in account. Writing needs the `anomaly:triage` permission: without it the page offers no **Write handover** button, and opening the write form directly says so and saves nothing. Saving a handover does not change any triage, alert or the queue's last-visit marker. If the rows to freeze cannot be loaded, no row can be marked **Watch**, but saving the note still freezes the open rows as they are at that moment. A source that could not be read for the preview is marked as not read in the saved record."
         }
       ],
       "steps": [
@@ -508,7 +558,7 @@
       ],
       "states": [
         {
-          "p": "**No handover yet. The queue lists what is waiting.**; **The handover could not be loaded.** with **Retry**; **You cannot write a handover.** when the account lacks the permission. On the Dashboard, the **Latest handover** widget shows the author, the time, the start of the note and the number of watched rows, and, when a source was not read cleanly, a **Not read cleanly:** line naming it."
+          "p": "**No handover yet.**; **The handover could not be loaded.** with **Retry**; **You cannot write a handover.** when the account lacks the permission. On the Dashboard, the **Latest handover** widget shows the author, the time, the start of the note and the number of watched rows, and, when a source was not read cleanly, a **Not read cleanly:** line naming it."
         }
       ]
     },
@@ -715,18 +765,18 @@
       "answers": "What does this alert say, and what do I change when I work it?",
       "body": [
         {
-          "p": "An alert is the notification record for a condition the platform watches: a log-source anomaly, a WAF, IPS or property-watch incident, a custom-rule breach, a new log source or catch-all sender, or a stored search that crossed its threshold. Repeated detections update the open alert and add to its **Detections while open** count; they do not create duplicates. The status moves from **Open** to **Acknowledged** to **Resolved**."
+          "p": "An alert is the notification record for a condition the platform watches: a log-source anomaly, a WAF, IPS or property-watch incident, a custom-rule breach, a new log source or catch-all sender, or a stored search that crossed its threshold. Repeated detections update the open alert and add to its **Detections** count; they do not create duplicates. The status moves from **Open** to **Acknowledged** to **Resolved**."
         }
       ],
       "steps": [
-        "Open **Alerts** and set **Alert status** to **Open**, **Acknowledged**, **Resolved** or **All statuses**, then choose **Filter**. The table shows **Title**, **Severity**, **Status**, **Detections while open**, **First seen** and **Last seen**.",
+        "Open **Alerts** and set **Alert status** to **Open**, **Acknowledged**, **Resolved** or **All statuses**, then choose **Filter**. The table shows **Title**, **Severity**, **Status**, **Detections**, **First seen** and **Last seen**.",
         "Open the row. **Alert Detail** carries **Evidence**, **Lifecycle**, **Source anomalies** and **Notification Delivery History**.",
         "Read **Source anomalies** and investigate what it names (see `investigate-anomaly`). The alert is the notification; the anomaly holds the measurements.",
         "Read **Notification Delivery History** when someone says they were not told. Each row shows PENDING, SENT, FAILED, DEAD_LETTER or SUPPRESSED, with its channel, attempts and next attempt.",
         "Choose **Acknowledge** under **Operator Actions** when someone is working the alert. An **Open** alert becomes **Acknowledged**, and the page records who and when. Acknowledging an alert in another status changes nothing.",
         "Choose **Resolve** when the work is done, add an optional **Resolution reason**, and confirm **Resolve this alert? A resolved alert cannot be reopened.** Resolving an **Open** or **Acknowledged** alert records who, when and the reason.",
         "An alert can also resolve without you: when the platform sees the condition recover, it resolves the alert itself, with the reason \"condition recovered\". Check **Resolved** before working an alert that looks quiet.",
-        "A resolved alert says **This alert is resolved. No further action is available.** If the condition recurs, a new alert is opened; the resolved one remains the record."
+        "A resolved alert says **Resolved. No further action.** If the condition recurs, a new alert is opened; the resolved one remains the record."
       ],
       "states": [
         {
@@ -823,6 +873,18 @@
       "body": [
         {
           "p": "A property watch counts how many events carry each value of one or two QRadar properties, per 5-minute bucket, within a scope. The platform learns a baseline per value and raises incidents on changes. Values are stored in clear text. Reading watches needs `read:property_watches`; creating, editing, enabling and deleting need `property_watch:write`, which the admin and `detection_engineer` roles hold."
+        },
+        {
+          "p": "Detectors: **Value spike** (a value above its seasonal expected range), **Value drop** (an exact count below it), **Value disappeared** (a normally present value measured zero for several buckets) and **New value** (a material value absent from verified history appeared) need about a week of baseline or 7 days of history; **New combination** (two values each seen before appeared together for the first time) needs two properties and 7 days of component history. Each property added multiplies the combination space, which is why two is the limit."
+        },
+        {
+          "p": "Preview: saving stores the definition disabled and spends the stated number of bounded searches over the last closed hour; nothing is admitted or alerted. The result separates no events (measured silence), a property that parsed on none of the events, and a search that was not measured. The catalog of property types is a suggestion; the preview is the applicability check, and a typed name outside the catalog can still be saved after validation. The generated query text is read-only."
+        },
+        {
+          "p": "History: the reading happens once before collection begins and is used only for learning. Events whose property was not parsed then are not counted as history, a group's membership is today's rather than as it was, and nothing is judged until the reading finishes. The estimate gives a searches range and a collection-runs range; it is an estimate, not a completion promise. The request cannot change once history or collected buckets exist."
+        },
+        {
+          "p": "Pins: at most 10 values or full pairs by default; quotes and backslashes cannot be pinned. The most frequent other values are tracked automatically, up to 20 new values per 5 minutes and 200 in total by default. The exact descendant walk of a group is available after the first disabled save."
         }
       ],
       "steps": [
@@ -837,7 +899,7 @@
       ],
       "states": [
         {
-          "p": "**COLLECTION OFF** when the family switch `PW_COLLECTION_ENABLED` is false (the default): enabling stores the choice but nothing is collected; shadow mode when `PW_ALERTING_ENABLED` is false (the default), where incidents are recorded and no alert opens; **This watch is enabled. Saving here disables it until you enable it again**; a preview rate limit; **Delete** refused while a custom rule pins one of its values; the write notice when the role lacks `property_watch:write`."
+          "p": "**COLLECTION OFF** when the family switch `PW_COLLECTION_ENABLED` is false (the default): enabling stores the choice but nothing is collected; shadow mode when `PW_ALERTING_ENABLED` is false (the default), where incidents are recorded and no alert opens; **Enabled. Saving disables it until you enable it again**; a preview rate limit; **Delete** refused while a custom rule pins one of its values; the write notice when the role lacks `property_watch:write`."
         }
       ]
     },

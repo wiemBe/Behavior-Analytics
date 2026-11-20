@@ -219,15 +219,15 @@ describe("alert list contents", () => {
   it("states the lifecycle and lists every column", async () => {
     vi.spyOn(api, "alerts").mockResolvedValue(page([alert()]));
     await renderPage();
-    expect(screen.getByText(/Lifecycle OPEN → ACKNOWLEDGED → RESOLVED\./)).toBeInTheDocument();
-    expect(screen.getByText(/count as one more detection rather than creating duplicates/)).toBeInTheDocument();
+    expect(screen.queryByText(/Lifecycle OPEN → ACKNOWLEDGED → RESOLVED/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/rather than creating duplicates/)).not.toBeInTheDocument();
     expect(document.body.textContent).not.toContain("occurrence count");
     const table = screen.getByRole("table");
     for (const header of [
       "Title",
       "Severity",
       "Status",
-      "Detections while open",
+      "Detections",
       "First seen",
       "Last seen",
     ]) {
@@ -247,7 +247,7 @@ describe("alert list contents", () => {
     vi.spyOn(api, "alerts").mockResolvedValue(page([alert()]));
     await renderPage();
     const table = screen.getByRole("table");
-    expect(within(table).getByRole("columnheader", { name: "Detections while open" })).toHaveClass("num");
+    expect(within(table).getByRole("columnheader", { name: "Detections" })).toHaveClass("num");
     expect(within(table).queryByRole("columnheader", { name: "Occurrences" })).toBeNull();
   });
 
@@ -255,7 +255,7 @@ describe("alert list contents", () => {
     vi.spyOn(api, "alerts").mockResolvedValue(page([alert({ occurrence_count: 1 })]));
     await renderPage();
     const table = screen.getByRole("table");
-    expect(within(table).getByRole("columnheader", { name: "Detections while open" })).toBeInTheDocument();
+    expect(within(table).getByRole("columnheader", { name: "Detections" })).toBeInTheDocument();
     expect(within(table).queryByRole("columnheader", { name: /Repeats/ })).toBeNull();
   });
 
@@ -309,7 +309,7 @@ describe("alert list honesty", () => {
     vi.spyOn(api, "alerts").mockResolvedValue(page([alert()]));
     await renderPage();
     expect(screen.getByRole("heading", { name: "Alerts", level: 1 })).toBeInTheDocument();
-    expect(screen.getByText(/Times are UTC\./)).toBeInTheDocument();
+    expect(screen.queryByText(/Times are UTC\./)).not.toBeInTheDocument();
     expect(within(screen.getByRole("region", { name: "Alerts" })).getByRole("table")).toBeInTheDocument();
   });
 

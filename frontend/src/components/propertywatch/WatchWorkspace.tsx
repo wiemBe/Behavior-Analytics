@@ -198,7 +198,7 @@ export function WatchWorkspace(props: WatchWorkspaceProps) {
                   : t("propertyWatch.common.hours", { count: hours }),
             time: utcTimeText(props.windowEnd),
           })}
-          {latest && (
+          {latest && latest.origin === "HISTORY" && (
             <>
               {t("propertyWatch.workspace.latestBucket", {
                 origin: latest.origin === "HISTORY" ? t("propertyWatch.workspace.historyOrigin") : "",

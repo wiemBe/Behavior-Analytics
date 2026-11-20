@@ -112,7 +112,7 @@ describe("the Rule family on /anomalies", () => {
 
   it("says evidence collection does not apply, as it does for the other families", async () => {
     await renderPage();
-    expect(rowOf()).toHaveTextContent("Evidence collection does not apply to rule-match anomalies");
+    expect(rowOf()).toHaveTextContent("Evidence n/a for rule-match");
   });
 
   it("links the row to its investigation", async () => {

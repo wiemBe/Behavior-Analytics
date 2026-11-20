@@ -60,7 +60,7 @@ describe("property-watch scope picker", () => {
     expect(option).toBeDisabled();
     expect(screen.getByRole("option", { name: /DMZ firewalls.*37 sources/ })).toBeEnabled();
     expect(screen.getByRole("status")).toHaveTextContent("2 log source group options listed.");
-    expect(screen.getByText(/Disabled: these scopes are over the per-watch search limit/)).toBeInTheDocument();
+    expect(screen.getByText(/Disabled: over the per-watch search limit/)).toBeInTheDocument();
     expect(screen.getByRole("listitem")).toHaveTextContent("All devices. needs 9 chunks, above the limit of 4");
   });
 
@@ -71,7 +71,7 @@ describe("property-watch scope picker", () => {
       <WatchScopePicker kind="LOG_SOURCE" selectedId="" onKind={vi.fn()} onSelect={vi.fn()} />,
     );
     await act(async () => vi.advanceTimersByTime(200));
-    expect(screen.getByRole("alert")).toHaveTextContent("could not be loaded");
+    expect(screen.getByRole("alert")).toHaveTextContent("failed to load");
   });
 });
 
@@ -111,8 +111,8 @@ describe("property-watch property picker", () => {
     );
     fireEvent.focus(screen.getByRole("combobox", { name: "Property 1" }));
     const list = screen.getByRole("listbox", { name: "Properties for property 1" });
-    expect(within(list).getByRole("option", { name: /username/ })).toHaveTextContent("QRadar normalized field");
-    expect(within(list).getByRole("option", { name: /Action/ })).toHaveTextContent("Defined on 2 of 3 types");
+    expect(within(list).getByRole("option", { name: /username/ })).toHaveTextContent("Normalized field");
+    expect(within(list).getByRole("option", { name: /Action/ })).toHaveTextContent("On 2 of 3 scope types");
     expect(within(list).getByRole("option", { name: /Bad/ })).toBeDisabled();
   });
 
@@ -143,7 +143,7 @@ describe("property-watch property picker", () => {
         onChange={change}
       />,
     );
-    expect(screen.getByText(/No catalog entry matches/)).toBeInTheDocument();
+    expect(screen.getByText(/No catalog match/)).toBeInTheDocument();
     expect(container.querySelector("img")).toBeNull();
   });
 });

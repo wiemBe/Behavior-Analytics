@@ -156,6 +156,17 @@
   line-height: var(--lh-base);
   overflow-wrap: anywhere;
 }
+.ho-details {
+  display: inline;
+}
+.ho-details > summary {
+  display: inline;
+  cursor: pointer;
+  color: var(--text-2);
+}
+.ho-details[open] > summary {
+  margin-right: var(--sp-2);
+}
 .ho-source-warn {
   color: var(--warn-text);
 }

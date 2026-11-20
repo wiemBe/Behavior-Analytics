@@ -93,21 +93,21 @@ describe("dashboardAccess", () => {
   it("offers nothing without dashboard:write, and says which permission", () => {
     const access = dashboardAccess(mine(), caller("read:dashboards", "admin:dashboards"));
     expect(access.actions).toEqual([]);
-    expect(access.note).toMatch(/cannot save dashboards.*dashboard:write/);
+    expect(access.note).toMatch(/Saving needs permission dashboard:write/);
     expect(dashboardAccess(template, caller()).actions).toEqual([]);
   });
 
   it("fails closed when /me failed, with the reason, and says nothing while it loads", () => {
     const failed = dashboardAccess(mine(), { status: "failed", reason: "HTTP 503" });
     expect(failed.actions).toEqual([]);
-    expect(failed.note).toMatch(/could not be read \(HTTP 503\).*read-only/);
+    expect(failed.note).toMatch(/Read-only: permissions unreadable \(HTTP 503\)/);
     expect(dashboardAccess(mine(), { status: "loading" })).toEqual({ actions: [], note: null });
   });
 
   it("offers nothing after the server refused a write, and says what it said", () => {
     const access = dashboardAccess(mine(), ADMIN, "only the owner can change this dashboard.");
     expect(access.actions).toEqual([]);
-    expect(access.note).toMatch(/refused the change: only the owner/);
+    expect(access.note).toMatch(/Refused: only the owner/);
   });
 });
 
@@ -251,7 +251,7 @@ describe("DashboardMenu controls", () => {
     setup(mine({ templateKey: "future_template" }), WRITE, null, { customizing: true });
     await open();
     expect(screen.queryByRole("button", { name: /Restore defaults|Reset to empty/ })).toBeNull();
-    expect(screen.getByText(/does not know template future_template/)).toBeInTheDocument();
+    expect(screen.getByText(/unknown template future_template/)).toBeInTheDocument();
   });
 });
 

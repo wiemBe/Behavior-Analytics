@@ -357,7 +357,7 @@ describe("the manage menu in Turkish", () => {
     ).toBe("alice tarafından paylaşıldı; okuyabilir ve kendi gösterge panellerinize kopyalayabilirsiniz.");
     expect(dashboardAccess(mine, { status: "loading" }, null, say()).note).toBeNull();
     // English stays for a caller that passes no translator.
-    expect(dashboardAccess(mine, caller("read:dashboards")).note).toContain("Your role cannot save dashboards");
+    expect(dashboardAccess(mine, caller("read:dashboards")).note).toContain("Saving needs permission");
   });
 
   it("words the name problems", () => {

@@ -7,6 +7,7 @@ import { QueueView } from "@/components/queue/QueueView";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { CopyLink } from "@/components/listview/CopyLink";
 import { withRouteMessages } from "@/i18n/RouteMessages";
+import { guideFor } from "@/lib/guideRoutes";
 import { parseQueueQuery, queueHref } from "@/lib/queue";
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -23,7 +24,7 @@ async function QueuePage({
   const query = parseQueueQuery(await searchParams);
   return (
     <>
-      <PageHeader title={t("title")} description={t("description")} actions={<CopyLink href={queueHref(query)} />} />
+      <PageHeader title={t("title")} actions={<CopyLink href={queueHref(query)} />} guide={guideFor("/queue")} />
       <QueueView query={query} />
     </>
   );

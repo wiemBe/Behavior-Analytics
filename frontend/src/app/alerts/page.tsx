@@ -123,7 +123,6 @@ async function AlertsPage({
       <PageHeader
         guide={guideFor("/alerts")}
         title={t("title")}
-        description={t("description")}
         actions={
           <>
             <ExportCsv href={alertsCsvUrl(alertExportParams(query))} label={t("exportCsv")} />
