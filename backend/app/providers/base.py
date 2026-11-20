@@ -21,7 +21,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from enum import StrEnum
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, NoReturn
 
 # Re-exported: the pattern lives in a leaf module so ``app.core.config`` can import it
 # without loading this package (which imports the settings).
@@ -298,6 +298,15 @@ class QRadarProvider(ABC):
         nothing to keep. The REST provider overrides it.
         """
         return LogSourceWalk(sources=await self.list_log_sources(), complete=True)
+
+    async def walk_jdbc_configs(self) -> NoReturn:
+        """Read protocol-8 JDBC configuration rows. The REST provider implements
+        this (J1b); every other backend fails closed, with no MCP fallback and no
+        empty success that could be mistaken for "no JDBC sources".
+        """
+        raise CapabilityNotSupportedError(
+            f"{type(self).__name__} does not support JDBC configuration reads"
+        )
 
     @abstractmethod
     async def get_log_source(self, qradar_id: int) -> LogSourceDTO | None:
