@@ -242,7 +242,6 @@ export function NoiseTuning({
 
   return (
     <div className="noise-tuning">
-      <p className="noise-intro">{t("intro")}</p>
       {writeNote && (
         <div className="notice" role="status">
           <p>{writeNote}</p>

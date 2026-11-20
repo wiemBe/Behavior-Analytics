@@ -6,16 +6,16 @@
     "error": "Noisy sources"
   },
   "title": "Noisy sources",
-  "description": "Which log sources keep raising anomalies, and how much of that the closed triage items call noise. Times are UTC.",
+  "description": "Which sources raise the most anomalies.",
   "controls": {
     "window": "Window",
     "windowLabel": "Incident window",
     "windowOption": "{days} days"
   },
   "facts": {
-    "collection": "Last evaluation: <time></time>.",
-    "noCollection": "No evaluation has been recorded yet.",
-    "summary": "{total, plural, one {# source} other {# sources}} raised at least one anomaly in the last {days} days. Ordered by {order}."
+    "collection": "Evaluated <time></time>.",
+    "noCollection": "No evaluation recorded.",
+    "summary": "{total, plural, one {# source} other {# sources}} raised anomalies in {days} d. Ordered by {order}."
   },
   "orderNames": {
     "incidents": "incidents",
@@ -24,12 +24,12 @@
   },
   "partial": {
     "title": "Partial coverage.",
-    "covered": "The counts cover {covered} of {window} days.",
-    "text": "Nothing is known about the rest, so these numbers are lower bounds, not totals."
+    "covered": "Counts cover {covered} of {window} d.",
+    "text": "Lower bounds, not totals."
   },
   "table": {
     "label": "Noisy sources",
-    "caption": "Log sources ranked by anomalies raised, with alerts, the share closed as noise and the worst deviation",
+    "caption": "Log sources ranked by anomalies raised",
     "source": "Source",
     "class": "Class",
     "incidents7": "Incidents",
@@ -45,16 +45,16 @@
     "unitRatio": "× expected",
     "orderBy": "Order by {name}",
     "notMonitored": "not monitored",
-    "notMonitoredHint": "This source is not monitored, so no counts are collected.",
+    "notMonitoredHint": "Not monitored; no counts collected.",
     "notMeasured": "not measured",
     "judgedYes": "Judged",
     "notJudged": "Not judged",
-    "notJudgedHint": "A low count here is not evidence of calm.",
+    "notJudgedHint": "A low count is not calm.",
     "noClassification": "Unclassified",
-    "shareLine": "{noise} noise / {closed} closed",
-    "shortLine": "{noise} noise / {closed} closed",
-    "shortHint": "share needs {min}+ closed",
-    "noClosed": "none closed yet",
+    "shareLine": "{noise} / {closed} closed",
+    "shortLine": "{noise} / {closed} closed",
+    "shortHint": "needs {min}+ closed",
+    "noClosed": "none closed",
     "alertsLink": "Alerts of {name}",
     "z": "z {value}",
     "detector": "mostly {name}",
@@ -62,30 +62,30 @@
     "detailLink": "Tune",
     "detailLinkLabel": "Tune {name}"
   },
-  "footnote": "Noise and worst deviation always cover the last 28 days of stored data, whichever window is selected. Incidents and alerts follow the selected window.",
+  "footnote": "Noise and worst deviation cover 28 days.",
   "quiet": {
     "summary": "No incidents on {count, plural, one {# source} other {# sources}}",
-    "note": "last {days} days",
-    "judged": "{count, plural, one {# source is} other {# sources are}} judged and raised nothing in {days} days.",
-    "notJudged": "{count, plural, one {# source is} other {# sources are}} not judged: no reliable baseline for this weekday and hour. A quiet count there is not evidence of calm.",
-    "none": "Every monitored source raised at least one anomaly in the last {days} days."
+    "note": "last {days} d",
+    "judged": "{count, plural, one {# source is} other {# sources are}} judged and raised nothing in {days} d.",
+    "notJudged": "{count, plural, one {# source is} other {# sources are}} not judged; quiet is not calm.",
+    "none": "Every monitored source raised an anomaly in {days} d."
   },
   "empty": {
     "title": "No source raised an anomaly",
-    "fallback": "No source raised an anomaly in the last {days} days of stored data.",
-    "withCollection": "The last evaluation was <time></time>, so the collection is running and the window is quiet.",
-    "noCollection": "No evaluation has been recorded, so this may be a missing collection and not a quiet window."
+    "fallback": "No anomaly in {days} d of stored data.",
+    "withCollection": "Last evaluation <time></time>; the window is quiet.",
+    "noCollection": "No evaluation recorded; collection may be missing."
   },
   "pastEnd": {
-    "title": "This page is past the end of the list",
-    "text": "{total, plural, one {# source} other {# sources}} raised anomalies; the list starts at row {offset}.",
-    "link": "Back to the first page"
+    "title": "Past the end of the list",
+    "text": "{total, plural, one {# source} other {# sources}}; the list starts at row {offset}.",
+    "link": "First page"
   },
   "errors": {
-    "title": "The noisy-sources list could not be loaded",
-    "failed": "The counts are unknown, not zero. Reload the page; if it fails again, check that the API is reachable and ask an administrator.",
-    "forbidden": "You do not have permission to view noisy sources. Ask an administrator for the read:anomalies grant.",
-    "expired": "Your session has expired. Sign in again to see the list."
+    "title": "Noisy sources could not be loaded",
+    "failed": "Counts are unknown, not zero. Reload; if it fails again, ask an administrator.",
+    "forbidden": "Needs the read:anomalies permission.",
+    "expired": "Session expired. Sign in again."
   },
   "detail": {
     "meta": "Tune a noisy source",
@@ -95,21 +95,21 @@
       "error": "The tuning page"
     },
     "back": "Back to noisy sources",
-    "descriptionFallback": "Per-detector counts and a replay of the stored buckets under the values you choose. Times are UTC.",
+    "descriptionFallback": "Counts and a replay of stored buckets.",
     "identity": "{instance} · {class}",
     "unclassified": "Unclassified",
     "criticality": "Criticality {value}",
     "notMonitored": "Not monitored",
     "maintenance": "In maintenance",
     "maintenanceUntil": "until",
-    "sourcePage": "Open the source's behavior page",
-    "alertsLink": "Alerts of this source",
+    "sourcePage": "Source behavior",
+    "alertsLink": "Alerts",
     "countsTitle": "What this source raised",
-    "countsCaption": "Incidents and alerts per detector for 7 and 28 days, with the share closed as noise and the worst deviation",
+    "countsCaption": "Incidents, alerts, noise share and worst deviation per detector",
     "countsLabel": "Detector counts",
     "allDetectors": "All detectors",
     "detector": "Detector",
-    "noDetectors": "No detector has raised an incident for this source in the stored 28 days.",
+    "noDetectors": "No detector raised an incident in 28 d.",
     "incidents": "Incidents",
     "alerts": "Alerts",
     "noise": "Noise",
@@ -118,49 +118,49 @@
     "unit28": "28 d",
     "unitClosed": "% of closed",
     "unitRatio": "× expected",
-    "countsFootnote": "Noise and worst deviation always cover the last 28 days of stored data.",
-    "notMonitoredNotice": "This source is not monitored, so no counts are collected and a replay has nothing to read. Enable monitoring on the log source first.",
+    "countsFootnote": "Noise and worst deviation cover 28 days.",
+    "notMonitoredNotice": "Not monitored: no counts, nothing to replay.",
     "notJudged": "Not judged",
-    "notJudgedHint": "A low count here is not evidence of calm.",
+    "notJudgedHint": "A low count is not calm.",
     "partialTitle": "Partial coverage.",
-    "partialText": "The counts cover {covered} of {window} days and are lower bounds, not totals.",
+    "partialText": "Counts cover {covered} of {window} d; lower bounds.",
     "errors": {
       "title": "The tuning page could not be loaded",
-      "failed": "The counts and the current values are unknown. Reload the page; if it fails again, check that the API is reachable and ask an administrator.",
-      "forbidden": "You do not have permission to view this page. Ask an administrator for the read:anomalies grant.",
-      "expired": "Your session has expired. Sign in again to tune this source.",
-      "notFound": "This log source does not exist or was removed. Go back to the list and pick another."
+      "failed": "Counts and values are unknown. Reload; if it fails again, ask an administrator.",
+      "forbidden": "Needs the read:anomalies permission.",
+      "expired": "Session expired. Sign in again.",
+      "notFound": "This log source does not exist or was removed."
     }
   },
   "tuning": {
     "title": "Replay and tune",
-    "intro": "Choose new values, replay the stored buckets under them and compare with the values in force. Nothing is saved until you press Save.",
+    "intro": "Replay stored buckets under new values. Nothing is saved until Save.",
     "formLabel": "Detection values",
     "knobsLegend": "Detection values",
     "knob": {
       "deviation_z": {
         "label": "Deviation",
-        "hint": "Standard deviations from the expected count before a bucket deviates.",
+        "hint": "Std deviations from expected.",
         "unit": "z"
       },
       "spike_ratio": {
         "label": "Spike ratio",
-        "hint": "A bucket above this multiple of the expected count is a spike.",
+        "hint": "Multiple of expected that is a spike.",
         "unit": "× expected"
       },
       "drop_ratio": {
         "label": "Drop ratio",
-        "hint": "A bucket below this fraction of the expected count is a drop.",
+        "hint": "Fraction of expected that is a drop.",
         "unit": "× expected"
       },
       "min_absolute_delta_events": {
         "label": "Minimum change",
-        "hint": "Smaller absolute changes are ignored, however large the ratio.",
+        "hint": "Smaller changes are ignored.",
         "unit": "events / bucket"
       },
       "open_after": {
         "label": "Open after",
-        "hint": "Consecutive deviating buckets before an incident opens.",
+        "hint": "Deviating buckets before an incident.",
         "unit": "buckets"
       },
       "direction": {
@@ -170,10 +170,10 @@
     },
     "range": "{min} to {max}",
     "problem": {
-      "empty": "Enter a value from {min} to {max}.",
-      "notNumber": "Enter a number from {min} to {max}.",
-      "range": "The value must be from {min} to {max}.",
-      "whole": "Enter a whole number from {min} to {max}."
+      "empty": "Enter {min} to {max}.",
+      "notNumber": "Enter a number, {min} to {max}.",
+      "range": "Use {min} to {max}.",
+      "whole": "Enter a whole number, {min} to {max}."
     },
     "directionOption": {
       "both": "Both: spikes and drops",
@@ -185,54 +185,54 @@
       "criticality": "from criticality {value}",
       "lab_mode": "LAB_MODE",
       "custom": "custom",
-      "unreadable": "stored value {value} is not usable; the engine ignores it"
+      "unreadable": "stored {value} unusable; ignored"
     },
     "edited": "edited, now {now}, was {was}",
     "criticalityLabel": "Criticality",
-    "criticalityHint": "Sets how many buckets must deviate before an incident opens, unless open after is set above.",
-    "labMode": "In LAB_MODE criticality changes no detection threshold.",
-    "byType": "This source has per-type overrides. Their detector thresholds are inert here; only open and resolve timing can differ by type.",
-    "narrowing": "Saving this direction closes this source's open incidents of the disabled direction.",
+    "criticalityHint": "Buckets that must deviate before an incident opens.",
+    "labMode": "LAB_MODE: criticality changes no threshold.",
+    "byType": "Per-type overrides apply; detector thresholds are inert here.",
+    "narrowing": "Saving closes open incidents of the disabled direction.",
     "windowLegend": "Replay window",
     "window": "{days} days",
     "preview": "Preview {days} days",
     "previewRunning": "Replaying {days} days of stored buckets",
     "save": "Save",
     "saving": "Saving",
-    "saveNeedsPreview": "Run a preview for these values to enable Save.",
-    "saveNothing": "Nothing differs from the saved values.",
-    "saveFirstPreviewed": "Save applies exactly the values the preview used.",
-    "needWrite": "You can preview but not save: saving needs the log_source:write permission. Ask an administrator for it.",
-    "needWriteUnread": "Your permissions could not be read, so Save stays off. Reload the page.",
-    "previewFailed": "The replay could not run, and nothing was changed. {detail}",
-    "previewForbidden": "The replay needs the read:anomalies permission.",
-    "previewRetry": "Press Preview to try again.",
-    "saveFailed": "The values were not saved and nothing was changed.",
-    "saveForbidden": "Saving needs the log_source:write permission. Nothing was changed.",
-    "saveExpired": "Your session has expired. Sign in again; nothing was changed.",
-    "rejected": "The server rejected the values: {detail} Nothing was changed.",
+    "saveNeedsPreview": "Preview these values to enable Save.",
+    "saveNothing": "No change from saved values.",
+    "saveFirstPreviewed": "Save applies the previewed values.",
+    "needWrite": "Saving needs the log_source:write permission.",
+    "needWriteUnread": "Permissions unreadable; Save is off. Reload.",
+    "previewFailed": "Replay failed; nothing changed. {detail}",
+    "previewForbidden": "Replay needs the read:anomalies permission.",
+    "previewRetry": "Preview again.",
+    "saveFailed": "Not saved; nothing changed.",
+    "saveForbidden": "Saving needs the log_source:write permission. Nothing changed.",
+    "saveExpired": "Session expired. Sign in again; nothing changed.",
+    "rejected": "Rejected: {detail} Nothing changed.",
     "saved": {
       "title": "Saved.",
       "changes": "Changed: {list}.",
       "criticality": "criticality {from} to {to}",
       "knob": "{name} {from} to {to}",
-      "recorded": "The audit log keeps the preview you saw.",
+      "recorded": "The audit log keeps the preview.",
       "closed": "Open incidents of the disabled direction were closed.",
-      "reloadFailed": "The page could not re-read the source, so the values above are the ones you saved. Reload to see how the engine now resolves them."
+      "reloadFailed": "Re-read failed; the values above are those you saved. Reload."
     },
-    "rejectedField": "The server rejected a value; its message is next to the field. Nothing was changed.",
+    "rejectedField": "Value rejected; see the field. Nothing changed.",
     "previewing": "Previewing"
   },
   "result": {
     "title": "Replay result",
-    "coverage": "Replay of {days} days of stored buckets, from <first></first> to <last></last>; {covered} of {days} days are stored.",
-    "coverageNone": "Replay of {days} days; no stored bucket falls inside it.",
+    "coverage": "{days} d replayed, <first></first> to <last></last>; {covered} of {days} d stored.",
+    "coverageNone": "{days} d replayed; no stored bucket falls inside.",
     "partialTitle": "Partial window.",
-    "partialText": "The counts cover only {covered} of {days} days, so they are lower bounds for the window.",
-    "criticalityReplayed": "Replayed with criticality {used} (stored: {stored}).",
-    "criticalityLab": "LAB_MODE: criticality changes no detection threshold, so the counts do not depend on the criticality change.",
-    "explain": "M and N count the incidents a replay would open from a clean start, using the stored buckets and today's baseline. They are not a forecast, and they are not what was recorded.",
-    "tableCaption": "Incidents the replay would open under the current and the proposed values",
+    "partialText": "Counts cover {covered} of {days} d; lower bounds.",
+    "criticalityReplayed": "Replayed with criticality {used} (stored {stored}).",
+    "criticalityLab": "LAB_MODE: counts ignore criticality.",
+    "explain": "M and N are incidents a replay opens from a clean start; not a forecast.",
+    "tableCaption": "Incidents a replay opens, current and proposed values",
     "tableLabel": "Replay comparison",
     "detector": "Detector",
     "current": "Current values",
@@ -244,29 +244,29 @@
     "total": "All detectors",
     "notRun": "not run (direction)",
     "noChange": "no change",
-    "recorded": "Recorded in the same window: {incidents, plural, one {# incident} other {# incidents}}, {opened} opened, {suppressed} suppressed. This is the recorded history, not a replay count.",
-    "unjudged": "{count, plural, one {# bucket was} other {# buckets were}} not judged and {count, plural, one {is} other {are}} left out of M and N.",
-    "maintenanceBuckets": "{count, plural, one {# bucket was} other {# buckets were}} recorded under a maintenance window, which the replay cannot reconstruct.",
+    "recorded": "Recorded in this window: {incidents, plural, one {# incident} other {# incidents}}, {opened} opened, {suppressed} suppressed.",
+    "unjudged": "{count, plural, one {# bucket} other {# buckets}} not judged; left out.",
+    "maintenanceBuckets": "{count, plural, one {# bucket} other {# buckets}} under maintenance; not replayable.",
     "notReplayableTitle": "Not replayed",
-    "notReplayableNote": "These detectors are left out of M and N.",
-    "stale": "Values changed. Preview again before saving; the numbers below belong to the earlier values.",
+    "notReplayableNote": "Left out of M and N.",
+    "stale": "Values changed. Preview again before saving.",
     "insufficient": {
       "title": "No replay for this window",
-      "text": "No count is shown, because a count here would be a guess.",
-      "fallback": "The stored buckets cannot support a replay."
+      "text": "A count here would be a guess.",
+      "fallback": "Stored buckets cannot support a replay."
     },
     "tooLarge": {
-      "title": "This window is too large to replay",
-      "text": "No count is shown. A shorter window reads fewer buckets.",
+      "title": "Window too large to replay",
+      "text": "No count shown. Use a shorter window.",
       "useSeven": "Use 7 days"
     },
-    "baseline": "Baseline version {version}, computed <time></time>.",
-    "partialNote": "They describe that span only, not the whole window."
+    "baseline": "Baseline v{version}, <time></time>.",
+    "partialNote": "This span only."
   },
   "model": {
     "title": "Low-volume model",
-    "shadow": "A shadow view. No detector uses it and it opens no alert. It shows what a count model would see in the stored baseline cells.",
-    "loading": "Reading the stored baseline cells and replaying the window.",
+    "shadow": "Shadow view: no detector uses it; no alert opens.",
+    "loading": "Reading baseline cells.",
     "state": {
       "label": "Model state",
       "OK": "Scored",
@@ -274,44 +274,44 @@
       "NOT_JUDGED": "Not judged",
       "PARTIAL": "Partial"
     },
-    "noReason": "The model has no sentence for this state.",
+    "noReason": "No reason given.",
     "facts": {
       "window": "Window",
       "windowValue": "{covered} of {window} days covered",
       "span": "First to last bucket",
     "to": "to",
       "p": "Tail threshold",
-      "pValue": "p = {p}: a bucket counts when its count is at least this unlikely under the fitted model",
+      "pValue": "p = {p}",
       "k": "Shrinkage",
-      "kValue": "A thin cell's median is pulled toward the source's pooled median with k = {k}; the weight on the cell is n / (n + {k})"
+      "kValue": "k = {k}; cell weight n / (n + {k})"
     },
     "partial": "Partial window.",
-    "partialText": "{covered} of {window} days are stored. Tail counts use only the buckets that exist; a missing bucket is a gap, not a zero.",
+    "partialText": "{covered} of {window} d stored. A missing bucket is a gap, not zero.",
     "disabled": {
-      "title": "The low-volume model preview is switched off",
-      "text": "The setting LOW_VOLUME_MODEL_PREVIEW_ENABLED is false on this deployment, so this view is not computed. Nothing else on this page depends on it."
+      "title": "Low-volume model preview is off",
+      "text": "LOW_VOLUME_MODEL_PREVIEW_ENABLED is false. Nothing else here depends on it."
     },
     "unknown": {
-      "title": "The model could not be read",
-      "text": "The server does not know this log source. Go back to the noisy sources and open it again."
+      "title": "Model could not be read",
+      "text": "Unknown log source. Reopen it from the list."
     },
     "forbidden": {
-      "title": "The model needs permission",
-      "text": "Reading the low-volume model requires the read:anomalies permission."
+      "title": "Model needs permission",
+      "text": "Needs the read:anomalies permission."
     },
     "expired": {
-      "title": "The session has expired",
-      "text": "Sign in again to read the low-volume model."
+      "title": "Session expired",
+      "text": "Sign in again."
     },
     "failed": {
-      "title": "The model could not be loaded",
-      "text": "The count-model view is unknown, not empty. Retry; if it fails again, the backend log names the cause."
+      "title": "Model could not be loaded",
+      "text": "Unknown, not empty. Retry."
     },
     "retry": "Retry",
     "shifts": {
       "title": "{count, plural, one {# cell proposes a new normal} other {# cells propose a new normal}}",
-      "intro": "Proposals only. Nothing is written back to a baseline.",
-      "none": "No cell proposes a new normal: no last-7-day median left its own 5th to 95th percentile range with at least 8 samples on both sides.",
+      "intro": "Proposals only.",
+      "none": "No cell proposes a new normal.",
       "item": "{metric}, {weekday} {hour} UTC",
       "change": "{recent} now against {cell} stored"
     },
@@ -333,15 +333,15 @@
       "7": "Sun"
     },
     "grid": {
-      "caption": "{metric}: stored baseline cell for each weekday and UTC hour. The number in a cell is how many buckets of the last 28 days fell below p on either tail.",
+      "caption": "{metric} by weekday and UTC hour: buckets below p in 28 d",
       "weekdayHead": "Weekday, with the hour in UTC",
       "cornerUtc": "UTC",
-      "unitLine": "Each cell: buckets in the last 28 days below p, by weekday and UTC hour. The metric itself is measured in {unit}.",
+      "unitLine": "Buckets below p, 28 d. Metric in {unit}.",
       "hoursHead": "UTC hour",
       "cellLabel": "{metric}, {weekday} {hour} UTC: {state}",
       "withTails": "{total} buckets below p",
       "noTails": "no tail count",
-      "empty": "The response holds no cells for this metric."
+      "empty": "No cells for this metric."
     },
     "legend": {
       "title": "Legend",
@@ -355,7 +355,7 @@
     },
     "detail": {
       "title": "Selected cell",
-      "none": "Select a cell to read its numbers.",
+      "none": "Select a cell.",
       "heading": "{metric}, {weekday} {hour} UTC",
       "state": "State",
       "family": "Fit",
@@ -369,31 +369,31 @@
       "dispersionNote": "variance / mean",
       "rawMedian": "Raw median",
       "estimate": "Shrunk estimate",
-      "estimateWeight": "weight {weight} on this cell, n = {n}, k = {k}, pooled median {pooled}",
+      "estimateWeight": "weight {weight}, n = {n}, k = {k}, pooled {pooled}",
       "tails": "Buckets below p",
       "upper": "{count} above the mean (upper tail)",
       "lower": "{count} below the mean (lower tail)",
       "scored": "of {count} buckets scored in 28 days",
       "levelShift": "Level shift",
-      "shiftText": "The last 7 days' median is {recent}; the stored cell median is {cell} (5th to 95th percentile {p05} to {p95}). Recent samples {recentSamples}, stored samples {cellSamples}. Started at the bucket of",
-      "shiftNote": "Proposal only. Nothing is written.",
+      "shiftText": "Last 7 d median {recent}; stored {cell} (p5 to p95 {p05} to {p95}). Samples {recentSamples} recent, {cellSamples} stored. Started",
+      "shiftNote": "Proposal only.",
       "noShift": "none",
       "reason": "Why no tail count",
       "unmeasured": "not measured"
     },
     "calibration": {
       "title": "Calibration against closed noise",
-      "intro": "Of the buckets the current detectors flagged when the last 28 days were replayed, how many fall on incidents operators already closed as NOISE. This is evidence for a later model, not a verdict.",
-      "caption": "Replayed flags per detector and how many fell on incidents closed as noise",
+      "intro": "Replayed flags that fall on incidents closed as NOISE, last 28 d.",
+      "caption": "Replayed flags per detector, and those on noise incidents",
       "detector": "Detector",
       "flags": "Replayed flags",
       "flagsUnit": "buckets",
       "noiseFlags": "On noise incidents",
       "noiseFlagsUnit": "buckets",
       "note": "Note",
-      "excluded": "Not run: the source's direction setting excludes this detector.",
+      "excluded": "Not run: direction excludes it.",
       "refused": "Not calibrated.",
-      "none": "The response holds no calibration rows."
+      "none": "No calibration rows."
     }
   }
 }

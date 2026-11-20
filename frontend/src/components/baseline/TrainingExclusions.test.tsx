@@ -25,7 +25,7 @@ describe("states", () => {
   it("empty: says what is empty, and draws no table", () => {
     mount({ kind: "ok", items: [] });
     expect(screen.getByRole("heading", { name: "Baseline training exclusions" })).toBeInTheDocument();
-    expect(screen.getByText("No analyst training exclusions affect this baseline.")).toBeInTheDocument();
+    expect(screen.getByText("No analyst exclusions.")).toBeInTheDocument();
     expect(screen.queryByRole("table")).toBeNull();
   });
 
@@ -34,12 +34,12 @@ describe("states", () => {
       .spyOn(trainingExclusionApi, "forSource")
       .mockResolvedValue({ items: [exclusion()], limit: 100 });
     mount({ kind: "error" });
-    expect(screen.getByText("Training exclusions could not be loaded.")).toBeInTheDocument();
+    expect(screen.getByText("Exclusions could not be loaded.")).toBeInTheDocument();
     expect(screen.queryByText(/No analyst training exclusions/)).toBeNull();
     await userEvent.click(screen.getByRole("button", { name: "Retry" }));
     expect(read).toHaveBeenCalledWith(SOURCE);
     expect(await screen.findByRole("table")).toBeInTheDocument();
-    expect(screen.queryByText("Training exclusions could not be loaded.")).toBeNull();
+    expect(screen.queryByText("Exclusions could not be loaded.")).toBeNull();
   });
 
   it("loading: keeps the heading, shows no rows, while Retry is in flight", async () => {
@@ -47,30 +47,30 @@ describe("states", () => {
     vi.spyOn(trainingExclusionApi, "forSource").mockReturnValue(new Promise((r) => (finish = r)));
     mount({ kind: "error" });
     await userEvent.click(screen.getByRole("button", { name: "Retry" }));
-    expect(screen.getByText("Loading training exclusions…")).toBeInTheDocument();
+    expect(screen.getByText("Loading exclusions…")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Baseline training exclusions" })).toBeInTheDocument();
     expect(screen.queryByRole("table")).toBeNull();
     finish({ items: [], limit: 100 });
-    expect(await screen.findByText("No analyst training exclusions affect this baseline.")).toBeInTheDocument();
+    expect(await screen.findByText("No analyst exclusions.")).toBeInTheDocument();
   });
 
   it("a failed Retry stays an error", async () => {
     vi.spyOn(trainingExclusionApi, "forSource").mockRejectedValue(new ApiError(500, "boom"));
     mount({ kind: "error" });
     await userEvent.click(screen.getByRole("button", { name: "Retry" }));
-    expect(await screen.findByText("Training exclusions could not be loaded.")).toBeInTheDocument();
+    expect(await screen.findByText("Exclusions could not be loaded.")).toBeInTheDocument();
   });
 
   it("a Retry the caller may not make names read:anomalies", async () => {
     vi.spyOn(trainingExclusionApi, "forSource").mockRejectedValue(new ApiError(403, "forbidden"));
     mount({ kind: "error" });
     await userEvent.click(screen.getByRole("button", { name: "Retry" }));
-    expect(await screen.findByText(/needs the read:anomalies permission/)).toBeInTheDocument();
+    expect(await screen.findByText(/Needs the read:anomalies permission/)).toBeInTheDocument();
   });
 
   it("forbidden: names the permission and has no Retry", () => {
     mount({ kind: "forbidden", permission: "read:anomalies" });
-    expect(screen.getByText("Reading training exclusions needs the read:anomalies permission.")).toBeInTheDocument();
+    expect(screen.getByText("Needs the read:anomalies permission.")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
     expect(screen.queryByText(/No analyst training exclusions/)).toBeNull();
   });
@@ -102,9 +102,9 @@ describe("rows", () => {
     expect(body[0]).toHaveTextContent("Collector restarted during the incident");
     expect(body[0]).toHaveTextContent("k.osei");
     expect(body[0]).toHaveTextContent("11-04 10:30 UTC");
-    expect(body[0]).toHaveTextContent("Pending next baseline rebuild");
-    expect(body[1]).toHaveTextContent("Applied by a baseline rebuild");
-    expect(body[2]).toHaveTextContent("Outside the baseline lookback");
+    expect(body[0]).toHaveTextContent("Pending rebuild");
+    expect(body[1]).toHaveTextContent("Applied");
+    expect(body[2]).toHaveTextContent("Outside lookback");
     expect(body[3]).toHaveTextContent("Revoked");
     expect(body[3]).toHaveTextContent("Revoked by a.rivera: Traffic was real after all");
   });
@@ -123,13 +123,13 @@ describe("rows", () => {
     mount({ kind: "ok", items: rows }, READ_ONLY);
     expect(screen.queryByRole("button", { name: "Revoke" })).toBeNull();
     expect(screen.queryByRole("columnheader", { name: "Action" })).toBeNull();
-    expect(screen.getByText("Revoking an exclusion needs the anomaly:triage permission.")).toBeInTheDocument();
+    expect(screen.getByText("Revoking needs the anomaly:triage permission.")).toBeInTheDocument();
   });
 
   it("says when the newest hundred are shown", () => {
     const many = Array.from({ length: 100 }, (_, i) => exclusion({ id: `x${i}` }));
     mount({ kind: "ok", items: many });
-    expect(screen.getByText("Showing the newest 100 exclusions.")).toBeInTheDocument();
+    expect(screen.getByText("Newest 100 shown.")).toBeInTheDocument();
   });
 });
 
@@ -143,7 +143,7 @@ describe("revoking", () => {
     mount({ kind: "ok", items: [row] });
     await open();
     const form = screen.getByRole("form", { name: "Revoke training exclusion" });
-    expect(form).toHaveTextContent("Revoke the exclusion of 04 Nov 08:00–10:00 UTC");
+    expect(form).toHaveTextContent("Revoke 04 Nov 08:00–10:00 UTC");
     await waitFor(() => expect(screen.getByLabelText("Reason for revoking")).toHaveFocus());
   });
 
@@ -152,7 +152,7 @@ describe("revoking", () => {
     mount({ kind: "ok", items: [row] });
     await open();
     await userEvent.click(screen.getByRole("button", { name: "Revoke exclusion" }));
-    expect(screen.getByRole("alert")).toHaveTextContent("Enter a reason of 1 to 1000 characters.");
+    expect(screen.getByRole("alert")).toHaveTextContent("Enter a reason, 1 to 1000 characters.");
     await userEvent.type(screen.getByLabelText("Reason for revoking"), "   ");
     await userEvent.click(screen.getByRole("button", { name: "Revoke exclusion" }));
     expect(revoke).not.toHaveBeenCalled();
@@ -172,7 +172,7 @@ describe("revoking", () => {
     await userEvent.type(screen.getByLabelText("Reason for revoking"), " Traffic was real ");
     await userEvent.click(screen.getByRole("button", { name: "Revoke exclusion" }));
     expect(revoke).toHaveBeenCalledWith(row.id, { reason: "Traffic was real" });
-    expect(await screen.findByText(/returns to training at the next baseline rebuild\.$/)).toHaveAttribute(
+    expect(await screen.findByText(/returns to training at the next rebuild\.$/)).toHaveAttribute(
       "role",
       "status",
     );
@@ -205,11 +205,11 @@ describe("revoking", () => {
     await userEvent.type(screen.getByLabelText("Reason for revoking"), "because");
     await userEvent.click(screen.getByRole("button", { name: "Revoke exclusion" }));
     expect(await screen.findByRole("alert")).toHaveTextContent(
-      "Revoking an exclusion needs the anomaly:triage permission.",
+      "Revoking needs the anomaly:triage permission.",
     );
     vi.spyOn(trainingExclusionApi, "revoke").mockRejectedValueOnce(new ApiError(500, "boom"));
     await userEvent.click(screen.getByRole("button", { name: "Revoke exclusion" }));
-    expect(await screen.findByRole("alert")).toHaveTextContent("The exclusion was not revoked. boom");
+    expect(await screen.findByRole("alert")).toHaveTextContent("Not revoked. boom");
   });
 
   it("ignores a second submit that arrives before the first has answered", async () => {

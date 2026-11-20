@@ -236,6 +236,9 @@
         },
         {
           "p": "WAF, IPS and property-watch incidents add their own measurement blocks; a WAF incident also shows **Endpoint coverage** and request counts."
+        },
+        {
+          "p": "Baseline training: the detected incident span of a resolved anomaly is excluded from training automatically. An analyst can exclude a wider interval when nearby buckets were also affected: the start can only move earlier and the end only later, on the source's bucket boundaries in UTC (YYYY-MM-DD HH:MM), for at most 7 days, with a reason of 1 to 1000 characters kept in the incident's activity. An exclusion takes effect at the next baseline rebuild (for a rule, from the next evaluation), may make the expected range unavailable, never overrides the automatic exclusion, and does not change the anomaly or its alerts. Revoking returns the interval to training at the same point. States: Pending rebuild, Applied, Outside lookback (older than the baseline lookback, changes nothing), Revoked. Scope depends on the family: source volume; a WAF endpoint's request count and every ratio; an IPS entity's event rate; an IPS source's top-source share, block ratio and port fan-out; a property value's spike, drop and disappeared baselines; a rule's storm or silence baseline separately. Creating and revoking need the anomaly:triage permission; reading needs read:anomalies."
         }
       ],
       "states": [
@@ -259,6 +262,15 @@
         },
         {
           "p": "The header states **Monitoring disabled** or **Maintenance mode** when either applies. A source with no baseline is not judged, and its page says so."
+        },
+        {
+          "p": "Noisy sources ranks the sources that raised anomalies in the selected window (7 or 28 days), ordered by incidents, alerts or noise share. Incidents and alerts follow the window; Noise and Worst deviation always cover the last 28 days of stored data. A source that is not monitored collects no counts. A source without a reliable baseline for this weekday and hour is Not judged: a low count there is not evidence of calm. A partial window means the counts are lower bounds, not totals. The noise share is shown only from 5 closed items; below that the row shows noise over closed. Times are UTC."
+        },
+        {
+          "p": "Tune a noisy source replays the stored buckets under new detection values and compares the incidents a replay would open (M with the current values, N with the proposed ones) from a clean start, using today's baseline. It is not a forecast and not what was recorded. Unjudged buckets and buckets recorded under maintenance are left out. Nothing is saved until Save, which applies exactly the previewed values and needs the log_source:write permission; saving a narrower direction closes the open incidents of the disabled direction. In LAB_MODE criticality changes no threshold; a source with per-type overrides keeps detector thresholds inert."
+        },
+        {
+          "p": "The Low-volume model is a shadow view: no detector uses it and it opens no alert. Each cell shows how many buckets of the last 28 days fell below the tail threshold p (p = 0.001: a bucket counts when its count is at least that unlikely under the fitted model). A thin cell's median is pulled toward the source's pooled median with k = 8, so the weight on the cell is n / (n + k). A cell proposes a new normal when the last 7 days' median leaves its own 5th to 95th percentile range with at least 8 samples on both sides; proposals are never written back. Calibration counts the replayed flags that fall on incidents closed as NOISE; it is evidence for a later model, not a verdict. A missing bucket is a gap, not a zero."
         }
       ],
       "states": [
@@ -964,6 +976,9 @@
             "**Grace** is the number of empty buckets tolerated before silence counts, from 0 to 48. A blank grace uses the default of 1 bucket.",
             "The mode that applies to a source comes from the first of: a source override, the row for its class (an instance row beats the global one), the default. The **Classes** table shows where each class's mode comes from."
           ]
+        },
+        {
+          "p": "Quiet periods lists every condition held back now and every maintenance window. A quiet period holds back only the alert; incidents are always recorded and counted while quiet. It lasts 1, 7 or 30 days; to keep a condition silent for good, set a record-only policy on this page. It is created from an alert or an anomaly with Don't alert this again, with a reason, an owner and, for a planned change, the change or ticket reference. Quieting the whole source silences every detector of that source; otherwise only the condition's detector. Ending a quiet period resumes alerts from the next detection. Maintenance windows are set on the log source. Alerts that open anyway are listed on the anomaly as having broken through."
         }
       ],
       "steps": [

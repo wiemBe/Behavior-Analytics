@@ -1,8 +1,8 @@
 // What `/behavior/noise` shows under the controls, for one answered request.
 //
 // Order of the screen: when the list was last evaluated, a PARTIAL banner if the stored window is
-// shorter than asked, the ranked table (or the empty state), the footnote that says which columns
-// ignore the window selector, and the collapsed footer that counts the sources that raised nothing.
+// shorter than asked, the ranked table (or the empty state), and the collapsed footer that counts
+// the sources that raised nothing.
 
 import { useLocale, useTranslations } from "next-intl";
 import Link from "next/link";
@@ -77,7 +77,6 @@ export function NoiseBody({ query, data }: { query: NoiseQuery; data: NoiseSourc
             params={noisePaginationParams(query)}
           />
         )}
-        <p className="noise-footnote">{t("footnote")}</p>
       </div>
     ) : data.total > 0 ? (
       <div className="notice" role="status">

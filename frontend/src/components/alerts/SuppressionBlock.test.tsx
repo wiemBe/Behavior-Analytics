@@ -59,7 +59,7 @@ describe("loading and nothing active", () => {
   it("says it is checking while the read is out", async () => {
     vi.spyOn(suppressionApi, "forAnomaly").mockReturnValue(new Promise(() => {}));
     mount();
-    expect(screen.getByRole("status")).toHaveTextContent("Checking whether this condition is quiet.");
+    expect(screen.getByRole("status")).toHaveTextContent("Checking quiet periods.");
   });
 
   it("asks for the family and the anomaly it was given", async () => {
@@ -96,7 +96,7 @@ describe("an active quiet period", () => {
     expect(within(banner).getByText("change window for the firewall")).toBeInTheDocument();
     expect(within(banner).getByText("Analyst")).toBeInTheDocument();
     expect(within(banner).getByText("Volume spike")).toBeInTheDocument();
-    expect(banner).toHaveTextContent("Incidents are always recorded");
+    expect(banner).not.toHaveTextContent("Incidents are always recorded");
   });
 
   it("says one incident and none in their own words, a measured zero included", async () => {
@@ -158,13 +158,13 @@ describe("End now", () => {
     mount();
     await userEvent.click(await screen.findByRole("button", { name: "End now" }));
     expect(end).not.toHaveBeenCalled();
-    const ask = screen.getByRole("group", { name: "End this quiet period now?" });
-    expect(ask).toHaveTextContent("Incidents recorded while quiet stay recorded");
+    const ask = screen.getByRole("group", { name: "End this quiet period?" });
+    expect(ask).toHaveTextContent("Incidents stay recorded");
     await userEvent.click(within(ask).getByRole("button", { name: "End quiet period" }));
     await waitFor(() => expect(end).toHaveBeenCalledWith(row().id));
     await waitFor(() => expect(screen.queryByRole("region", { name: "Quiet period" })).toBeNull());
     expect(read).toHaveBeenCalledTimes(2);
-    expect(screen.getByRole("status")).toHaveTextContent("The quiet period was ended.");
+    expect(screen.getByRole("status")).toHaveTextContent("Quiet period ended.");
   });
 
   it("keeps it quiet when the analyst backs out", async () => {
@@ -209,7 +209,7 @@ describe("its own failure states", () => {
     mount();
     const alert = await screen.findByRole("alert");
     expect(alert).toHaveTextContent("could not be read");
-    expect(alert).toHaveTextContent("Whether this condition is quiet is unknown.");
+    expect(alert).toHaveTextContent("State unknown.");
     await userEvent.click(within(alert).getByRole("button", { name: "Try again" }));
     await waitFor(() => expect(read).toHaveBeenCalledTimes(2));
     await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
@@ -221,7 +221,7 @@ describe("its own failure states", () => {
     );
     mount();
     expect(await screen.findByText(/hidden from this account/)).toBeInTheDocument();
-    expect(document.body.textContent).toContain("needs the read:anomalies permission");
+    expect(document.body.textContent).toContain("Needs the read:anomalies permission");
   });
 
   it("names both reads when the server names none", async () => {
@@ -274,7 +274,7 @@ describe("naming what would be quieted", () => {
     render(<StaticSession value={CAN}><SuppressionBlock target={ALERT} /></StaticSession>);
     await open();
     const note = await screen.findByRole("note");
-    expect(note).toHaveTextContent("The alert is for Volume drop.");
+    expect(note).toHaveTextContent("Alert: Volume drop;");
     expect(note).toHaveTextContent("Volume spike on Linux audit fleet");
   });
 

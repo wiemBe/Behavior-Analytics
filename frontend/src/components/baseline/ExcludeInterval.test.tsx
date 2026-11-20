@@ -57,14 +57,14 @@ describe("who sees the control, and when", () => {
     mount();
     expect(openButton()).toBeEnabled();
     expect(screen.getByRole("heading", { name: "Baseline training" })).toBeInTheDocument();
-    expect(screen.getByText(/detected incident span is excluded from training automatically/)).toBeInTheDocument();
-    expect(screen.getByText(/No analyst exclusion exists for this incident/)).toBeInTheDocument();
+    expect(screen.getByText(/detected span is excluded automatically/)).toBeInTheDocument();
+    expect(screen.getByText(/No analyst exclusion exists/)).toBeInTheDocument();
   });
 
   it("gives a read-only caller the protection line and the permission, but no control", () => {
     mount({ value: READ_ONLY });
     expect(openButton()).toBeNull();
-    expect(screen.getByText(/excluded from training automatically/)).toBeInTheDocument();
+    expect(screen.getByText(/excluded automatically/)).toBeInTheDocument();
     expect(screen.getByText(/needs the anomaly:triage permission/)).toBeInTheDocument();
   });
 
@@ -81,14 +81,14 @@ describe("who sees the control, and when", () => {
 
   it.each(["CANDIDATE", "OPEN", "RECOVERING"] as const)("%s: a reason line and no control", (state) => {
     mount({ anomaly: resolved({ state, resolved_at: null }) });
-    expect(screen.getByText("Available once the anomaly is resolved.")).toBeInTheDocument();
+    expect(screen.getByText("Available once resolved.")).toBeInTheDocument();
     expect(openButton()).toBeNull();
     expect(screen.queryByText(/Training protection/)).toBeNull();
   });
 
   it("a suppressed anomaly is neither active nor resolved", () => {
     mount({ anomaly: resolved({ state: "SUPPRESSED" }) });
-    expect(screen.getByText("Only a resolved anomaly can be excluded from training.")).toBeInTheDocument();
+    expect(screen.getByText("Only a resolved anomaly can be excluded.")).toBeInTheDocument();
     expect(openButton()).toBeNull();
   });
 
@@ -103,7 +103,7 @@ describe("who sees the control, and when", () => {
   it("does not guess a bucket width the page could not read", () => {
     mount({ bucket: null });
     expect(openButton()).toBeNull();
-    expect(screen.getByText(/bucket width of this source could not be read/)).toBeInTheDocument();
+    expect(screen.getByText(/Bucket width unreadable/)).toBeInTheDocument();
   });
 });
 
@@ -121,19 +121,19 @@ describe("what it says about existing exclusions", () => {
     });
     const list = screen.getByRole("list", { name: "Training protection" });
     expect(list).toHaveTextContent("04 Nov 08:00–10:00 UTC");
-    expect(list).toHaveTextContent("Pending next baseline rebuild");
+    expect(list).toHaveTextContent("Pending rebuild");
     expect(list.querySelectorAll("li")).toHaveLength(1);
     expect(screen.queryByText(/No analyst exclusion exists/)).toBeNull();
   });
 
   it("says when the exclusions could not be read instead of saying there are none", () => {
     mount({ load: { kind: "error" } });
-    expect(screen.getByText("Analyst exclusions could not be loaded for this incident.")).toBeInTheDocument();
+    expect(screen.getByText("Analyst exclusions could not be loaded.")).toBeInTheDocument();
   });
 
   it("names the permission when the exclusions may not be read", () => {
     mount({ load: { kind: "forbidden", permission: "read:anomalies" } });
-    expect(screen.getByText(/Reading analyst exclusions needs the read:anomalies permission/)).toBeInTheDocument();
+    expect(screen.getByText(/Needs the read:anomalies permission/)).toBeInTheDocument();
   });
 });
 
@@ -145,10 +145,10 @@ describe("the dialog", () => {
     expect(endBox()).toHaveValue("2026-11-04 09:55");
     const form = screen.getByRole("form", { name: "Exclude interval from training" });
     expect(form).toHaveTextContent(
-      "Exclude 04 Nov 08:05–09:55 UTC from this source-volume baseline. The detected incident span is already excluded automatically. Extend the UTC bounds only if nearby buckets were also affected. This takes effect after the next baseline rebuild, may make the expected range unavailable, and does not change this anomaly or its alerts.",
+      "Exclude 04 Nov 08:05–09:55 UTC from this volume baseline. Applied at the next rebuild; the expected range may become unavailable.",
     );
-    expect(form).toHaveTextContent("5-minute bucket width");
-    expect(form).toHaveTextContent("at most 7 days");
+    expect(form).toHaveTextContent("5-min buckets");
+    expect(form).not.toHaveTextContent("at most 7 days");
     expect(startBox()).toHaveFocus();
   });
 
@@ -163,8 +163,8 @@ describe("the dialog", () => {
   });
 
   it.each([
-    ["start", "2026-11-04 08:10", /Start cannot be later than the detected span's start, 2026-11-04 08:05 UTC/],
-    ["end", "2026-11-04 09:50", /End cannot be earlier than the detected span's end, 2026-11-04 09:55 UTC/],
+    ["start", "2026-11-04 08:10", /Start cannot be after the detected start, 2026-11-04 08:05 UTC/],
+    ["end", "2026-11-04 09:50", /End cannot be before the detected end, 2026-11-04 09:55 UTC/],
   ])("refuses narrowing the %s before anything is sent", async (which, text, message) => {
     const create = vi.spyOn(trainingExclusionApi, "create");
     mount();
@@ -180,11 +180,11 @@ describe("the dialog", () => {
     mount();
     await openForm();
     await set(startBox(), "2026-11-04 08:03");
-    expect(screen.getByRole("alert")).toHaveTextContent("5-minute bucket boundaries");
+    expect(screen.getByRole("alert")).toHaveTextContent("5-minute boundaries");
     await set(startBox(), "tomorrow");
-    expect(screen.getByRole("alert")).toHaveTextContent("Start is not a UTC time in the form YYYY-MM-DD HH:MM");
+    expect(screen.getByRole("alert")).toHaveTextContent("Start is not a UTC time, YYYY-MM-DD HH:MM");
     await set(startBox(), "2026-10-27 08:05");
-    expect(screen.getByRole("alert")).toHaveTextContent("at most 7 days");
+    expect(screen.getByRole("alert")).toHaveTextContent("At most 7 days");
     expect(submit()).toBeDisabled();
     await set(startBox(), "2026-10-28 09:55");
     expect(screen.queryByRole("alert")).toBeNull();
@@ -197,7 +197,7 @@ describe("the dialog", () => {
     await openForm();
     await set(startBox(), "2026-11-04 08:00");
     await userEvent.click(submit());
-    expect(screen.getByRole("alert")).toHaveTextContent("Enter a reason of 1 to 1000 characters.");
+    expect(screen.getByRole("alert")).toHaveTextContent("Enter a reason, 1 to 1000 characters.");
     expect(create).not.toHaveBeenCalled();
     await userEvent.type(reasonBox(), "   ");
     await userEvent.click(submit());
@@ -234,7 +234,7 @@ describe("saving", () => {
       ends_at: "2026-11-04T10:00:00.000Z",
       reason: "Collector restarted during the incident",
     });
-    const status = await screen.findByText(/Pending next baseline rebuild\. The expected range has not changed\./);
+    const status = await screen.findByText(/Pending next rebuild\. Expected range unchanged\./);
     expect(status).toHaveAttribute("role", "status");
     expect(screen.queryByRole("form")).toBeNull();
     expect(openButton()).toHaveFocus();
@@ -248,7 +248,7 @@ describe("saving", () => {
     mount();
     await fill();
     await userEvent.click(submit());
-    expect(await screen.findByText(/already excluded and a baseline rebuild has applied it/)).toBeInTheDocument();
+    expect(await screen.findByText(/Already excluded; a rebuild applied it/)).toBeInTheDocument();
   });
 
   it("sends once however often the button is pressed", async () => {
@@ -264,7 +264,7 @@ describe("saving", () => {
     await userEvent.click(saving);
     expect(create).toHaveBeenCalledTimes(1);
     finish(exclusion());
-    await screen.findByText(/Pending next baseline rebuild\. The expected range/);
+    await screen.findByText(/Pending next rebuild\. Expected range/);
   });
 
   it("ignores a second submit that arrives before the first has answered", async () => {
@@ -296,7 +296,7 @@ describe("saving", () => {
     expect(reasonBox()).toHaveValue("  Collector restarted during the incident  ");
     expect(submit()).toBeEnabled();
     expect(refresh).not.toHaveBeenCalled();
-    expect(screen.queryByText(/Pending next baseline rebuild/)).toBeNull();
+    expect(screen.queryByText(/Pending next rebuild/)).toBeNull();
   });
 
   it("names the permission on a 403", async () => {
@@ -307,7 +307,7 @@ describe("saving", () => {
     await fill();
     await userEvent.click(submit());
     expect(await screen.findByRole("alert")).toHaveTextContent(
-      "Recording an exclusion needs the anomaly:triage permission.",
+      "Excluding needs the anomaly:triage permission.",
     );
   });
 
@@ -316,9 +316,9 @@ describe("saving", () => {
     mount();
     await fill();
     await userEvent.click(submit());
-    expect(await screen.findByRole("alert")).toHaveTextContent("The anomaly no longer exists. Reload the page.");
+    expect(await screen.findByRole("alert")).toHaveTextContent("The anomaly no longer exists. Reload.");
     vi.spyOn(trainingExclusionApi, "create").mockRejectedValueOnce(new ApiError(500, "boom"));
     await userEvent.click(submit());
-    expect(await screen.findByRole("alert")).toHaveTextContent("The exclusion was not saved. boom");
+    expect(await screen.findByRole("alert")).toHaveTextContent("Not saved. boom");
   });
 });

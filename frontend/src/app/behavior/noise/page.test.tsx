@@ -142,7 +142,7 @@ describe("Noisy sources: the ranked table", () => {
     const r = rowOf("fw-edge-01");
     expect(r).toHaveTextContent("11");
     expect(r).toHaveTextContent("50.0");
-    expect(r).toHaveTextContent("3 noise / 6 closed");
+    expect(r).toHaveTextContent("3 / 6 closed");
     expect(r).toHaveTextContent("4.2×");
     expect(r).toHaveTextContent("z 6.1");
     expect(r).toHaveTextContent("Judged");
@@ -169,8 +169,8 @@ describe("Noisy sources: the ranked table", () => {
     setup(page(MIXED));
     await renderPage();
     const r = rowOf("dns-core");
-    expect(r).toHaveTextContent("2 noise / 3 closed");
-    expect(r).toHaveTextContent("share needs 5+ closed");
+    expect(r).toHaveTextContent("2 / 3 closed");
+    expect(r).toHaveTextContent("needs 5+ closed");
     expect(r.textContent).not.toMatch(/%| %/);
   });
 
@@ -211,7 +211,7 @@ describe("Noisy sources: the ranked table", () => {
     setup(page([row({ judged: false, judgement: "INSUFFICIENT_DATA", reason: null })]));
     await renderPage();
     const cell = rowOf("fw-edge-01").querySelector("td.noise-judged") as HTMLElement;
-    expect(cell).toHaveTextContent("A low count here is not evidence of calm.");
+    expect(cell).toHaveTextContent("A low count is not calm.");
   });
 
   it("says 'not monitored' for an unmonitored source and never renders a 0", async () => {
@@ -234,8 +234,7 @@ describe("Noisy sources: the ranked table", () => {
   it("notes that noise and worst deviation always cover 28 days, in either window", async () => {
     setup(page(MIXED, { window_days: 7 }));
     await renderPage({ window: "7" });
-    const note = screen.getByText(/always cover the last 28 days/);
-    expect(note).toHaveTextContent("whichever window is selected");
+    expect(screen.queryByText(/cover 28 days/)).toBeNull();
     expect(screen.getByRole("columnheader", { name: /Noise\s*28 d/ })).toBeInTheDocument();
     expect(screen.getByRole("columnheader", { name: /Worst deviation\s*28 d/ })).toBeInTheDocument();
     expect(screen.getByRole("columnheader", { name: /Alerts\s*7 d/ })).toBeInTheDocument();
@@ -309,14 +308,14 @@ describe("Noisy sources: the zero-incident footer", () => {
     expect(details?.querySelector("summary")).toHaveTextContent("No incidents on 38 sources");
     expect(details).toHaveTextContent("35 sources are judged");
     expect(details).toHaveTextContent("3 sources are not judged");
-    expect(details).toHaveTextContent("not evidence of calm");
+    expect(details).toHaveTextContent("quiet is not calm");
   });
 
   it("is absent when every monitored source fired, and says so", async () => {
     setup(page(MIXED, { zero_fired: 0, zero_fired_judged: 0, zero_fired_insufficient_data: 0 }));
     const { container } = await renderPage();
     expect(container.querySelector("details")).toBeNull();
-    expect(document.body.textContent).toContain("Every monitored source raised at least one anomaly");
+    expect(document.body.textContent).toContain("Every monitored source raised an anomaly");
   });
 });
 
@@ -339,8 +338,8 @@ describe("Noisy sources: honesty and failure states", () => {
     );
     await renderPage();
     const banner = screen.getByText("Partial coverage.").closest(".banner") as HTMLElement;
-    expect(banner).toHaveTextContent("cover 7 of 28 days");
-    expect(banner).toHaveTextContent("lower bounds");
+    expect(banner).toHaveTextContent("cover 7 of 28 d");
+    expect(banner).toHaveTextContent("Lower bounds");
     expect(banner).toHaveTextContent("incident retention is shorter");
   });
 
@@ -367,15 +366,15 @@ describe("Noisy sources: honesty and failure states", () => {
     await renderPage();
     expect(screen.getByText("No source raised an anomaly")).toBeInTheDocument();
     expect(document.body.textContent).toContain("in the last 28 days of stored data");
-    expect(document.body.textContent).toContain("The last evaluation was 2026-11-06 11:55:00 UTC");
+    expect(document.body.textContent).toContain("Last evaluation 2026-11-06 11:55:00 UTC");
     expect(screen.queryByRole("table")).toBeNull();
   });
 
   it("empty without any collection says it may be a missing collection", async () => {
     setup(page([], { total: 0, last_collection: null, zero_fired: 0, zero_fired_judged: 0, zero_fired_insufficient_data: 0 }));
     await renderPage();
-    expect(document.body.textContent).toContain("may be a missing collection");
-    expect(document.body.textContent).toContain("No evaluation has been recorded yet");
+    expect(document.body.textContent).toContain("collection may be missing");
+    expect(document.body.textContent).toContain("No evaluation recorded.");
   });
 
   it("names what failed and that the counts are unknown, not zero", async () => {
@@ -396,14 +395,14 @@ describe("Noisy sources: honesty and failure states", () => {
   it("says the session expired on 401", async () => {
     setup(new ApiError(401, "no"));
     await renderPage();
-    expect(screen.getByRole("alert")).toHaveTextContent("session has expired");
+    expect(screen.getByRole("alert")).toHaveTextContent("Session expired");
   });
 
   it("a page past the end offers the first page", async () => {
     setup(page([], { total: 12, offset: 100 }));
     await renderPage({ offset: "100" });
-    expect(screen.getByText("This page is past the end of the list")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Back to the first page" })).toHaveAttribute(
+    expect(screen.getByText("Past the end of the list")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "First page" })).toHaveAttribute(
       "href",
       "/behavior/noise",
     );

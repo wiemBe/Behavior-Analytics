@@ -287,9 +287,6 @@ export function TrainingExclusions({
   return (
     <div className="exclusions" role="group" aria-labelledby={`${uid}-h`}>
       {heading}
-      <p className="exclusions-lead">
-        {variant === "source" ? t("list.lead") : t(`variant.${variant}.lead` as never)}
-      </p>
       {body}
       {known && !allowed && load.kind === "ok" && load.items.length > 0 && (
         <p className="exclusions-state">

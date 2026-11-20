@@ -45,8 +45,8 @@ describe("training exclusions on the IPS source page", () => {
   it("reads the source's ips:source exclusions and says when there are none", async () => {
     await renderPage();
     expect(forSubject).toHaveBeenCalledWith("source", ID, "ips:source");
-    expect(screen.getByText(/top-source share, block ratio and port fan-out/)).toBeInTheDocument();
-    expect(screen.getByText("No analyst training exclusions affect this baseline.")).toBeInTheDocument();
+    expect(screen.queryByText(/top-source share, block ratio and port fan-out/)).toBeNull();
+    expect(screen.getByText("No analyst exclusions.")).toBeInTheDocument();
   });
 
   it("lists rows with their effect and Revoke for a caller who may triage", async () => {
@@ -57,7 +57,7 @@ describe("training exclusions on the IPS source page", () => {
     await renderPage();
     const table = screen.getByRole("table", { name: "Analyst training exclusions" });
     expect(table).toHaveTextContent("IPS source metrics");
-    expect(table).toHaveTextContent("Applied by a baseline rebuild");
+    expect(table).toHaveTextContent("Applied");
     expect(screen.getByRole("button", { name: "Revoke" })).toBeInTheDocument();
   });
 
@@ -73,8 +73,8 @@ describe("training exclusions on the IPS source page", () => {
   it("error is its own state, not an empty list", async () => {
     forSubject.mockRejectedValue(new ApiError(500, "boom"));
     await renderPage();
-    expect(screen.getByText("Training exclusions could not be loaded.")).toBeInTheDocument();
-    expect(screen.queryByText("No analyst training exclusions affect this baseline.")).toBeNull();
+    expect(screen.getByText("Exclusions could not be loaded.")).toBeInTheDocument();
+    expect(screen.queryByText("No analyst exclusions.")).toBeNull();
   });
 
   it("Retry reads the same subject and scope again", async () => {

@@ -51,11 +51,7 @@ async function NoisePageView({
 
   return (
     <>
-      <PageHeader
-        guide={guideFor("/behavior/noise")}
-        title={t("title")}
-        description={t("description")}
-      />
+      <PageHeader guide={guideFor("/behavior/noise")} title={t("title")} />
       <NoiseControls query={query} />
       {error ? (
         <div className="notice" role="alert">

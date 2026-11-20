@@ -284,7 +284,6 @@ export function SuppressButton({
                   </label>
                 ))}
               </div>
-              <p className="field-hint">{t("form.durationHelp")}</p>
               {errorAt("days", "")}
             </div>
 
@@ -348,11 +347,6 @@ export function SuppressButton({
                     />
                     {t("form.wholeSource")}
                   </label>
-                  <p className="field-hint">
-                    {sourceName
-                      ? t("form.wholeSourceHelp", { source: sourceName })
-                      : t("form.wholeSourceHelpGeneric")}
-                  </p>
                 </div>
               </>
             )}
@@ -372,7 +366,6 @@ export function SuppressButton({
                 />
                 {t("form.planned")}
               </label>
-              <p className="field-hint">{t("form.plannedHelp")}</p>
             </div>
 
             {planned && (
@@ -393,7 +386,6 @@ export function SuppressButton({
                       setFieldError(null);
                     }}
                   />
-                  <p className="field-hint">{t("form.referenceHelp", { max: REFERENCE_MAX })}</p>
                   {errorAt("reference", t("form.needsReference"))}
                 </div>
               </>

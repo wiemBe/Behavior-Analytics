@@ -92,7 +92,7 @@ describe("the list", () => {
     );
     expect(r).toHaveTextContent("Maintenance");
     expect(r).toHaveTextContent("No end set");
-    expect(r).toHaveTextContent("Set on the log source");
+    expect(within(r).getByTitle("Set on the log source")).toBeInTheDocument();
     expect(within(r).queryByRole("button")).toBeNull();
   });
 
@@ -122,7 +122,7 @@ describe("the list", () => {
 describe("empty, failed and forbidden", () => {
   it("says nothing is quiet", () => {
     mount([]);
-    expect(screen.getByText("Nothing is quiet. Every condition alerts by its policy.")).toBeInTheDocument();
+    expect(screen.getByText("Nothing is quiet.")).toBeInTheDocument();
     expect(screen.queryByRole("table")).toBeNull();
   });
 
@@ -143,8 +143,8 @@ describe("empty, failed and forbidden", () => {
 
   it("names the permission when the list is forbidden", () => {
     mount(null, { kind: "forbidden", permission: "read:alerts" });
-    expect(screen.getByText("Quiet periods are hidden from this account.")).toBeInTheDocument();
-    expect(document.body.textContent).toContain("needs the read:alerts permission");
+    expect(screen.getByText("Quiet periods hidden from this account.")).toBeInTheDocument();
+    expect(document.body.textContent).toContain("Needs the read:alerts permission");
   });
 });
 
@@ -155,14 +155,14 @@ describe("ending a quiet period", () => {
     mount([ANALYST, MAINT]);
     await userEvent.click(screen.getByRole("button", { name: /^End the quiet period for edge-01, Volume spike/ }));
     expect(end).not.toHaveBeenCalled();
-    expect(screen.getByRole("group", { name: "End this quiet period now?" })).toHaveTextContent(
-      "Incidents recorded while quiet stay recorded",
+    expect(screen.getByRole("group", { name: "End this quiet period?" })).toHaveTextContent(
+      "Incidents stay recorded",
     );
     await userEvent.click(screen.getByRole("button", { name: "End quiet period" }));
     await waitFor(() => expect(end).toHaveBeenCalledWith(ANALYST.id));
     await waitFor(() => expect(list).toHaveBeenCalledWith(true));
-    expect(await screen.findByText("Ended the quiet period for edge-01, Volume spike.")).toBeInTheDocument();
-    expect(screen.getByText("Nothing is quiet. Every condition alerts by its policy.")).toBeInTheDocument();
+    expect(await screen.findByText("Ended: edge-01, Volume spike.")).toBeInTheDocument();
+    expect(screen.getByText("Nothing is quiet.")).toBeInTheDocument();
   });
 
   it("keeps the row when the analyst backs out", async () => {
@@ -171,7 +171,7 @@ describe("ending a quiet period", () => {
     await userEvent.click(screen.getByRole("button", { name: /^End the quiet period/ }));
     await userEvent.click(screen.getByRole("button", { name: "Keep it quiet" }));
     expect(end).not.toHaveBeenCalled();
-    expect(screen.queryByRole("group", { name: "End this quiet period now?" })).toBeNull();
+    expect(screen.queryByRole("group", { name: "End this quiet period?" })).toBeNull();
   });
 
   it("says a vanished period is gone and reloads", async () => {

@@ -66,7 +66,7 @@ describe("training exclusions on /rules/[id]", () => {
     await renderPage();
     expect(forSubject).toHaveBeenCalledWith("rule", ID, undefined);
     expect(screen.getByRole("heading", { name: "Baseline training exclusions" })).toBeInTheDocument();
-    expect(screen.getByText("No analyst training exclusions affect this baseline.")).toBeInTheDocument();
+    expect(screen.getByText("No analyst exclusions.")).toBeInTheDocument();
   });
 
   it("lists storm and silence rows by name, 'Used from the next evaluation', with Revoke", async () => {
@@ -97,7 +97,7 @@ describe("training exclusions on /rules/[id]", () => {
   it("error is its own state with Retry, and the rest of the page stays", async () => {
     forSubject.mockRejectedValue(new ApiError(500, "boom"));
     await renderPage();
-    expect(screen.getByText("Training exclusions could not be loaded.")).toBeInTheDocument();
+    expect(screen.getByText("Exclusions could not be loaded.")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Retry" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: rule().name, level: 1 })).toBeInTheDocument();
   });
@@ -105,6 +105,6 @@ describe("training exclusions on /rules/[id]", () => {
   it("forbidden names read:anomalies", async () => {
     forSubject.mockRejectedValue(new ApiError(403, "forbidden"));
     await renderPage();
-    expect(screen.getByText("Reading training exclusions needs the read:anomalies permission.")).toBeInTheDocument();
+    expect(screen.getByText("Needs the read:anomalies permission.")).toBeInTheDocument();
   });
 });

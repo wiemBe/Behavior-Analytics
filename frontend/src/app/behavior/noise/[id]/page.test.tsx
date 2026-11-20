@@ -52,7 +52,7 @@ describe("Tune a noisy source: identity and counts", () => {
   it("shows 7 d and 28 d incidents, alerts, noise and worst deviation per detector with units", async () => {
     setup(detail());
     await renderPage();
-    const table = screen.getByRole("table", { name: /Incidents and alerts per detector/ });
+    const table = screen.getByRole("table", { name: /Incidents, alerts, noise share and worst deviation per detector/ });
     const all = within(table).getByRole("row", { name: /All detectors/ });
     expect(all).toHaveTextContent("9");
     expect(all).toHaveTextContent("41");
@@ -62,7 +62,7 @@ describe("Tune a noisy source: identity and counts", () => {
     expect(spike).toHaveTextContent("30");
     expect(within(table).getAllByRole("columnheader", { name: /Worst deviation/ })[0]).toHaveTextContent("× expected");
     // 17a's rule: a short denominator reads "n noise / m closed", not a share.
-    expect(within(table).getByRole("row", { name: /Volume drop/ })).toHaveTextContent("1 noise / 2 closed");
+    expect(within(table).getByRole("row", { name: /Volume drop/ })).toHaveTextContent("1 / 2 closed");
     expect(within(table).getByRole("row", { name: /Volume drop/ })).not.toHaveTextContent("50");
   });
 
@@ -91,14 +91,14 @@ describe("Tune a noisy source: identity and counts", () => {
   it("says a source without detector rows raised none, and keeps the whole-source row", async () => {
     setup(detail({ detectors: [] }));
     await renderPage();
-    expect(screen.getByText(/No detector has raised an incident for this source/)).toBeInTheDocument();
+    expect(screen.getByText(/No detector raised an incident in 28 d/)).toBeInTheDocument();
     expect(screen.getByRole("row", { name: /All detectors/ })).toBeInTheDocument();
   });
 
   it("states that noise and worst deviation cover 28 days", async () => {
     setup(detail());
     await renderPage();
-    expect(screen.getByText(/Noise and worst deviation always cover the last 28 days/)).toBeInTheDocument();
+    expect(screen.queryByText(/Noise and worst deviation cover 28 days/)).toBeNull();
   });
 
   it("labels partial coverage as lower bounds", async () => {
@@ -115,7 +115,7 @@ describe("Tune a noisy source: identity and counts", () => {
     );
     await renderPage();
     expect(screen.getByText("Partial coverage.")).toBeInTheDocument();
-    expect(screen.getByText(/12 of 28 days and are lower bounds/)).toBeInTheDocument();
+    expect(screen.getByText(/12 of 28 d; lower bounds/)).toBeInTheDocument();
   });
 
   it("marks a source without a reliable baseline as not judged, with the backend's reason", async () => {
@@ -147,7 +147,7 @@ describe("Tune a noisy source: identity and counts", () => {
       }),
     );
     await renderPage();
-    expect(screen.getByText(/This source is not monitored, so no counts are collected/)).toBeInTheDocument();
+    expect(screen.getByText(/Not monitored: no counts, nothing to replay/)).toBeInTheDocument();
     expect(screen.queryByRole("table")).toBeNull();
     expect(screen.getAllByText("Not monitored").length).toBeGreaterThan(0);
     // The form is still there: the analyst can preview and read the reason.
@@ -178,11 +178,11 @@ describe("Tune a noisy source: identity and counts", () => {
   it("links to the source's behavior page and its alerts", async () => {
     setup(detail());
     await renderPage();
-    expect(screen.getByRole("link", { name: "Open the source's behavior page" })).toHaveAttribute(
+    expect(screen.getByRole("link", { name: "Source behavior" })).toHaveAttribute(
       "href",
       `/behavior/sources/${SRC}`,
     );
-    expect(screen.getByRole("link", { name: "Alerts of this source" })).toHaveAttribute(
+    expect(screen.getByRole("link", { name: "Alerts" })).toHaveAttribute(
       "href",
       `/alerts?log_source_id=${SRC}`,
     );
@@ -207,7 +207,7 @@ describe("Tune a noisy source: states that fail", () => {
   it("says the session expired on a 401", async () => {
     setup(new ApiError(401, "no"));
     await renderPage();
-    expect(screen.getByRole("alert")).toHaveTextContent(/session has expired/);
+    expect(screen.getByRole("alert")).toHaveTextContent(/Session expired/);
   });
 
   it("says the counts are unknown, not zero, when the read fails", async () => {

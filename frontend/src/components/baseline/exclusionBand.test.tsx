@@ -47,9 +47,9 @@ describe("the chart band", () => {
 describe("the text beside the band", () => {
   it("repeats the UTC range and the effect, so colour is not the only carrier", () => {
     render(<ExclusionBandText rows={[exclusion(), exclusion({ id: "x", state: "APPLIED", starts_at: "2026-11-03T08:00:00Z", ends_at: "2026-11-03T09:00:00Z" })]} />);
-    const text = screen.getByText(/Excluded from baseline training:/);
-    expect(text).toHaveTextContent("04 Nov 08:00–10:00 UTC (Pending next baseline rebuild)");
-    expect(text).toHaveTextContent("03 Nov 08:00–09:00 UTC (Applied by a baseline rebuild)");
+    const text = screen.getByText(/Excluded from training:/);
+    expect(text).toHaveTextContent("04 Nov 08:00–10:00 UTC (Pending rebuild)");
+    expect(text).toHaveTextContent("03 Nov 08:00–09:00 UTC (Applied)");
   });
 
   it("draws nothing when no exclusion is effective, or the rows could not be read", () => {
