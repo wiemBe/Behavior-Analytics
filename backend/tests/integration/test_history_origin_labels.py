@@ -588,8 +588,8 @@ def test_the_rule_statistics_statement_count_is_unchanged(db_schema, _stats_cloc
     assert resp.status_code == 200
     # Measured on the base before this change: 9 statements (the instance
     # lookup, the counts, the coverage pair, the silence list, the two top
-    # lists and the two benchmark queries).
-    assert client.statements == 9
+    # lists and the two benchmark queries), plus the feature_switch read (S3b).
+    assert client.statements == 9 + 1  # +1: switch read (S3b)
 
 
 # ------------------------------------------------------------------ no leaks
