@@ -3,9 +3,9 @@
   "loadingWhat": "log sources",
   "errorWhat": "Log sources",
   "loadNoun": "log sources",
-  "countLead": "{count} sources.",
-  "description": "QRadar-owned fields refresh on sync; criticality, owner and maintenance are SOC-owned and preserved.",
-  "empty": "No log sources yet. Trigger an inventory sync to pull them from the configured provider.",
+  "countLead": "{count} sources",
+  "description": "See Guide.",
+  "empty": "No log sources yet. Run an inventory sync.",
   "table": {
     "label": "Log sources",
     "name": "Name",
@@ -44,6 +44,6 @@
     "lastEvent": "Last event: <time></time>",
     "lastEventNever": "Last event: never",
     "qradarStatus": "QRadar status:",
-    "note": "EPS trend, anomaly timeline and baseline overlay: <link>source behavior</link>."
+    "note": "<link>Source behavior</link>"
   }
 }

@@ -461,7 +461,7 @@ describe("sync now", () => {
     expect(await screen.findByText(/Last inventory sync:/)).toHaveTextContent("2026-11-18 08:00:00 UTC");
     await click();
     expect(queue).toHaveBeenCalledTimes(1);
-    expect(screen.getByText(/Queued — the list refreshes when the sync finishes/)).toBeInTheDocument();
+    expect(screen.getByText(/Queued\. The list refreshes when the sync finishes/)).toBeInTheDocument();
     expect(screen.queryByText(/finished/)).toBeNull();
     expect(screen.getByRole("button", { name: "Sync running" })).toBeDisabled();
     expect(nav.refresh).not.toHaveBeenCalled();

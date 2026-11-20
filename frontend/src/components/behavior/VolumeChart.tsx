@@ -462,7 +462,6 @@ export function VolumeChart({
           </li>
         )}
       </ul>
-      <p className="subtitle chart-note">{t("note")}</p>
       <EmaNote periods={emaOn} />
     </>
   );

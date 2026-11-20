@@ -97,7 +97,7 @@ describe("log source detail contents", () => {
   it("links to the charts instead of promising them", async () => {
     await renderPage();
     expect(screen.queryByText(/arrive in Phase 2/)).toBeNull();
-    expect(screen.getByRole("link", { name: "source behavior" })).toHaveAttribute(
+    expect(screen.getByRole("link", { name: "Source behavior" })).toHaveAttribute(
       "href",
       "/behavior/sources/s-1",
     );

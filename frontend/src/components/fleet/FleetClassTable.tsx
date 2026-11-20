@@ -103,7 +103,6 @@ function ClassRows({ c }: { c: FleetClassSummary }) {
                 {eps}
               </span>
               <span className="cell-sub">{expected.note}</span>
-              {expected.partial && <span className="cell-sub">{t("coversPart")}</span>}
             </>
           )}
         </td>

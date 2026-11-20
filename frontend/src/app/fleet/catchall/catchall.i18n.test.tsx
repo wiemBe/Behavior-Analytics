@@ -68,7 +68,7 @@ describe("/fleet/catchall page in Turkish", () => {
     vi.spyOn(catchallApi, "buckets").mockResolvedValue(list());
     render(await CatchallPage());
     expect(screen.getByRole("heading", { level: 1, name: "Catch-all gönderenleri" })).toBeInTheDocument();
-    expect(screen.getByText(/Gönderen, bir catch-all kaynağına düşen olaylar/)).toBeInTheDocument();
+    expect(screen.queryByText(/Gönderen, bir catch-all kaynağına düşen olaylar/)).toBeNull();
     expect(screen.getByRole("heading", { level: 2, name: "Gönderen kuyruğu" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { level: 2, name: "Kaynağa göre hacim" })).toBeInTheDocument();
   });
@@ -135,7 +135,7 @@ describe("the senders queue in Turkish", () => {
     expect(screen.getByRole("status", { name: "" })).toBeTruthy();
     expect(document.body.textContent).toContain(`1 / 1.204 gönderen gösteriliyor.`.replace(/ \/ /, `${NB}/${NB}`));
     expect(screen.getByText("18.420")).toBeInTheDocument();
-    expect(document.body.textContent).toContain(`18.420${NB}olay`);
+    expect(document.body.textContent).not.toContain(`18.420${NB}olay`);
   });
 
   it("shows unknown, never 0, and keeps the lower-bound note on the figure", () => {
@@ -144,7 +144,7 @@ describe("the senders queue in Turkish", () => {
     expect(within(row).getByText("bilinmiyor")).toBeInTheDocument();
     expect(row).not.toHaveTextContent(/\b0\b/);
     expect(screen.getAllByTitle(/Bir alt sınırdır/).length).toBeGreaterThan(0);
-    expect(screen.getByText("bilinmiyor", { selector: "em" })).toBeInTheDocument();
+    expect(screen.queryByText("bilinmiyor", { selector: "em" })).toBeNull();
   });
 
   it("names who decided a reviewed sender, and says when that was not recorded", () => {
@@ -294,7 +294,7 @@ describe("the volume view in Turkish", () => {
     expect(panel).toHaveTextContent("2 gönderen kabul eşiğinin altında kaldı");
     expect(panel).toHaveTextContent("Yeni gönderen kotası dolu olduğundan 3 gönderen reddedildi.");
     expect(panel).toHaveTextContent("1.204 gönderen (7 olay) adıyla izlenmiyor.");
-    expect(panel).toHaveTextContent("Reddedilen ve geçersiz gönderenler sayılır");
+    expect(panel).not.toHaveTextContent("Reddedilen ve geçersiz gönderenler sayılır");
     expect(within(panel).getByText("Kesin")).toBeInTheDocument();
     for (const name of ["Ölçüm", "Olaylar", "Kayıtlar", "Farklı gönderenler"]) {
       expect(within(panel).getByText(name, { selector: "dt" })).toBeInTheDocument();
@@ -328,7 +328,7 @@ describe("the volume view in Turkish", () => {
     expect(panel).toHaveTextContent("En az (arama kırpıldı; daha fazla olay olabilir)");
     expect(panel.textContent).toContain(`en az 1.900`);
     expect(panel.textContent).toMatch(/en az 4/);
-    expect(screen.getByText("Ya da grafikte bir çubuğa tıklayın.")).toBeInTheDocument();
+    expect(screen.queryByText("Ya da grafikte bir çubuğa tıklayın.")).toBeNull();
   });
 
   it("says a selected gap was not measured, and a bucket after the latest one is not known yet", async () => {
@@ -397,10 +397,10 @@ describe("catch-all helpers in both languages", () => {
   it("words the admission counts with plurals in English and the Turkish number form in Turkish", () => {
     const b = bucket(0, { admitted: 1, below_admission_threshold: 1204, rejected_over_quota: 0, untracked_senders: 1, untracked_events: 1 });
     expect(admissionSentences(b)).toEqual([
-      "1 new sender was admitted in this bucket and are now tracked by name.",
-      "1,204 senders were below the admission threshold and counted only.",
-      "0 senders were refused because the new-sender quota was full.",
-      "1 sender (1 event) is not tracked by name.",
+      "1 new sender admitted and tracked by name.",
+      "1,204 senders below the admission threshold, counted only.",
+      "0 senders refused, new-sender quota full.",
+      "1 sender (1 event) not tracked by name.",
     ]);
     expect(admissionSentences(b, turkish)[1]).toBe("1.204 gönderen kabul eşiğinin altında kaldı ve yalnızca sayıldı.");
   });

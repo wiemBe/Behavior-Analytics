@@ -53,17 +53,17 @@ describe("FleetPage", () => {
     await renderPage({ window: "7d" });
     expect(spy).toHaveBeenCalledWith("7d");
     expect(screen.getAllByRole("heading", { level: 1 })).toHaveLength(1);
-    expect(screen.getByText(/Last 7 days:/)).toHaveTextContent(
+    expect(screen.getByText(/^7 days:/)).toHaveTextContent(
       "2026-10-12 08:00:00 UTC to 2026-10-13 08:00:00 UTC",
     );
     expect(screen.getByRole("link", { name: "7 d" })).toHaveAttribute("aria-current", "page");
     expect(screen.getByRole("link", { name: "24 h" })).not.toHaveAttribute("aria-current");
   });
 
-  it("states how expected EPS is computed, across every cell the window spans", async () => {
+  it("keeps the expected-EPS explanation off the page (it lives in the Guide)", async () => {
     vi.spyOn(fleetApi, "summary").mockResolvedValue(summary());
     await renderPage();
-    expect(screen.getByText(/across every UTC weekday and hour cell the window spans/)).toBeInTheDocument();
+    expect(screen.queryByText(/across every UTC weekday and hour cell the window spans/)).toBeNull();
     expect(screen.queryByText(/most directly/)).toBeNull();
   });
 

@@ -68,10 +68,10 @@ describe("log source list states", () => {
     await renderPage();
     expect(
       screen.getByText(
-        /No log sources yet\. Trigger an inventory sync to pull them from the configured provider\./,
+        /No log sources yet\. Run an inventory sync\./,
       ),
     ).toBeInTheDocument();
-    expect(screen.getByText(/^0 sources\./)).toBeInTheDocument();
+    expect(screen.getByText(/^0 sources$/)).toBeInTheDocument();
   });
 });
 
@@ -80,7 +80,7 @@ describe("log source list contents", () => {
 
   it("keeps the SOC-owned fields visible and links each source", async () => {
     await renderPage();
-    expect(screen.getByText(/^1 sources\./)).toBeInTheDocument();
+    expect(screen.getByText(/^1 sources$/)).toBeInTheDocument();
     const table = screen.getByRole("table");
     for (const header of [
       "Name",
@@ -150,7 +150,7 @@ describe("log source list honesty", () => {
     vi.spyOn(api, "logSources").mockRejectedValue(new ApiError(500, "secret"));
     await renderPage();
     expect(screen.queryByText(/\d+ sources/)).toBeNull();
-    expect(screen.getByText(/QRadar-owned fields refresh on sync/)).toBeInTheDocument();
+    expect(screen.queryByText(/QRadar-owned fields refresh on sync/)).toBeNull();
   });
 
   // A null QRadar status used to be drawn in the alarm ("crit") tone although it is unknown.

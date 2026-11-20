@@ -35,10 +35,7 @@ async function LogSourcesPage() {
         title={t("title")}
         description={
           // A failed read has no count: "0 sources" would claim an empty inventory.
-          <>
-            {error ? "" : `${t("countLead", { count: plainCount(sources.length, locale) })} `}
-            {t("description")}
-          </>
+          error ? undefined : t("countLead", { count: plainCount(sources.length, locale) })
         }
       />
 

@@ -80,7 +80,7 @@ describe("expectedInfo", () => {
   it("is null with its meaning when no source has a baseline", () => {
     const e = expectedInfo(cls({ expected_eps: null, baseline_sources: 0, baseline_share: 0 }));
     expect(e.value).toBeNull();
-    expect(e.note).toMatch(/no source has a baseline/i);
+    expect(e.note).toMatch(/no baseline yet/i);
   });
   it("states N of M sources and flags a partial basis", () => {
     const e = expectedInfo(cls({ baseline_sources: 3, baseline_share: 0.5 }));

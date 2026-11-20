@@ -4,26 +4,26 @@
     "sources": "Fleet sources"
   },
   "errors": {
-    "forbidden": "Your role cannot read the fleet (permission read:fleet). Nothing was changed."
+    "forbidden": "Your role lacks permission read:fleet."
   },
   "page": {
     "title": "Log-source fleet",
-    "description": "Volume per class of log source against its baseline, and the sources waiting for review. Times are UTC.",
+    "description": "See Guide.",
     "loadingWhat": "the log-source fleet",
     "errorWhat": "The log-source fleet",
     "noticeHeading": "The fleet summary could not be shown.",
     "loadFailed": "The fleet summary could not be loaded.",
-    "forbidden": "Your role cannot read the fleet summary (permission read:fleet). Nothing was changed.",
-    "unreachable": "The fleet summary could not be loaded. The backend may be unreachable; check that it is running, then reload the page.",
+    "forbidden": "Your role lacks permission read:fleet.",
+    "unreachable": "The backend may be unreachable. Reload the page.",
     "queueLabel": "Review queue",
     "queueLead": "Review queue:",
-    "windowLine": "Last {window}: <start></start> to <end></end>, in {minutes}-minute buckets.",
+    "windowLine": "{window}: <start></start> to <end></end>, {minutes}-minute buckets.",
     "noClassesHeading": "No classes were returned.",
-    "noClassesBody": "The summary lists every class that has at least one source. Run an inventory sync from the Log Sources page, then reload.",
-    "noteEvents": "Events and mean EPS count complete buckets only. Where the window is incomplete, the row says how many buckets are partial or missing.",
-    "noteExpected": "Expected EPS is the sum, over the sources that have a baseline, of each source's mean baseline median across every UTC weekday and hour cell the window spans. A source counts only when all of those cells are reliable.",
+    "noClassesBody": "Run an inventory sync from Log Sources, then reload.",
+    "noteEvents": "See Guide.",
+    "noteExpected": "See Guide.",
     "internalHeading": "QRadar internal sources",
-    "internalCounts": "{enabled} enabled, {disabled} disabled. They are counted apart from the classes above and carry no volume figure here."
+    "internalCounts": "{enabled} enabled, {disabled} disabled."
   },
   "queue": {
     "newSources": "{count, plural, one {# new source} other {# new sources}}",
@@ -46,9 +46,9 @@
     "detail": "{partial} partial, {missing} missing"
   },
   "expected": {
-    "noBaseline": "No source has a baseline yet.",
-    "from": "From {count} sources with a baseline.",
-    "fromOf": "From {count} of {total} sources with a baseline."
+    "noBaseline": "No baseline yet",
+    "from": "{count} sources",
+    "fromOf": "{count} of {total} sources"
   },
   "basis": {
     "OVERRIDE": "Operator override",
@@ -90,12 +90,12 @@
     "basis": "Basis: {value}"
   },
   "failure": {
-    "sourceForbidden": "Your role cannot change a source's classification (permission log_source:write). Nothing was changed.",
+    "sourceForbidden": "Your role cannot change a source's classification (permission log_source:write).",
     "notChanged": "Not changed. {reason}"
   },
   "classTable": {
     "label": "Log-source classes",
-    "caption": "Log-source classes: volume over the last {window} against the expected volume, the completeness of the window and open incidents, with the busiest sources under each class.",
+    "caption": "Volume per log-source class over the last {window}.",
     "class": "Class",
     "events": "Events",
     "meanEps": "Mean EPS",
@@ -104,14 +104,14 @@
     "incidents": "Open incidents",
     "enabledDisabled": "{enabled} enabled, {disabled} disabled",
     "noSources": "No sources",
-    "noCompleteBucket": "No complete bucket in the window.",
-    "completeOnly": "complete buckets only",
+    "noCompleteBucket": "No complete bucket.",
+    "completeOnly": "complete only",
     "noExpectation": "No expectation",
-    "coversPart": "Covers part of the class only.",
+    "coversPart": "See Guide.",
     "incomplete": "Incomplete",
     "noneOpen": "None open",
     "topSources": "Top sources by events",
-    "historyBuckets": "{from} of {complete} complete buckets were read from QRadar history, not judged."
+    "historyBuckets": "{from} of {complete} from QRadar history, not judged."
   },
   "filters": {
     "class": "Class",
@@ -129,14 +129,14 @@
   },
   "sourcesPage": {
     "title": "Fleet sources",
-    "description": "Fleet sources.",
+    "description": "See Guide.",
     "activeFilters": "Active filters",
     "noticeHeading": "The source list could not be shown.",
-    "unreachable": "The source list could not be loaded. The backend may be unreachable; check that it is running, then reload the page.",
+    "unreachable": "The source list could not be loaded. Reload the page.",
     "emptyFiltered": "No source matches these filters.",
     "emptyInventory": "No log sources are in the inventory.",
-    "emptyFilteredHint": "Widen or clear the filters to see more sources.",
-    "emptyInventoryHint": "Run an inventory sync from the Log Sources page; sources appear here once they are synced."
+    "emptyFilteredHint": "Widen or clear the filters.",
+    "emptyInventoryHint": "Run an inventory sync from Log Sources."
   },
   "sourcesTable": {
     "label": "Log sources and their classification",
@@ -307,10 +307,10 @@
       "applying": "Applying…",
       "done": "Updated {count} sources.",
       "needsPermission": "Changing classes needs {permission}.",
-      "forbidden": "The change was not applied. It needs {permission}.",
-      "notFound": "Not applied: {count} selected sources no longer exist. Reload the list.",
-      "refused": "The change was not applied: {detail}",
-      "failed": "The change was not applied: {detail}"
+      "forbidden": "Not applied. Needs {permission}.",
+      "notFound": "Not applied: {count} selected sources no longer exist.",
+      "refused": "Not applied: {detail}",
+      "failed": "Not applied: {detail}"
     },
     "export": {
       "button": "Export CSV",
@@ -321,13 +321,13 @@
       "last": "Last inventory sync: ",
       "never": "No inventory sync has run yet.",
       "failedOn": "The last sync failed on {names}.",
-      "queued": "Queued — the list refreshes when the sync finishes.",
-      "alreadyRunning": "A sync is already running — the list refreshes when it finishes.",
+      "queued": "Queued. The list refreshes when the sync finishes.",
+      "alreadyRunning": "A sync is already running. The list refreshes when it finishes.",
       "done": "The sync finished and the list was reloaded.",
-      "failedNow": "The sync failed on {names}. The list is unchanged.",
-      "timeout": "No report after {minutes} minutes. It may still be queued.",
-      "forbidden": "Syncing the inventory needs {permission}.",
-      "error": "The sync could not be queued: {detail}",
+      "failedNow": "The sync failed on {names}. List unchanged.",
+      "timeout": "No report after {minutes} minutes; it may still be queued.",
+      "forbidden": "Sync needs {permission}.",
+      "error": "Sync not queued: {detail}",
       "statusError": "The last sync time could not be read.",
       "running": "Sync running",
       "pass": {
@@ -363,24 +363,24 @@
           "unknown": "unknown cause"
         },
         "action": {
-          "timeout": "Use Sync now to retry; if it repeats, QRadar may be overloaded.",
-          "auth": "Check the API token in the console settings and its security profile.",
-          "rate_limited": "QRadar is limiting requests; Sync now again in a few minutes.",
-          "upstream": "QRadar answered with an error; retry with Sync now, then check its logs.",
-          "network": "Check that the console is reachable from this host, then use Sync now.",
-          "malformed": "QRadar sent a page this version cannot read; keep the support bundle for the maintainers.",
-          "unknown": "Use Sync now to retry; if it repeats, check the worker log."
+          "timeout": "Retry with Sync now; if it repeats, QRadar may be overloaded.",
+          "auth": "Check the API token and its security profile.",
+          "rate_limited": "QRadar is limiting requests. Sync again in a few minutes.",
+          "upstream": "QRadar returned an error. Retry, then check its logs.",
+          "network": "Check the console is reachable from this host, then retry.",
+          "malformed": "QRadar sent an unreadable page. Keep the support bundle.",
+          "unknown": "Retry with Sync now; if it repeats, check the worker log."
         },
         "labelAction": "What to do"
       },
-      "donePartial": "The sync finished partly; the list shows the pages that were read."
+      "donePartial": "The sync finished partly; the list shows the pages read."
     },
     "state": {
       "updating": "Updating the list…",
       "errorHeading": "The source list could not be shown.",
       "errorUnreachable": "The source list could not be loaded.",
-      "errorForbidden": "You may not view the fleet. The list needs {permission}.",
-      "errorSession": "Your session has ended. Sign in again, then reload the page.",
+      "errorForbidden": "Your role lacks permission {permission}.",
+      "errorSession": "Your session has ended. Sign in again.",
       "retry": "Retry",
       "emptyInventory": "No log sources are in the inventory.",
       "emptyInventoryHint": "Sync the inventory to list sources.",
@@ -441,9 +441,9 @@
     "clear": "Clear override",
     "save": "Save",
     "saving": "Saving…",
-    "forbidden": "Not saved. It needs {permission}.",
-    "notFound": "Not saved. This source no longer exists.",
-    "refused": "Not saved. The class was refused.",
+    "forbidden": "Not saved. Needs {permission}.",
+    "notFound": "Not saved. Source no longer exists.",
+    "refused": "Not saved. Class refused.",
     "failed": "Not saved. The backend could not be reached."
   }
 }

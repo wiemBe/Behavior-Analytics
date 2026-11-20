@@ -199,14 +199,22 @@ describe("missing and partial data", () => {
     expect(area.data).toHaveLength(1);
   });
 
-  it("tells the reader that a gap is not zero traffic", () => {
-    render(<VolumeChart buckets={[bucket()]} expected={2} expectedLow={null} expectedHigh={null} />);
-    expect(screen.getByText(/They are not zero traffic/i)).toBeInTheDocument();
+  it("names a gap in the legend and keeps the footnote off the chart", () => {
+    render(
+      <VolumeChart
+        buckets={[bucket(), bucket({ bucket_start: "2026-07-20T10:05:00Z", completeness: "MISSING" })]}
+        expected={2}
+        expectedLow={null}
+        expectedHigh={null}
+      />,
+    );
+    expect(screen.getByText("Not fully collected")).toBeInTheDocument();
+    expect(screen.queryByText(/They are not zero traffic/i)).toBeNull();
   });
 
   it("calls an empty window an absence of collection, not zero traffic", () => {
     render(<VolumeChart buckets={[]} expected={2} expectedLow={null} expectedHigh={null} />);
-    expect(screen.getByText(/absence of collection, not an observation of zero/i)).toBeInTheDocument();
+    expect(screen.getByText(/not zero traffic/i)).toBeInTheDocument();
   });
 });
 

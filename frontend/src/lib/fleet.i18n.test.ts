@@ -108,7 +108,7 @@ describe("figures", () => {
   });
 
   it("words the expectation with its basis, and says when there is none", () => {
-    expect(expectedInfo(cls()).note).toBe("From 2 of 4 sources with a baseline.");
+    expect(expectedInfo(cls()).note).toBe("2 of 4 sources");
     expect(expectedInfo(cls(), turkish).note).toBe("Baseline'ı olan kaynaklar: 2 / 4.");
     expect(expectedInfo(cls({ baseline_share: null }), turkish).note).toBe("Baseline'ı olan 2 kaynaktan.");
     const none = expectedInfo(cls({ expected_eps: null }), turkish);

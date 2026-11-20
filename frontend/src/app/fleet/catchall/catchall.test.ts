@@ -92,8 +92,8 @@ describe("figures", () => {
   it("states the admission counts in words and says refused senders are not stored", () => {
     const lines = admissionSentences(bucket(0));
     expect(lines).toHaveLength(4);
-    expect(lines[0]).toMatch(/1 new sender was admitted/);
-    expect(lines[3]).toMatch(/5 senders \(7 events\) are not tracked by name/);
+    expect(lines[0]).toMatch(/1 new sender admitted/);
+    expect(lines[3]).toMatch(/5 senders \(7 events\) not tracked by name/);
   });
 });
 
@@ -129,11 +129,11 @@ describe("emptyKind", () => {
 });
 
 describe("senderFailure", () => {
-  it("names the permission on a 403 and says nothing changed", () => {
+  it("names the permission on a 403 and says it was not changed", () => {
     const f = senderFailure(new ApiError(403, "no"));
     expect(f.kind).toBe("forbidden");
     expect(f.text).toContain("log_source:write");
-    expect(f.text).toMatch(/Nothing was changed/);
+    expect(f.text).toMatch(/^Not changed\./);
   });
 
   it("says not changed on any other failure", () => {

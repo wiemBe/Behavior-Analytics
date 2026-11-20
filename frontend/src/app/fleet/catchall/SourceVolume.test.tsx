@@ -71,7 +71,7 @@ describe("SourceVolume", () => {
     const line = await screen.findByText(/Collected up to/);
     expect(line).toHaveTextContent("Collected up to 2026-10-13 10:25:00 UTC");
     const gaps = lastProps!.slots.filter((s) => s.state === "gap");
-    expect(line).toHaveTextContent(`${gaps.length} buckets before that were not measured`);
+    expect(line).toHaveTextContent(`${gaps.length} earlier buckets not measured`);
     expect(line).toHaveTextContent(/unknown, not zero/);
     // 10:10 and 10:15 have no row and lie before the latest measured bucket.
     const at = (m: number) => lastProps!.slots.find((s) => s.t === Date.UTC(2026, 9, 13, 10, m))!;
@@ -99,11 +99,12 @@ describe("SourceVolume", () => {
     render(<SourceVolume sources={sources()} now={NOW} />);
     const panel = await screen.findByRole("group", { name: "Selected bucket" });
     expect(panel).toHaveTextContent("2026-10-13 10:20:00 UTC to 2026-10-13 10:25:00 UTC");
-    expect(panel).toHaveTextContent(/1 new sender was admitted/);
-    expect(panel).toHaveTextContent(/2 senders were below the admission threshold/);
-    expect(panel).toHaveTextContent(/3 senders were refused/);
-    expect(panel).toHaveTextContent(/5 senders \(7 events\) are not tracked by name/);
-    expect(panel).toHaveTextContent(/never stored by name/);
+    expect(panel).toHaveTextContent(/1 new sender admitted/);
+    expect(panel).toHaveTextContent(/2 senders below the admission threshold/);
+    expect(panel).toHaveTextContent(/3 senders refused/);
+    expect(panel).toHaveTextContent(/5 senders \(7 events\) not tracked by name/);
+    // The refused-senders note moved to the Guide (catch-all-senders).
+    expect(panel).not.toHaveTextContent(/never stored by name/);
     // EXACT is said once, by the pill.
     expect(within(panel).getAllByText("Exact")).toHaveLength(1);
   });

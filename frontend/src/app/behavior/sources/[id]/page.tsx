@@ -219,13 +219,13 @@ async function SourceBehaviorPage({
               dash. formatMetric enforces the distinction. An unjudged bucket
               still shows its collected EPS, qualified below, never a zero. */}
           <div className="v">{formatMetric(behavior.observed_eps, 2, locale)}</div>
-          <p className="metric-note">
-            {figureNewerThanVerdict(behavior)
-              ? t.rich("collectedNewer", {
-                  time: () => <UtcTime value={behavior.last_bucket_at} variant="compact" />,
-                })
-              : t("mostRecent")}
-          </p>
+          {figureNewerThanVerdict(behavior) && (
+            <p className="metric-note">
+              {t.rich("collectedNewer", {
+                time: () => <UtcTime value={behavior.last_bucket_at} variant="compact" />,
+              })}
+            </p>
+          )}
         </div>
         <div className="card">
           <div className="k">{t("expectedEps")}</div>
@@ -239,7 +239,6 @@ async function SourceBehaviorPage({
               formatMetric(behavior.expected_eps, 2, locale)
             )}
           </div>
-          <p className="metric-note">{t("expectedNote")}</p>
         </div>
         <div className="card">
           <div className="k">{t("deviation")}</div>
@@ -247,7 +246,6 @@ async function SourceBehaviorPage({
           <div className="v">
             {unjudged ? <span className="muted">—</span> : formatRatio(behavior.deviation_ratio, locale)}
           </div>
-          <p className="metric-note">{t("deviationNote")}</p>
         </div>
         <div className="card">
           <div className="k">{t("lastEvent")}</div>
@@ -258,9 +256,7 @@ async function SourceBehaviorPage({
               <span className="muted">—</span>
             )}
           </div>
-          <p className="metric-note">
-            {behavior.last_event_at ? t("lastEventNote") : t("noEvent")}
-          </p>
+          {!behavior.last_event_at && <p className="metric-note">{t("noEvent")}</p>}
         </div>
       </div>
 
