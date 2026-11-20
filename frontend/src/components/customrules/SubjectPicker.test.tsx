@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import { SubjectPicker } from "./SubjectPicker";
 import { catalog } from "./fixtures";
 import { api } from "@/lib/api";
+import { wafCollection } from "@/components/waf/fixtures";
 import { paged, value, watch } from "@/components/propertywatch/fixtures";
 
 describe("custom-rule subject picker", () => {
@@ -25,6 +26,7 @@ describe("custom-rule subject picker", () => {
         total_endpoints: 0,
         active_endpoint_ceiling: 100,
         admission: { buckets_in_range: 1, buckets_admission_truncated: 0, rejected_over_quota: 0, below_admission_threshold: 2, untracked_requests: 2 },
+        collection: wafCollection(),
       }],
       total: 1,
       limit: 200,

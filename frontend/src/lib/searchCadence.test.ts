@@ -197,13 +197,19 @@ describe("outcomeInfo", () => {
   it("labels the outcomes the backend records", () => {
     expect(outcomeInfo("ok")).toEqual({ label: "Complete", tone: "ok" });
     expect(outcomeInfo("no-sources")?.label).toBe("No eligible WAF source");
-    expect(outcomeInfo("dispatched")?.label).toBe("Dispatched");
+    expect(outcomeInfo("dispatched")?.label).toBe("Source tasks queued");
     expect(outcomeInfo("partial")?.tone).toBe("warn");
     expect(outcomeInfo("failed")?.tone).toBe("crit");
     expect(outcomeInfo("no-instance")).toEqual({
       label: "No enabled instance",
       tone: "neutral",
     });
+  });
+  it("does not tone a queued dispatch as complete, and tones a failed one critical", () => {
+    // Dispatch proves tasks were sent, not that any ran (FIX-71f).
+    expect(outcomeInfo("dispatched")?.tone).toBe("neutral");
+    expect(outcomeInfo("failed")?.tone).toBe("crit");
+    expect(outcomeInfo("ok")?.tone).toBe("ok");
   });
   it("has no label for an unknown outcome, so it is shown verbatim", () => {
     expect(outcomeInfo("COMPLETE")).toBeNull();

@@ -9,6 +9,7 @@ import type {
   WafSourceBehavior,
 } from "@/lib/api";
 import { fleetClass } from "@/lib/home/fixtures";
+import { wafCollection } from "@/components/waf/fixtures";
 
 export function coverage(over: Partial<CoverageSummary> = {}): CoverageSummary {
   return {
@@ -123,6 +124,7 @@ export function wafSource(over: Partial<WafSourceBehavior> = {}): WafSourceBehav
       below_admission_threshold: 0,
       untracked_requests: 0,
     },
+    collection: wafCollection(),
     ...over,
   };
 }

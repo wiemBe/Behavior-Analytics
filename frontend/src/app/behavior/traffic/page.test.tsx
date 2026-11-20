@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import TrafficError from "./error";
 import Loading from "./loading";
+import { wafCollection } from "@/components/waf/fixtures";
 import TrafficPageView from "./page";
 import {
   ApiError,
@@ -103,6 +104,7 @@ function wafSources(): PagedWafSources {
       below_admission_threshold: null,
       untracked_requests: null,
     },
+    collection: wafCollection(),
   };
   return {
     items: [

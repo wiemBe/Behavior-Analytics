@@ -19,7 +19,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 from enum import StrEnum
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field
 
@@ -1095,6 +1095,57 @@ class WafAdmissionOverflowOut(BaseModel):
     untracked_requests: int | None = None
 
 
+#: What one WAF source's recorded collection evidence says, worst first. One
+#: state per source: the page words it, this field never carries prose.
+WafCollectionState = Literal[
+    "not_eligible",
+    "failed",
+    "source_busy",
+    "capacity_unavailable",
+    "history_reading",
+    "budget_exhausted",
+    "no_progress",
+    "no_interval_due",
+    "no_run_recorded",
+    "collecting",
+]
+
+
+class WafCollectionOut(BaseModel):
+    """Whether the scheduled collection of one source is running, from what it recorded.
+
+    Built from the source's watermark records and nothing else, so it is
+    distinct from `latest_bucket` (a measurement): a source can have an old
+    bucket and a newer failure. Absent evidence is `no_run_recorded`, which is
+    neither healthy nor a claim that a task was lost. Never carries error text,
+    only the exception class and the lifecycle stage.
+    """
+
+    state: WafCollectionState
+    #: Short code of why the source is not eligible; set only for `not_eligible`.
+    ineligible_code: str | None = None
+    last_run_at: datetime | None = None
+    last_success_at: datetime | None = None
+    last_failure_at: datetime | None = None
+    #: Lifecycle stage of the last failure: setup, collect, evaluate, train or
+    #: commit. None until the run that failed recorded one.
+    failure_stage: str | None = None
+    failure_class: str | None = None
+    consecutive_failures: int | None = None
+    #: `source_locked` or `global_capacity`, with the time of the skip.
+    skip_reason: str | None = None
+    skipped_at: datetime | None = None
+    intervals_due: int | None = None
+    intervals_collected: int | None = None
+
+
+class WafDispatchOut(BaseModel):
+    """The last family dispatch: it proves tasks were sent, not that any ran."""
+
+    outcome: str
+    at: datetime
+
+
 class WafSourceBehaviorOut(BaseModel):
     """One WAF source: profile status, latest coverage, endpoint pressure."""
 
@@ -1116,6 +1167,7 @@ class WafSourceBehaviorOut(BaseModel):
     total_endpoints: int
     active_endpoint_ceiling: int
     admission: WafAdmissionOverflowOut
+    collection: WafCollectionOut
 
 
 class WafValidationFieldOut(BaseModel):
@@ -1160,6 +1212,8 @@ class WafSourceDetailOut(WafSourceBehaviorOut):
 
 class PagedWafSources(BaseModel):
     items: list[WafSourceBehaviorOut]
+    #: The WAF family's last dispatch; None when it has not run since the upgrade.
+    dispatch: WafDispatchOut | None = None
     total: int
     limit: int
     offset: int

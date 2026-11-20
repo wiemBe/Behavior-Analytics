@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { wafSource } from "./fixtures";
-import { isJudged, isOverflowing, needsAttention, sortByAttention, validationView } from "./wafSourceHealth";
+import { NO_RUN_RECORDED, wafCollection, wafSource } from "./fixtures";
+import { collectionTone, isJudged, isOverflowing, needsAttention, sortByAttention, validationView } from "./wafSourceHealth";
 
 describe("validationView", () => {
   it("calls a profile VALID only when it is valid for the current version", () => {
@@ -83,5 +83,41 @@ describe("isOverflowing", () => {
 
   it("never counts keys below the admission threshold, which are ordinary noise", () => {
     expect(isOverflowing(admission({ below_admission_threshold: 702 }))).toBe(false);
+  });
+});
+
+describe("judging needs collection evidence (FIX-71e)", () => {
+  it("does not judge a VALID enabled source nothing recorded a run for", () => {
+    expect(isJudged(wafSource({ collection: NO_RUN_RECORDED }))).toBe(false);
+    expect(needsAttention(wafSource({ collection: NO_RUN_RECORDED }))).toBe(true);
+  });
+
+  it.each([
+    "failed",
+    "not_eligible",
+    "source_busy",
+    "capacity_unavailable",
+    "history_reading",
+    "budget_exhausted",
+    "no_progress",
+    "no_run_recorded",
+  ] as const)("does not judge a source in state %s", (state) => {
+    expect(isJudged(wafSource({ collection: wafCollection({ state }) }))).toBe(false);
+  });
+
+  it.each(["collecting", "no_interval_due"] as const)("judges a source in state %s", (state) => {
+    expect(isJudged(wafSource({ collection: wafCollection({ state }) }))).toBe(true);
+  });
+
+  it("does not judge a collecting source whose profile is disabled or not current", () => {
+    expect(isJudged(wafSource({ enabled: false }))).toBe(false);
+    expect(isJudged(wafSource({ validation_current: false }))).toBe(false);
+  });
+
+  it("tones only collecting as ok", () => {
+    expect(collectionTone("collecting")).toBe("ok");
+    expect(collectionTone("failed")).toBe("crit");
+    expect(collectionTone("no_run_recorded")).toBe("warn");
+    expect(collectionTone("history_reading")).toBe("");
   });
 });

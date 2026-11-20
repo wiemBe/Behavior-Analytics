@@ -29,7 +29,8 @@
     "emptyTitle": "No WAF source has a behavior profile.",
     "emptyText": "Nothing is collected or judged until a log source is mapped and validated.",
     "lead": "<num>{judged} of {listed}</num> {listed, plural, one {source} other {sources}} judged{pages, select, page { on this page; {total} in all} other {}}",
-    "covers": "<start></start> to <end></end>"
+    "covers": "<start></start> to <end></end>",
+    "dispatchFailed": "The last dispatch failed <time></time>. Some source tasks may not have been queued."
   },
   "range": {
     "label": "Admission overflow range",
@@ -75,7 +76,38 @@
     "inMaintenance": "In maintenance",
     "keyBuckets": "(key-buckets)",
     "keyBucketsMeaning": "Counted per bucket: an endpoint key refused in several buckets of the range counts once for each of them.",
-    "note": "A key-bucket is one endpoint key in one collected bucket; a key refused in several buckets counts once for each. Below admission threshold is low-volume noise, not overflow."
+    "note": "A key-bucket is one endpoint key in one collected bucket; a key refused in several buckets counts once for each. Below admission threshold is low-volume noise, not overflow.",
+    "collection": "Collection",
+    "collectionState": {
+      "collecting": "Collecting",
+      "no_run_recorded": "No source run recorded",
+      "not_eligible": "Not collected",
+      "failed": "Last run failed",
+      "source_busy": "Source busy",
+      "capacity_unavailable": "Waiting for search capacity",
+      "history_reading": "Reading history",
+      "budget_exhausted": "Search budget used up",
+      "no_progress": "Ran, stored no bucket",
+      "no_interval_due": "No interval due"
+    },
+    "collectionWhy": {
+      "collection_disabled": "Collection is off",
+      "monitoring_disabled": "Monitoring is off for this source",
+      "source_missing": "Log source not found"
+    },
+    "collectionSub": {
+      "failedAt": "{stage} stage, <time></time>",
+      "failed": "<time></time>",
+      "skipped": "Skipped <time></time>",
+      "succeeded": "Last run <time></time>"
+    },
+    "collectionDetails": {
+      "summary": "Details",
+      "lastRun": "Last run <time></time>",
+      "intervals": "{collected} of {due} intervals stored",
+      "failures": "{count} failed runs in a row",
+      "errorClass": "Error class {name}"
+    }
   },
   "endpoints": {
     "tableLabel": "Tracked endpoints",

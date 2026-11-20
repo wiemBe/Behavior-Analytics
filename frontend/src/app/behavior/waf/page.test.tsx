@@ -5,12 +5,13 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import WafBehaviorError from "./error";
 import Loading from "./loading";
 import WafBehaviorPage from "./page";
-import { WAF_SOURCE_ID, wafSource } from "@/components/waf/fixtures";
+import { NO_RUN_RECORDED, WAF_SOURCE_ID, wafSource } from "@/components/waf/fixtures";
 import { ApiError, api, type PagedWafSources, type WafSourceBehavior } from "@/lib/api";
 
-function paged(items: WafSourceBehavior[]): PagedWafSources {
+function paged(items: WafSourceBehavior[], dispatch?: PagedWafSources["dispatch"]): PagedWafSources {
   return {
     items,
+    dispatch,
     total: items.length,
     limit: 50,
     offset: 0,
@@ -26,8 +27,9 @@ beforeEach(() => {
 async function renderPage(
   items: WafSourceBehavior[] = [wafSource()],
   params: Record<string, string | undefined> = {},
+  dispatch?: PagedWafSources["dispatch"],
 ) {
-  const call = vi.spyOn(api, "wafBehaviorSources").mockResolvedValue(paged(items));
+  const call = vi.spyOn(api, "wafBehaviorSources").mockResolvedValue(paged(items, dispatch));
   const view = render(await WafBehaviorPage({ searchParams: Promise.resolve(params) }));
   return { ...view, call };
 }
@@ -74,6 +76,34 @@ describe("WAF behavior: composition", () => {
     const { call } = await renderPage([wafSource()], { range: "forever" });
     const { since, until } = call.mock.calls[0][0]!;
     expect((Date.parse(until!) - Date.parse(since!)) / 3600_000).toBeCloseTo(24, 5);
+  });
+});
+
+describe("WAF behavior: collection evidence (FIX-71e)", () => {
+  const noBucket = { latest_bucket: null, collection: NO_RUN_RECORDED };
+
+  it("does not count VALID sources nothing ran for as judged", async () => {
+    await renderPage([
+      wafSource({ log_source_id: "a", log_source_name: "alpha", ...noBucket }),
+      wafSource({ log_source_id: "b", log_source_name: "bravo", ...noBucket }),
+    ]);
+    expect(screen.getByText("0 of 2")).toBeInTheDocument();
+    expect(screen.getAllByText("No source run recorded")).toHaveLength(2);
+  });
+
+  it("says once that the last dispatch failed, with its UTC time", async () => {
+    await renderPage([wafSource()], {}, { outcome: "failed", at: "2026-10-13T08:45:00Z" });
+    const line = screen.getByText(/The last dispatch failed/);
+    expect(line).toHaveTextContent("2026-10-13 08:45:00 UTC");
+    expect(screen.getAllByText(/The last dispatch failed/)).toHaveLength(1);
+  });
+
+  it.each([
+    ["a dispatch that succeeded", { outcome: "dispatched", at: "2026-10-13T08:45:00Z" }],
+    ["no recorded dispatch", null],
+  ])("shows no dispatch line for %s", async (_name, dispatch) => {
+    await renderPage([wafSource()], {}, dispatch);
+    expect(screen.queryByText(/The last dispatch failed/)).not.toBeInTheDocument();
   });
 });
 

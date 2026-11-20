@@ -1978,6 +1978,43 @@ export interface WafAdmissionOverflow {
   untracked_requests: number | null;
 }
 
+// One state per source, from what its collection records say (FIX-71e). Absent
+// evidence is `no_run_recorded`: never healthy, and not a claim that a task was lost.
+export type WafCollectionState =
+  | "not_eligible"
+  | "failed"
+  | "source_busy"
+  | "capacity_unavailable"
+  | "history_reading"
+  | "budget_exhausted"
+  | "no_progress"
+  | "no_interval_due"
+  | "no_run_recorded"
+  | "collecting";
+
+export interface WafCollection {
+  state: WafCollectionState;
+  // Set only for `not_eligible`: collection_disabled, monitoring_disabled, profile_disabled,
+  // validation_stale, validation_not_valid, source_missing.
+  ineligible_code: string | null;
+  last_run_at: string | null;
+  last_success_at: string | null;
+  last_failure_at: string | null;
+  // setup, collect, evaluate, train or commit; null until the failed run recorded one.
+  failure_stage: string | null;
+  failure_class: string | null;
+  consecutive_failures: number | null;
+  skip_reason: string | null;
+  skipped_at: string | null;
+  intervals_due: number | null;
+  intervals_collected: number | null;
+}
+
+export interface WafDispatch {
+  outcome: string;
+  at: string;
+}
+
 export interface WafSourceBehavior {
   log_source_id: string;
   log_source_name: string;
@@ -1994,6 +2031,7 @@ export interface WafSourceBehavior {
   total_endpoints: number;
   active_endpoint_ceiling: number;
   admission: WafAdmissionOverflow;
+  collection: WafCollection;
 }
 
 export interface WafAnalystValidationField {
@@ -2032,6 +2070,8 @@ export interface WafSourceDetail extends WafSourceBehavior {
 
 export interface PagedWafSources {
   items: WafSourceBehavior[];
+  // The family's last dispatch: it proves tasks were sent, not that any ran. Null before the first.
+  dispatch?: WafDispatch | null;
   total: number;
   limit: number;
   offset: number;

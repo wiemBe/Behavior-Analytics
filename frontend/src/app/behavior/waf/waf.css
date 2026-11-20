@@ -21,7 +21,7 @@
   white-space: nowrap;
 }
 /* The ceiling figure ("200 / 200") stays whole; its notes wrap under it. */
-.waf-sources td.num:nth-child(5) {
+.waf-sources td.num:nth-child(6) {
   min-width: 14ch;
 }
 
@@ -56,4 +56,11 @@
   margin: 0 0 var(--sp-2);
   color: var(--text-2);
   font-size: var(--fs-sm);
+}
+
+/* The disclosure's lines are a plain list, not a bulleted block. */
+.waf-sources .waf-collection-detail {
+  list-style: none;
+  margin: var(--sp-1) 0 0;
+  padding: 0;
 }

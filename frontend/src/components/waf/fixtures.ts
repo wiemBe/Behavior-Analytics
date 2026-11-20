@@ -10,6 +10,7 @@ import type {
   WafBaselineCell,
   WafEndpointRef,
   WafMetricBucket,
+  WafCollection,
   WafSourceBehavior,
 } from "@/lib/api";
 
@@ -281,9 +282,44 @@ export function wafSource(over: Partial<WafSourceBehavior> = {}): WafSourceBehav
       below_admission_threshold: 41,
       untracked_requests: 312,
     },
+    collection: wafCollection(),
     ...over,
   };
 }
+
+export function wafCollection(over: Partial<WafCollection> = {}): WafCollection {
+  return {
+    state: "collecting",
+    ineligible_code: null,
+    last_run_at: "2026-10-13T08:57:00Z",
+    last_success_at: "2026-10-13T08:57:00Z",
+    last_failure_at: null,
+    failure_stage: null,
+    failure_class: null,
+    consecutive_failures: 0,
+    skip_reason: null,
+    skipped_at: null,
+    intervals_due: 3,
+    intervals_collected: 3,
+    ...over,
+  };
+}
+
+/** A source nothing recorded a run for: the production state of FIX-71. */
+export const NO_RUN_RECORDED: WafCollection = {
+  state: "no_run_recorded",
+  ineligible_code: null,
+  last_run_at: null,
+  last_success_at: null,
+  last_failure_at: null,
+  failure_stage: null,
+  failure_class: null,
+  consecutive_failures: null,
+  skip_reason: null,
+  skipped_at: null,
+  intervals_due: null,
+  intervals_collected: null,
+};
 
 export function wafEndpoint(over: Partial<WafEndpointInventory> = {}): WafEndpointInventory {
   return {

@@ -243,7 +243,7 @@ describe("last-run outcome", () => {
     ["failed", "Failed"],
     ["no-instance", "No enabled instance"],
     ["no-sources", "No eligible WAF source"],
-    ["dispatched", "Dispatched"],
+    ["dispatched", "Source tasks queued"],
   ])("labels the recorded outcome %s as %s", (raw, label) => {
     withOutcome(raw);
     const row = rowOf("Log source volume");
@@ -417,5 +417,53 @@ describe("changing a cadence", () => {
       "1 h",
     );
     expect(put).not.toHaveBeenCalled();
+  });
+});
+
+describe("WAF fan-out row (FIX-71f)", () => {
+  const waf = (outcome: string, searches: number | null = null) =>
+    item({
+      family: "WAF_COLLECTION",
+      last_run: {
+        at: "2026-10-12T09:00:20Z",
+        outcome,
+        searches_sent: searches,
+        buckets_collected: null,
+        split_count: null,
+      },
+    });
+
+  it("calls a dispatch Source tasks queued, neutral, never Dispatched or Complete", () => {
+    render(<SearchCadenceTable items={[waf("dispatched")]} />);
+    const row = within(rowOf("WAF collection"));
+    const pill = row.getByText("Source tasks queued");
+    expect(pill).toHaveClass("pill");
+    expect(pill).not.toHaveClass("ok", "warn", "crit");
+    expect(row.queryByText("Dispatched")).not.toBeInTheDocument();
+    expect(row.queryByText("Complete")).not.toBeInTheDocument();
+  });
+
+  it("states the unknown search count once, with the reason as its title", () => {
+    render(<SearchCadenceTable items={[waf("dispatched")]} />);
+    const row = within(rowOf("WAF collection"));
+    expect(row.getAllByText("not counted")).toHaveLength(1);
+    expect(row.getByText("not counted")).toHaveAttribute(
+      "title",
+      expect.stringMatching(/source task runs on its own/),
+    );
+    // Unknown is not zero.
+    expect(row.queryByText("0")).not.toBeInTheDocument();
+  });
+
+  it("links the WAF row to the per-source runs, and no other row", () => {
+    render(<SearchCadenceTable items={[waf("dispatched"), item()]} />);
+    const link = within(rowOf("WAF collection")).getByRole("link", { name: "Source runs" });
+    expect(link).toHaveAttribute("href", "/behavior/waf");
+    expect(within(rowOf("Log source volume")).queryByRole("link")).not.toBeInTheDocument();
+  });
+
+  it("shows a failed dispatch as Failed in the critical tone", () => {
+    render(<SearchCadenceTable items={[waf("failed")]} />);
+    expect(within(rowOf("WAF collection")).getByText("Failed")).toHaveClass("crit");
   });
 });
