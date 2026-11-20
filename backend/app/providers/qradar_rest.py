@@ -55,7 +55,14 @@ from app.ips.keyed_rows import (
     validate_ips_fields,
     validate_ips_sources,
 )
-from app.jdbc.dto import JdbcConfigDTO, JdbcConfigWalk
+from app.jdbc.dto import (
+    ConfigState,
+    JdbcConfigDTO,
+    JdbcConfigWalk,
+    JdbcRowRejection,
+    JdbcWalkFailure,
+    JdbcWalkState,
+)
 from app.jdbc.parameters import project_jdbc_config
 from app.models.enums import IpsDimension, PwScopeKind
 from app.providers.base import (
@@ -702,6 +709,7 @@ class QRadarRestProvider(QRadarProvider):
         size = page_size or self._page_size
         pages = max_pages or self._max_pages
         collected: list[dict] = []
+        consecutive = 0
 
         for page in range(pages):
             start = page * size
@@ -726,7 +734,9 @@ class QRadarRestProvider(QRadarProvider):
                     raise MalformedUpstreamResponse(
                         f"QRadar returned a non-list body for a collection endpoint ({category})"
                     )
-                if inventory_walk and any(not isinstance(item, dict) for item in body):
+                if inventory_walk and not page_consumer and any(
+                    not isinstance(item, dict) for item in body
+                ):
                     raise MalformedUpstreamResponse("QRadar returned a non-object inventory row")
                 if inventory_walk and row_validator:
                     try:
@@ -734,16 +744,27 @@ class QRadarRestProvider(QRadarProvider):
                             raise ValueError
                     except ValueError as exc:
                         raise MalformedUpstreamResponse("QRadar returned a malformed rule") from exc
+                if page_consumer is not None:
+                    page_consumer(body)
+                    if (inventory_walk
+                            and asyncio.get_running_loop().time() >= inventory_walk.deadline):
+                        raise TimeoutError
             except (ProviderError, TimeoutError) as exc:
                 if inventory_walk is None:
                     raise
-                inventory_walk.fail(failure_kind(exc))
+                why = failure_kind(exc)
+                inventory_walk.fail(why)
+                consecutive += 1
+                body = None  # Drop rejected raw pages before another request.
+                # JDBC alone skips ordinary failures; other walks retain their policy.
+                if (page_consumer is not None and why != FAILURE_AUTH and consecutive < 3
+                        and asyncio.get_running_loop().time() < inventory_walk.deadline):
+                    continue
                 return _PageWalk(collected, True)
+            consecutive = 0
             if inventory_walk:
                 inventory_walk.pages_done += 1
-            if page_consumer is not None:
-                page_consumer(body)
-            else:
+            if page_consumer is None:
                 # Drop non-object entries rather than failing the whole page.
                 collected.extend(item for item in body if isinstance(item, dict))
             ended_short = len(body) < size
@@ -756,7 +777,9 @@ class QRadarRestProvider(QRadarProvider):
                 extra={"endpoint_category": str(category), "max_pages": pages},
             )
             if inventory_walk:
-                inventory_walk.fail(FAILURE_UPSTREAM)
+                inventory_walk.fail(
+                    JdbcWalkFailure.PAGE_CEILING if page_consumer else FAILURE_UPSTREAM
+                )
             return _PageWalk(collected, True)
         return _PageWalk(collected, False)
 
@@ -984,47 +1007,75 @@ class QRadarRestProvider(QRadarProvider):
         )
         return [dto for dto in (self._to_log_source(r) for r in rows) if dto is not None]
 
-    async def walk_jdbc_configs(self) -> JdbcConfigWalk:
+    async def walk_jdbc_configs(
+        self, *, page_timeout_seconds: float = 30, page_attempts: int = 3,
+        wall_seconds: float = 600,
+    ) -> JdbcConfigWalk:
         """Read only protocol-8 parameters, projecting and discarding each raw page.
 
-        The first failed page ends this skeleton incomplete. Deadline and failure
-        policy are added by J1b2 before any dispatcher can call it.
+        Reuse the shared page deadline, including retries and sleeps. JDBC skips
+        ordinary failed pages, stopping on auth or three consecutive failures.
         """
         configs: list[JdbcConfigDTO] = []
         pages_read = rows_read = 0
+        rejected: dict[JdbcRowRejection, int] = {}
+        seen: set[int] = set()
+        loop = asyncio.get_running_loop()
+        started = loop.time()
+        budget = PageWalkBudget(started + wall_seconds, page_timeout_seconds, page_attempts)
 
         def consume(body: list) -> None:
             nonlocal pages_read, rows_read
             pages_read += 1
             rows_read += len(body)
             projected: list[JdbcConfigDTO] = []
+            page_ids: set[int] = set()
+            invalid = False
             for row in body:
+                reason = None
                 if (
                     not isinstance(row, dict)
                     or type(row.get("id")) is not int
                     or type(row.get("protocol_type_id")) is not int
                 ):
-                    raise MalformedUpstreamResponse("QRadar returned a malformed JDBC row")
-                projected.append(project_jdbc_config(
-                    qradar_id=row["id"], protocol_type_id=row["protocol_type_id"],
-                    protocol_parameters=row.get("protocol_parameters"),
-                ))
+                    reason = JdbcRowRejection.MALFORMED_ROW
+                elif row["protocol_type_id"] != 8:
+                    reason = JdbcRowRejection.WRONG_PROTOCOL
+                elif row["id"] in seen or row["id"] in page_ids:
+                    reason = JdbcRowRejection.DUPLICATE_ID
+                else:
+                    page_ids.add(row["id"])
+                    config = project_jdbc_config(
+                        qradar_id=row["id"], protocol_type_id=8,
+                        protocol_parameters=row.get("protocol_parameters"),
+                    )
+                    if config.config_state is ConfigState.NOT_COLLECTED:
+                        reason = JdbcRowRejection.PARAMETERS_UNAVAILABLE
+                    else:
+                        projected.append(config)
+                if reason is not None:
+                    rejected[reason] = rejected.get(reason, 0) + 1
+                    invalid = True
+            if invalid:
+                raise MalformedUpstreamResponse("QRadar returned an invalid JDBC page")
             configs.extend(projected)
+            seen.update(page_ids)
 
-        complete = False
-        try:
-            walk = await self._walk_pages(
-                "/config/event_sources/log_source_management/log_sources",
-                category=EndpointCategory.LOG_SOURCE_LIST,
-                params={"fields": JDBC_LIST_FIELDS, "sort": LOG_SOURCE_LIST_SORT,
-                        "filter": "protocol_type_id=8"},
-                page_size=JDBC_PAGE_SIZE,
-                page_consumer=consume,
-            )
-            complete = not walk.truncated
-        except ProviderError:
-            pass  # No raw page or upstream exception leaves this boundary.
-        return JdbcConfigWalk(configs, pages_read, rows_read, complete)
+        walk = await self._walk_pages(
+            "/config/event_sources/log_source_management/log_sources",
+            category=EndpointCategory.LOG_SOURCE_LIST,
+            params={"fields": JDBC_LIST_FIELDS, "sort": LOG_SOURCE_LIST_SORT,
+                    "filter": "protocol_type_id=8"},
+            page_size=JDBC_PAGE_SIZE, inventory_walk=budget, page_consumer=consume,
+        )
+        complete = not walk.truncated and budget.complete
+        state = (JdbcWalkState.COMPLETE if complete else
+                 JdbcWalkState.PARTIAL if configs else JdbcWalkState.FAILED)
+        return JdbcConfigWalk(
+            configs, pages_read, rows_read, state,
+            JdbcWalkFailure(budget.failure_kind) if budget.failure_kind else None,
+            budget.pages_failed, rejected, loop.time() - started,
+        )
 
     async def walk_log_sources(
         self,
