@@ -21,6 +21,14 @@ from typing import Any
 MAX_ADDRESSES = 100
 
 
+def source_enabled(row: dict[str, Any], *, strict: bool) -> bool | None:
+    """Preserve JSON booleans in strict mode; otherwise use legacy coercion."""
+    if not strict:
+        return bool(row.get("enabled", True))
+    value = row.get("enabled")
+    return value if isinstance(value, bool) else None
+
+
 def parse_qradar_time(value: Any) -> datetime | None:
     """QRadar timestamps are epoch milliseconds. Always returns UTC or None.
 
