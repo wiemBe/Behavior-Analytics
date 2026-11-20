@@ -601,6 +601,18 @@ case "$*" in
       *) echo 1 ;;
     esac
     ;;
+  *" app.cli.features show")
+    for pair in catchall_collection_enabled=on geo_collection_enabled=on explanation_enabled=on \
+      waf_collection_enabled=on ips_collection_enabled=on rule_match_collection_enabled=off \
+      custom_rules_enabled=on pw_collection_enabled=on identity_collection_enabled=on \
+      qradar_health_collection_enabled=on; do
+      key=${pair%=*}; value=${pair#*=}
+      raw=$(sed -n "s/^${key^^}=//p" .env)
+      case "$raw" in true) value=on ;; false) value=off ;; esac
+      printf '%s=%s source=fixture\\n' "$key" "$value"
+    done ;;
+  *" app.cli.features defaults") echo "Families on by code default: fixture" ;;
+  *" app.cli.features apply "*) ;;
   *" app.cli.qradar add "*)
     [ -f "$HOME/qr_out" ] && cat "$HOME/qr_out"
     exit "$(rc qr_rc)" ;;
@@ -1325,6 +1337,8 @@ def _wizard_replies(inst: Install, *history: str) -> list[str]:
         "",  # 12. registry user, none
         "",  # 13. admin user, default
         *history,
+        "",  # 15. keep family defaults
+        "",  # 16. keep alerting defaults
     ]
 
 
@@ -1769,16 +1783,12 @@ def test_install_summary_names_on_and_off_families_and_the_backup_timer(
     result = _install_flow(inst, tmp_path, flow_path)
 
     assert result.returncode == 0, result.stdout + result.stderr
-    phrase = _cadence_phrase()
-    assert (
-        "Searching QRadar   log source volume, catch-all, geo, explanations, WAF, IPS, "
-        "custom rules, property watch "
-        f"({phrase}; WAF, IPS uses 15 min until changed on that page)"
-    ) in result.stdout
-    assert (
-        "Left off           rule-match collection (turn them on later)"
-    ) in result.stdout
-    assert "WAF, IPS uses 15 min" in result.stdout
+    assert "Effective family switches (Administration → Features):" in result.stdout
+    for key, value in (("waf_collection_enabled", "on"), ("ips_collection_enabled", "on"),
+                       ("identity_collection_enabled", "on"),
+                       ("qradar_health_collection_enabled", "on"),
+                       ("explanation_enabled", "on"), ("rule_match_collection_enabled", "off")):
+        assert f"{key}={value}" in result.stdout
     env_text = (inst.root / ".env").read_text()
     for key in (
         "WAF_COLLECTION_ENABLED", "WAF_OUTCOME_COLLECTION_ENABLED",
@@ -1807,7 +1817,7 @@ def test_install_summary_never_prints_an_internal_phase_name(
     assert "log source volume incidents" in result.stdout
 
 
-def test_install_summary_notes_fifteen_minutes_when_waf_is_on(
+def test_install_summary_reads_effective_family_switches(
     inst: Install, tmp_path: Path, flow_path: str
 ) -> None:
     env_path = inst.root / ".env"
@@ -1817,16 +1827,11 @@ def test_install_summary_notes_fifteen_minutes_when_waf_is_on(
     result = _install_flow(inst, tmp_path, flow_path)
 
     assert result.returncode == 0, result.stdout + result.stderr
-    searching = next(
-        line for line in result.stdout.splitlines() if line.startswith("Searching QRadar")
-    )
-    left = next(line for line in result.stdout.splitlines() if line.startswith("Left off"))
-    assert "WAF" in searching
-    assert "uses 15 min until changed on that page" in searching
-    assert _cadence_phrase() in searching
-    assert "WAF" not in left
-    assert "IPS" in left
-    assert "property watch" in left
+    assert "waf_collection_enabled=on" in result.stdout
+    assert "ips_collection_enabled=off" in result.stdout
+    assert "pw_collection_enabled=off" in result.stdout
+    assert "every 5 min unless changed under Administration → Search cadence" in result.stdout
+    assert "WAF, IPS, identity and QRadar health default to 15 min" in result.stdout
 
 
 def test_install_summary_says_the_backup_timer_is_installed(
@@ -2171,8 +2176,12 @@ def test_the_frontend_address_must_be_an_ipv4_address(inst: Install, tmp_path: P
         ("property watch", "PW_COLLECTION_ENABLED"),
     ],
 )
-def test_installer_family_table_matches_code_defaults(label: str, key: str) -> None:
+def test_installer_family_table_matches_code_defaults(label: str, key: str, monkeypatch, capsys):
+    from app.cli import features
     from app.core.config import Settings
 
-    default = "on" if Settings.model_fields[key.lower()].default else "off"
-    assert f"{label}\t{key}\t{default}\t" in SCRIPT.read_text()
+    monkeypatch.setattr("sys.argv", ["features", "defaults"])
+    assert features.main() == 0
+    family = next(name for name, (keys, _) in features.FAMILIES.items() if key.lower() in keys)
+    enabled = capsys.readouterr().out.removeprefix("Families on by code default: ").strip()
+    assert (family in enabled.split(", ")) == bool(Settings.model_fields[key.lower()].default)

@@ -240,7 +240,7 @@ same image store; there is no `docker tag` command to run by hand. Without a
 bundle, `upgrade <version> --offline` requires the images to be loaded already. The Turkish runbook,
 `docs/OPERATIONS.md` (Çevrimdışı paket), has the full list of checks.
 
-The last question of a first install asks whether to read the last 28 days of history from
+Question 14 of a first install asks whether to read the last 28 days of history from
 QRadar, so baselines are steadier from day 1. It is asked once: a re-run, `--reconfigure` and a
 site that already has `.qradar-dash/state.json` do not ask it again, and `upgrade` never does. The
 question and the note above it are:
@@ -251,6 +251,27 @@ question and the note above it are:
     so that it fits 72 hours); the admin page shows the progress and the estimate.
 14. Read the last 28 days of history from QRadar now, so baselines are steadier from day 1? (yes/no):
 ```
+
+Questions 15 and 16 then choose the behaviour families and alerting policy:
+
+```text
+15. Which behaviour families should collect now? (defaults, none, or comma/space list: waf, ips, rule-match, property-watch, identity, custom-rules) [defaults]:
+16. Keep alerting defaults, record without paging, or alert? (defaults/shadow/alerting) [defaults]:
+```
+
+`FAMILIES=defaults` and `ALERTING=defaults` preserve the defaults and write no switch rows.
+WAF, IPS, identity, property watches and custom rules default on; rule-match defaults off.
+The installer prepares the backend image, then prints its code-default list from Python
+before asking these two questions.
+Use an explicit comma- or space-separated list to collect only those families, or `none`
+to disable all six. `defaults` and `none` must each stand alone. `shadow` records without
+paging; `alerting` enables alerts for collecting families. Unlisted families have collection
+and alerting turned off. WAF includes outcome and client breakdown collection.
+These questions are asked once, skipped with saved answers, and asked again by `--reconfigure`.
+Answers files accept `FAMILIES` and `ALERTING` too. Only differences from the effective state
+are stored. A failure warns and installation continues; the final summary reads the effective
+switches. Review or change them under **Administration → Features** (`/admin/features`).
+Upgrade never asks or writes switches; existing `.env` values remain the initial defaults.
 
 In an answers file the key is `HISTORY_BACKFILL`:
 

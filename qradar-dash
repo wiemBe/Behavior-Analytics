@@ -180,7 +180,7 @@ ANSWER_KEYS="PUBLIC_HOSTNAME TLS_CERT_FILE TLS_KEY_FILE EXTERNAL_PROXY FORWARDED
 QRADAR_URL QRADAR_CONSOLE_FQDN QRADAR_API_VERSION QRADAR_TOKEN_FILE QRADAR_CA_FILE
 QRADAR_ALLOW_MISSING_AKI INSTANCE_NAME BACKUP_DIR GHCR_USER GHCR_TOKEN_FILE ADMIN_USERNAME
 HTTPS_PORT API_LOOPBACK_PORT UI_LOOPBACK_PORT IMAGE_PREFIX SECRETS_VOLUME PROXY_CERTS_VOLUME
-EDGE_SUBNET PROXY_EDGE_IP FRONTEND_EDGE_IP PROJECT_NAME HISTORY_BACKFILL"
+EDGE_SUBNET PROXY_EDGE_IP FRONTEND_EDGE_IP PROJECT_NAME HISTORY_BACKFILL FAMILIES ALERTING"
 
 declare -A ANS=()
 ERRORS=()
@@ -207,6 +207,25 @@ check_value() {
       grep -q 'PRIVATE KEY' "$val" || { say "not a PEM private key: '$val'"; return 1; } ;;
     EXTERNAL_PROXY | QRADAR_ALLOW_MISSING_AKI | HISTORY_BACKFILL)
       [[ $val =~ ^(yes|no)$ ]] || { say "must be yes or no"; return 1; } ;;
+    FAMILIES)
+      local word count=0 exclusive=no
+      local -a words=()
+      read -r -a words <<<"${val//,/ }"
+      for word in "${words[@]}"; do
+        case "$word" in
+          defaults | none) exclusive=yes ;;
+          waf | ips | rule-match | property-watch | identity | custom-rules) ;;
+          *) say "unknown family: $word"; return 1 ;;
+        esac
+        count=$((count + 1))
+      done
+      if [ "$count" -eq 0 ] || { [ "$exclusive" = yes ] && [ "$count" -ne 1 ]; }; then
+        say "use defaults or none alone, or a list of family words"
+        return 1
+      fi ;;
+    ALERTING)
+      [[ $val =~ ^(defaults|shadow|alerting)$ ]] \
+        || { say "must be defaults, shadow or alerting"; return 1; } ;;
     FORWARDED_ALLOW_IPS)
       [ "$val" != "*" ] || { say "must list the proxy address, not *"; return 1; }
       [[ $val =~ ^[0-9A-Fa-f.:,/\ ]+$ ]] || { say "must be a comma list of addresses"; return 1; } ;;
@@ -446,6 +465,29 @@ wizard() {
     say "    so that it fits 72 hours); the admin page shows the progress and the estimate."
     ask HISTORY_BACKFILL "14. Read the last 28 days of history from QRadar now, so baselines are steadier from day 1? (yes/no)"
   fi
+  if [ "$reconfigure" = yes ] || { [ -z "${ANS[FAMILIES]:-}" ] \
+    && [ ! -e .qradar-dash/state.json ] && [ ! -L .qradar-dash/state.json ]; }; then
+    # The new image supplies its own defaults; finish these questions after step 4.
+    ask_families=yes
+  fi
+}
+
+
+feature_defaults_hint() {
+  dc run --rm --no-deps -T backend python -m app.cli.features defaults \
+    || warn "the code-default families could not be read; see Administration → Features"
+}
+
+wizard_families() {
+  feature_defaults_hint
+  : "${ANS[FAMILIES]:=defaults}"
+  : "${ANS[ALERTING]:=defaults}"
+  say "    WAF and IPS send the most searches. Identity searches mapping chunks; property watches"
+  say "    share a console budget; rule-match searches windows; custom rules use only the database."
+  say "    Catch-all, geography and QRadar health search per console; explanations search on demand."
+  ask FAMILIES "15. Which behaviour families should collect now? (defaults, none, or comma/space list: waf, ips, rule-match, property-watch, identity, custom-rules)"
+  ask ALERTING "16. Keep alerting defaults, record without paging, or alert? (defaults/shadow/alerting)"
+  apply_families=yes
 }
 
 # ---------------------------------------------------------------- preflight
@@ -1418,7 +1460,7 @@ install_cleanup() {
 }
 
 cmd_install() {
-  local mode=pull bundle="" answers="" dry=no reconfigure=no checkout
+  local mode=pull bundle="" answers="" dry=no reconfigure=no checkout apply_families=no ask_families=no
   trap install_cleanup EXIT
   FLAG_EXTERNAL_PROXY=no
   FLAG_SKIP_QRADAR=no
@@ -1458,6 +1500,7 @@ cmd_install() {
   # 1. Answers. Pure: nothing is written until every check has passed.
   if [ -n "$answers" ]; then
     parse_answers "$answers"
+    apply_families=yes
   elif [ -s "$SAVED_ANSWERS" ] && [ "$reconfigure" = "no" ] && [ -f "$ENV_FILE" ]; then
     say "Re-run: reusing the saved answers in $SAVED_ANSWERS (use --reconfigure to be asked again)."
     parse_answers "$SAVED_ANSWERS"
@@ -1502,6 +1545,10 @@ cmd_install() {
 
   # 4. Images.
   get_images "$mode" "$bundle"
+  if [ "$ask_families" = yes ]; then
+    wizard_families
+    save_answers
+  fi
 
   # 5. The Fernet key, made inside the backend image. Never replaced once set.
   if [ -z "$enc" ]; then
@@ -1571,6 +1618,17 @@ cmd_install() {
       info "history backfill: $HB_OUT"
     else
       warn "history backfill: the answer was not recorded (exit $HB_RC); the console stays undecided and the first administrator sign-in will ask"
+    fi
+  fi
+
+  # 9c. Apply only changed switches, even when the QRadar check failed. Saved answers on
+  # an ordinary re-run are not replayed over later choices on Administration → Features.
+  if [ "$apply_families" = yes ] && { [ -n "${ANS[FAMILIES]:-}" ] || [ -n "${ANS[ALERTING]:-}" ]; }; then
+    if [ "$ask_families" = no ]; then feature_defaults_hint; fi
+    if ! dc run --rm --no-deps -T backend python -m app.cli.features apply \
+      --only-differing --families "${ANS[FAMILIES]:-defaults}" \
+      --alerting "${ANS[ALERTING]:-defaults}" --source installer; then
+      warn "family switches were not applied; review Administration → Features"
     fi
   fi
 
@@ -1716,41 +1774,15 @@ csv_join() {
   printf '%s\n' "$out"
 }
 
-# Defaults match backend/app/core/config.py. The "every 5 min" sentence is the
-# SearchCadence.FIVE_MINUTES default; WAF and IPS are the fifteen-minute families.
+# The Features CLI reads the table over .env; a failed read must never guess a state.
 summary_search_lines() {
-  local -a on=( "log source volume" ) off=() slow=()
-  local label key default slow_family on_text off_text note slow_text
-  while IFS=$'\t' read -r label key default slow_family; do
-    [ -n "$label" ] || continue
-    if env_flag_on "$key" "$default"; then
-      on+=( "$label" )
-      [ "$slow_family" = yes ] && slow+=( "$label" )
-    else
-      off+=( "$label" )
-    fi
-  done <<'EOF'
-catch-all	CATCHALL_COLLECTION_ENABLED	on	no
-geo	GEO_COLLECTION_ENABLED	on	no
-explanations	ANOMALY_EXPLANATION_ENABLED	on	no
-WAF	WAF_COLLECTION_ENABLED	on	yes
-IPS	IPS_COLLECTION_ENABLED	on	yes
-rule-match collection	RULE_MATCH_COLLECTION_ENABLED	off	no
-custom rules	CUSTOM_RULES_ENABLED	on	no
-property watch	PW_COLLECTION_ENABLED	on	no
-EOF
-  on_text=$(csv_join "${on[@]}")
-  note="every 5 min unless changed under Administration → Search cadence"
-  if [ "${#slow[@]}" -gt 0 ]; then
-    slow_text=$(csv_join "${slow[@]}")
-    note="$note; $slow_text uses 15 min until changed on that page"
-  fi
-  say "Searching QRadar   $on_text ($note)"
-  if [ "${#off[@]}" -eq 0 ]; then
-    say "Left off           none"
+  local state
+  if state=$(dc run --rm --no-deps -T backend python -m app.cli.features show); then
+    say "Effective family switches (Administration → Features):"
+    printf '%s\n' "$state"
+    say "Default cadence    every 5 min unless changed under Administration → Search cadence; WAF, IPS, identity and QRadar health default to 15 min"
   else
-    off_text=$(csv_join "${off[@]}")
-    say "Left off           $off_text (turn them on later)"
+    say "Family switch state could not be read; see Administration → Features."
   fi
 }
 
@@ -3915,6 +3947,7 @@ cmd_upgrade() {
     return 1
   }
   say "Upgrade complete: $installed -> $target."
+  say "Family switches are managed under Administration → Features; values from \`.env\` stay in force until you set one there."
 }
 
 upgrade_auto_rollback() { # backup old-version old-images target at

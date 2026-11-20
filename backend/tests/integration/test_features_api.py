@@ -408,3 +408,67 @@ async def test_missing_table_fails_closed(api, db_session):
             {"json": {"enabled": True}} if method == "PUT" else {}))
         assert response.status_code == 503
     assert await db_session.scalar(select(func.count()).select_from(AuditLog)) == 0
+
+
+@pytest.mark.parametrize("families,alerting", [
+    ("defaults", "defaults"), ("defaults", "shadow"), ("none", "defaults"),
+    ("waf,ips", "shadow"), ("rule-match", "alerting"),
+])
+async def test_installer_cli_families_rows_audit_and_show(
+    db_schema, db_session, tmp_path, families, alerting,
+):
+    from pathlib import Path
+
+    from app.cli.features import FAMILIES as INSTALLER_FAMILIES
+
+    database = make_url(db_schema)
+    env = {key: value for key, value in os.environ.items() if key.lower() not in FEATURE_KEYS}
+    env.update(FEATURE_SWITCHES_DB="true", POSTGRES_HOST=database.host,
+               POSTGRES_PORT=str(database.port or 5432), POSTGRES_USER=database.username,
+               POSTGRES_PASSWORD=database.password or "", POSTGRES_DB=database.database,
+               TMPDIR=str(tmp_path), PYTHONPATH=str(Path(__file__).resolve().parents[2]))
+    defaults = {key: bool(Settings.model_fields[key].default) for key in FEATURE_KEYS}
+    # Explicit initial defaults isolate the subprocess from a developer's .env file.
+    env.update({key.upper(): str(value).lower() for key, value in defaults.items()})
+
+    def command(*args, code=0):
+        result = subprocess.run(  # noqa: S603 — fixed module and test-owned arguments
+            [sys.executable, "-m", "app.cli.features", *args], env=env, cwd=tmp_path,
+            capture_output=True, text=True, check=False,
+        )
+        assert result.returncode == code, result.stdout + result.stderr
+        return result.stdout
+
+    command("apply", "--families", "waf,wrong", "--alerting", "shadow", code=2)
+    assert await db_session.scalar(select(func.count()).select_from(FeatureSwitch)) == 0
+    assert await db_session.scalar(select(func.count()).select_from(AuditLog)) == 0
+    expected = dict(defaults)
+    for name, (keys, alert) in INSTALLER_FAMILIES.items():
+        enabled = defaults[keys[0]] if families == "defaults" else name in families.split(",")
+        if families != "defaults":
+            expected.update(dict.fromkeys(keys, enabled))
+            if not enabled:
+                expected[alert] = False
+        if enabled and alerting != "defaults":
+            expected[alert] = alerting == "alerting"
+    differing = {key: value for key, value in expected.items() if defaults[key] != value}
+    for _ in range(2):
+        command("apply", "--only-differing", "--families", families, "--alerting", alerting,
+                "--source", "installer")
+        db_session.expire_all()
+        rows = (await db_session.scalars(select(FeatureSwitch))).all()
+        assert {row.key: row.enabled for row in rows} == differing
+        assert all(row.updated_by == "installer" for row in rows)
+        audits = (await db_session.scalars(select(AuditLog))).all()
+        assert len(audits) == len(differing)
+        assert all(row.actor == "installer" and row.action == "feature_switch.update"
+                   for row in audits)
+        shown = command("show")
+        for key, value in expected.items():
+            line = next(line for line in shown.splitlines() if line.startswith(f"{key}="))
+            assert line.startswith(f"{key}={'on' if value else 'off'} ")
+            assert f"'source': '{'db' if key in differing else 'env'}'" in line
+    # The generic assignment path also skips a matching effective DB value.
+    command("apply", "--only-differing", "waf_collection_enabled=" + (
+        "on" if expected["waf_collection_enabled"] else "off"))
+    assert await db_session.scalar(select(func.count()).select_from(AuditLog)) == len(differing)
