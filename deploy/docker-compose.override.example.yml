@@ -20,6 +20,10 @@ services:
   celery-worker:
     networks:
       - qradar_vm
+  # celery-walker: the QRadar collection walks (inventory, property catalog, rules, offenses).
+  celery-walker:
+    networks:
+      - qradar_vm
   # qradar-mcp: the optional profile's console client (QRADAR_CONSOLE_FQDN).
   # celery-beat only publishes task names to the broker. migrate only opens
   # Postgres. Neither is attached.
