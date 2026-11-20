@@ -19,7 +19,7 @@ function Page() {
   const t = useTranslations("admin.page");
   return (
     <>
-      <PageHeader title={t("title")} description={t("description")} />
+      <PageHeader title={t("title")} />
       <UndecidedNotice />
       <AdminIndex />
     </>

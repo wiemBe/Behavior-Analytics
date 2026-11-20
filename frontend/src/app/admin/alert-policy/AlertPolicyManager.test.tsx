@@ -74,15 +74,10 @@ describe("the table", () => {
     expect(screen.getByText("Property watch")).toBeInTheDocument();
   });
 
-  it("a NO_EVENTS row, and an all-detectors log-source row, say the outage policy wins, with a link", () => {
+  it("no row carries the outage-wins note any more: the Guide owns it", () => {
     mount();
-    const notes = screen.getAllByText(/A record-only outage policy wins; this policy can only digest or alert/);
-    // pa-fw-01 NO_EVENTS and the Firewall class row (all detectors of log_source).
-    expect(notes).toHaveLength(2);
-    expect(within(notes[0]).getByRole("link", { name: "Outage alerts" })).toHaveAttribute(
-      "href",
-      "/admin/outage-policy",
-    );
+    expect(screen.queryByText(/outage policy wins/)).toBeNull();
+    expect(screen.queryByRole("link", { name: "Outage alerts" })).toBeNull();
   });
 
   it("renders the three modes as neutral pills, never a status hue", () => {
@@ -107,12 +102,11 @@ describe("the table", () => {
     expect(screen.getByRole("button", { name: /^Remove the policy for / })).toBeInTheDocument();
   });
 
-  it("explains the modes once and the default, the family switch and the precedence", () => {
+  it("no mode legend on the page: the Guide explains the modes, the default and the precedence", () => {
     mount();
-    expect(screen.getAllByText("raises an alert, as before.")).toHaveLength(1);
-    expect(screen.getByText("records the incident and raises no alert.")).toBeInTheDocument();
-    expect(screen.getByText("records the incident and lists it in the daily e-mail.")).toBeInTheDocument();
-    expect(document.body.textContent).toMatch(/A family whose alerting switch is off raises nothing, whatever its policy\./);
+    expect(screen.queryByText("What a mode does")).toBeNull();
+    expect(screen.queryByText("raises an alert, as before.")).toBeNull();
+    expect(document.body.textContent).not.toMatch(/whatever its policy/);
   });
 });
 
@@ -126,7 +120,7 @@ describe("empty and read-only", () => {
 
   it("without admin:outage the table is read-only and names the permission", () => {
     mount(MIXED, READER);
-    expect(screen.getByText(/needs the admin:outage permission/)).toBeInTheDocument();
+    expect(screen.getByText(/needs admin:outage/)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Add policy" })).toBeNull();
     expect(screen.queryByRole("button", { name: /^Edit / })).toBeNull();
     expect(screen.queryByRole("button", { name: /^Remove / })).toBeNull();
@@ -136,7 +130,7 @@ describe("empty and read-only", () => {
 
   it("while the session loads it makes no claim either way", () => {
     mount(MIXED, session([], "loading"));
-    expect(screen.queryByText(/needs the admin:outage permission/)).toBeNull();
+    expect(screen.queryByText(/needs admin:outage/)).toBeNull();
     expect(screen.queryByRole("button", { name: "Add policy" })).toBeNull();
     expect(screen.getByText("edge-waf")).toBeInTheDocument();
   });
@@ -195,7 +189,7 @@ describe("adding a policy", () => {
     const form = screen.getByRole("form", { name: "Add a policy" });
     expect(within(form).getByRole("button", { name: "Save policy" })).toBeDisabled();
     expect(within(form).getByRole("group", { name: "Before you save" })).toHaveTextContent(
-      "Choose what the policy governs first.",
+      "Choose what the policy governs.",
     );
     expect(screen.queryByRole("button", { name: "Add policy" })).toBeNull();
     await user.click(within(form).getByRole("button", { name: "Cancel" }));
@@ -279,7 +273,7 @@ describe("adding a policy", () => {
     await user.click(screen.getByRole("button", { name: "Add policy" }));
     await user.selectOptions(screen.getByLabelText("Family"), "property_watch");
     expect(screen.queryByRole("radio", { name: "A whole class" })).toBeNull();
-    expect(screen.getByText("A property watch has no class scope.")).toBeInTheDocument();
+    expect(screen.getByText("A watch has no class scope.")).toBeInTheDocument();
     await user.selectOptions(await screen.findByLabelText("Property watch"), WATCH);
     await user.selectOptions(screen.getByLabelText("Detector"), "PW_NEW_VALUE");
     await user.click(screen.getByRole("button", { name: "Save policy" }));
@@ -300,7 +294,7 @@ describe("adding a policy", () => {
     vi.spyOn(api, "propertyWatches").mockRejectedValue(new ApiError(500, "x"));
     await user.click(screen.getByRole("button", { name: "Add policy" }));
     await user.selectOptions(screen.getByLabelText("Family"), "property_watch");
-    expect(await screen.findByText(/The property watches could not be read:/)).toBeInTheDocument();
+    expect(await screen.findByText(/Watches could not be read:/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Save policy" })).toBeDisabled();
   });
 
@@ -352,7 +346,7 @@ describe("adding a policy", () => {
     await user.click(screen.getByRole("radio", { name: "A whole class" }));
     await user.selectOptions(screen.getByLabelText("Class"), "DNS");
     await user.click(screen.getByRole("button", { name: "Save policy" }));
-    expect(await screen.findByRole("alert")).toHaveTextContent(/^The policy was not saved: /);
+    expect(await screen.findByRole("alert")).toHaveTextContent(/^Not saved: /);
     expect(screen.getByLabelText("Class")).toHaveValue("DNS");
   });
 
@@ -380,7 +374,7 @@ describe("removing a row", () => {
     const remove = vi.spyOn(alertPolicyApi, "remove").mockResolvedValue(undefined);
     await user.click(screen.getByRole("button", { name: "Remove the policy for edge-waf, Request-rate spike" }));
     expect(screen.getByRole("group", { name: "Before you remove it" })).toHaveTextContent(
-      "the Digest row goes. That scope then follows a broader policy, or ALERT when none applies.",
+      "the Digest row goes. The scope follows a broader policy, or ALERT.",
     );
     expect(remove).not.toHaveBeenCalled();
     await user.click(screen.getByRole("button", { name: "Remove policy" }));
@@ -408,7 +402,7 @@ describe("removing a row", () => {
     vi.mocked(alertPolicyApi.list).mockResolvedValue(MIXED.filter((r) => r.id !== "row-source-waf"));
     await user.click(screen.getByRole("button", { name: /^Remove the policy for edge-waf/ }));
     await user.click(screen.getByRole("button", { name: "Remove policy" }));
-    expect(await screen.findByRole("alert")).toHaveTextContent(/already removed by someone else/);
+    expect(await screen.findByRole("alert")).toHaveTextContent(/already removed/);
     await waitFor(() => expect(screen.queryByText("edge-waf")).toBeNull());
   });
 
@@ -418,7 +412,7 @@ describe("removing a row", () => {
     vi.spyOn(alertPolicyApi, "remove").mockRejectedValue(new ApiError(500, "boom"));
     await user.click(screen.getByRole("button", { name: /^Remove the policy for edge-waf/ }));
     await user.click(screen.getByRole("button", { name: "Remove policy" }));
-    expect(await screen.findByText(/^The policy was not removed: /)).toBeInTheDocument();
+    expect(await screen.findByText(/^Not removed: /)).toBeInTheDocument();
     expect(screen.getByText("edge-waf")).toBeInTheDocument();
   });
 
@@ -430,7 +424,7 @@ describe("removing a row", () => {
     await user.click(screen.getByRole("button", { name: "Remove policy" }));
     await waitFor(() =>
       expect(document.body.textContent).toMatch(
-        /admin:outage permission to remove a policy\. Nothing was removed/,
+        /Needs the admin:outage permission\. Nothing was removed/,
       ),
     );
   });

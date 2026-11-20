@@ -127,7 +127,6 @@ export function OutagePolicyManager({
           <p>
             <strong>{t("emptyTitle")}</strong>
           </p>
-          <p>{t("emptyText")}</p>
         </div>
       )}
 

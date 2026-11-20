@@ -21,11 +21,7 @@ async function Page() {
   const t = await getTranslations("notifyRouting.page");
   return (
     <>
-      <PageHeader
-        guide={guideFor("/admin/notifications")}
-        title={t("title")}
-        description={t("description")}
-      />
+      <PageHeader guide={guideFor("/admin/notifications")} title={t("title")} />
       <NotificationRoutingPage />
     </>
   );

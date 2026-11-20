@@ -152,7 +152,6 @@ function Loaded({ list, onChanged }: { list: NotificationDestination[]; onChange
 
   return (
     <>
-      <p className="nr-hint">{t("intro")}</p>
       {list.length === 0 ? (
         <p className="notice">{t("empty")}</p>
       ) : (
@@ -376,13 +375,16 @@ function TestOutcome({ view }: { view: Exclude<TestView, { kind: "sending" }> })
             {result.ok ? t("okHeading", { name: view.name }) : t("failedHeading", { name: view.name })}
           </strong>
         </p>
-        <p>{sentence}</p>
-        <p>{t(`next.${result.result}` as "next.ok")}</p>
-        <p className="nr-code-line">
-          {t("code", {
-            result: result.status === null ? result.result : `${result.result} ${result.status}`,
-          })}
-        </p>
+        <details>
+          <summary>{t("details")}</summary>
+          <p>{sentence}</p>
+          <p>{t(`next.${result.result}` as "next.ok")}</p>
+          <p className="nr-code-line">
+            {t("code", {
+              result: result.status === null ? result.result : `${result.result} ${result.status}`,
+            })}
+          </p>
+        </details>
       </div>
     </div>
   );

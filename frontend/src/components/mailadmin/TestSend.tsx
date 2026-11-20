@@ -89,8 +89,11 @@ export function TestSend({
             <p>
               <strong>{t("acceptedHeading")}</strong>
             </p>
-            <p>{outcomeSentence(view, root)}</p>
-            <p>{t("next.sent")}</p>
+            <details>
+              <summary>{t("details")}</summary>
+              <p>{outcomeSentence(view, root)}</p>
+              <p>{t("next.sent")}</p>
+            </details>
           </div>
         </div>
       ) : null}
@@ -100,9 +103,12 @@ export function TestSend({
             <p>
               <strong>{t("failedHeading")}</strong>
             </p>
-            <p>{outcomeSentence(view, root)}</p>
-            <NextStep code={view.code} />
-            <p className="mail-code-line">{t("code", { code: view.code })}</p>
+            <details>
+              <summary>{t("details")}</summary>
+              <p>{outcomeSentence(view, root)}</p>
+              <NextStep code={view.code} />
+              <p className="mail-code-line">{t("code", { code: view.code })}</p>
+            </details>
           </div>
         </div>
       ) : null}

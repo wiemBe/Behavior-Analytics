@@ -61,7 +61,12 @@ export function DigestPanel({
       return (
         <>
           <p>{t("say.FAILED", { reason, items: r.item_count })}</p>
-          {next && <p className="field-hint">{next}</p>}
+          {next && (
+            <details>
+              <summary>{t("details")}</summary>
+              <p className="field-hint">{next}</p>
+            </details>
+          )}
           <p>{link("/admin/email", t("linkFailed"))}</p>
         </>
       );

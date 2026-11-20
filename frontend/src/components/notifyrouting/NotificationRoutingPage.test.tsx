@@ -72,11 +72,11 @@ describe("states", () => {
     render(<NotificationRoutingPage />);
     expect(
       await screen.findByText(
-        "No webhook destinations. Alerts still use the .env channels and e-mail recipients.",
+        "No webhook destinations; .env channels and e-mail still apply.",
       ),
     ).toBeInTheDocument();
     expect(
-      screen.getByText("No routing rules. Alerts still use the .env channels and e-mail recipients."),
+      screen.getByText("No routing rules; .env channels and e-mail still apply."),
     ).toBeInTheDocument();
     expect(screen.queryByRole("table")).not.toBeInTheDocument();
     // A rule needs a destination: with none, the add button is off and says why.
@@ -109,7 +109,7 @@ describe("states", () => {
     await screen.findByRole("table", { name: "Routing rules" });
     expect(screen.getByRole("button", { name: "Add rule" })).toBeDisabled();
     expect(
-      screen.getByText(/The destinations could not be loaded, so a rule cannot be added/),
+      screen.getByText(/Destinations could not be loaded; no rule can be added/),
     ).toBeInTheDocument();
     expect(screen.queryByText(/Add a destination first/)).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Try loading the destinations again" }));
@@ -287,7 +287,7 @@ describe("destination form: write-only fields", () => {
     await user.click(screen.getByRole("button", { name: "Add destination" }));
     const form = screen.getByRole("form", { name: "Add a webhook destination" });
     const http = within(form).getByRole("checkbox", { name: "Allow HTTP" });
-    expect(http).toHaveAccessibleDescription(/sent in clear text/);
+    expect(http).toHaveAccessibleDescription(/Sent in clear text/);
     const priv = within(form).getByRole("checkbox", { name: "Allow private addresses" });
     expect(priv).toHaveAccessibleDescription(/internal or loopback address/);
     expect(http).not.toBeChecked();
@@ -375,7 +375,7 @@ describe("send test", () => {
     const banner = (await screen.findByText("SOAR did not accept the test.")).closest(".banner") as HTMLElement;
     expect(banner).toHaveClass("crit");
     expect(banner).toHaveTextContent("Result: http_status 503.");
-    expect(banner).toHaveTextContent("Check its log.");
+    expect(banner).toHaveTextContent("The endpoint answered with an error status.");
   });
 
   it("explains an SSRF refusal", async () => {
@@ -394,7 +394,7 @@ describe("send test", () => {
     await send();
     const banner = (await screen.findByText("SOAR did not accept the test.")).closest(".banner") as HTMLElement;
     expect(banner).toHaveTextContent("Result: ssrf_refused.");
-    expect(banner).toHaveTextContent("The address is private, or it uses HTTP without the flag.");
+    expect(banner).toHaveTextContent("The address is private, or HTTP is used without its flag.");
   });
 
   it("tells the administrator to replace the headers on payload_invalid", async () => {
@@ -414,7 +414,7 @@ describe("send test", () => {
     const banner = (await screen.findByText("SOAR did not accept the test.")).closest(".banner") as HTMLElement;
     expect(banner).toHaveTextContent("Result: payload_invalid.");
     expect(banner).toHaveTextContent(
-      "The stored headers are not valid. Edit the destination and replace its headers.",
+      "The stored headers are invalid. Replace them.",
     );
   });
 
@@ -563,7 +563,7 @@ describe("rule form", () => {
     await user.type(within(form).getByLabelText("To"), "06:00");
     expect(
       within(form).getByText(
-        "This window runs past midnight: from 22:00 UTC to 24:00, and on to 06:00 UTC the next day.",
+        "Runs past midnight: 22:00 to 06:00 UTC next day.",
       ),
     ).toBeInTheDocument();
   });
@@ -585,7 +585,7 @@ describe("rule form", () => {
     await user.type(within(form).getByLabelText("To"), "22:00");
     await user.click(within(form).getByRole("button", { name: "Add rule" }));
     expect(
-      await within(form).findByText(/Enter both times as HH:MM between 00:00 and 23:59/),
+      await within(form).findByText(/Enter both times as HH:MM; they must differ/),
     ).toBeInTheDocument();
     expect(api.createRule).not.toHaveBeenCalled();
   });
@@ -599,8 +599,8 @@ describe("rule form", () => {
     await user.click(within(form).getByRole("checkbox", { name: "Only inside a time window" }));
     await user.type(within(form).getByLabelText("From"), "22:00");
     await user.type(within(form).getByLabelText("To"), "06:00");
-    const stop = within(form).getByRole("checkbox", { name: /Stop the \.env channels/ });
-    expect(stop).toHaveAccessibleDescription(/reach only the destinations picked here/);
+    const stop = within(form).getByRole("checkbox", { name: /Stop \.env channels/ });
+    expect(stop).toHaveAccessibleDescription(/reach only the picked destinations/);
     await user.click(stop);
     await user.click(within(form).getByRole("button", { name: "Add rule" }));
     await waitFor(() => expect(api.createRule).toHaveBeenCalled());

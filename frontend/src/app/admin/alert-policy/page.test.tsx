@@ -64,7 +64,7 @@ describe("alert policy page", () => {
     vi.spyOn(alertPolicyApi, "list").mockRejectedValue(new ApiError(403, "no"));
     vi.spyOn(alertPolicyApi, "digest").mockRejectedValue(new ApiError(403, "no"));
     render(await AlertPolicyPage());
-    expect(screen.getByRole("alert")).toHaveTextContent("You need the read:alerts permission");
+    expect(screen.getByRole("alert")).toHaveTextContent("Needs the read:alerts permission");
     expect(screen.queryByRole("table")).toBeNull();
     expect(screen.queryByRole("button", { name: "Add policy" })).toBeNull();
   });
@@ -122,7 +122,7 @@ describe("alert policy page", () => {
 describe("boundaries and navigation", () => {
   it("the loading boundary says what is being read", () => {
     render(<Loading />);
-    expect(document.body.textContent).toContain("Reading the alert policy and the daily digest.");
+    expect(document.body.textContent).toContain("Reading the alert policy.");
   });
 
   it("the error boundary says what happened, offers a retry and hides the exception", async () => {

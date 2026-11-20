@@ -180,7 +180,7 @@ export function DirectoryPage() {
 
   return (
     <div className={styles.stack}>
-      <PageHeader guide={guideFor("/admin/directory")} title={t("page.title")} description={t("page.description")} />
+      <PageHeader guide={guideFor("/admin/directory")} title={t("page.title")} />
       {load === "loading" ? <LoadingState what={t("boundary.loadingWhat")} /> : null}
       {load === "limited" ? (
         <>
@@ -224,7 +224,6 @@ export function DirectoryPage() {
               <p>
                 <strong>{t("unsaved.title")}</strong>
               </p>
-              <p>{t("unsaved.text")}</p>
             </div>
           ) : (
             <p>

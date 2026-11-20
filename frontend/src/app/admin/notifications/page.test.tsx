@@ -8,15 +8,15 @@ import Loading from "./loading";
 import Page from "./page";
 
 describe("Notification routing route", () => {
-  it("has exactly one h1 and states that times are UTC", async () => {
+  it("has exactly one h1 and no description or time-zone line", async () => {
     vi.spyOn(notificationRoutingApi, "rules").mockReturnValue(new Promise(() => {}));
     vi.spyOn(notificationRoutingApi, "destinations").mockReturnValue(new Promise(() => {}));
     render(await Page());
     const h1s = screen.getAllByRole("heading", { level: 1 });
     expect(h1s).toHaveLength(1);
     expect(h1s[0]).toHaveTextContent("Notification routing");
-    expect(screen.getByText(/Which alerts leave the site, and where the webhooks go\./)).toBeInTheDocument();
-    expect(screen.getByText(/Times are UTC\./)).toBeInTheDocument();
+    expect(screen.queryByText(/Which alerts leave the site/)).toBeNull();
+    expect(screen.queryByText(/Times are UTC\./)).toBeNull();
     expect(document.body.textContent).not.toMatch(/real-time|\blive\b|!/i);
   });
 

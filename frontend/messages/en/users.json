@@ -9,20 +9,20 @@
   },
   "page": {
     "title": "Users",
-    "description": "Accounts that can sign in, and the roles an administrator assigned. Last login is UTC.",
+    "description": "Users",
     "forbidden": "Your role cannot administer users (permission admin:users).",
     "loadFailed": "Users could not be loaded.",
     "tryAgain": "Try again"
   },
   "theAccount": "the account",
   "once": {
-    "initial": "The initial password for {name} is shown once. The account must change it at the next sign-in.",
-    "reset": "The new password for {name} is shown once. The account must change it at the next sign-in.",
+    "initial": "Initial password for {name}, shown once. It must be changed at the next sign-in.",
+    "reset": "New password for {name}, shown once. It must be changed at the next sign-in.",
     "dismiss": "Dismiss the password"
   },
   "outcome": {
-    "createdLocal": "Created local user {name}. The account must change the password at the next sign-in.",
-    "createdLdap": "Pre-created LDAP user {name}. The account has no password here.",
+    "createdLocal": "Created local user {name}.",
+    "createdLdap": "Pre-created LDAP user {name}.",
     "createFailed": "The account was not created.",
     "rolesNow": "Roles for {name} are now {roles}.",
     "rolesCleared": "Roles for {name} were cleared.",
@@ -34,16 +34,16 @@
     "notUnlocked": "The account was not unlocked.",
     "mismatch": "The new password and the confirmation do not match.",
     "notReset": "The password was not reset.",
-    "resetDone": "Reset the password for {name}. The account must change it at the next sign-in."
+    "resetDone": "Reset the password for {name}."
   },
   "empty": {
     "title": "No accounts are stored.",
-    "text": "Create a local account below, or pre-create a directory account so a role is in place before the first sign-in."
+    "text": "Create an account"
   },
   "authSources": { "LOCAL": "LOCAL", "LDAP": "LDAP" },
   "table": {
     "label": "Accounts",
-    "caption": "Accounts with source, display name, roles, status and last login. Times are UTC.",
+    "caption": "Accounts with source, roles, status and last login.",
     "username": "Username",
     "source": "Source",
     "displayName": "Display name",
@@ -62,7 +62,7 @@
     "notRequired": "Not required.",
     "rolesForm": "Roles",
     "rolesLegend": "Roles",
-    "rolesProblemEdit": "Roles could not be loaded. Saving can keep the roles already on this account, not add one that is missing from the list.",
+    "rolesProblemEdit": "Roles could not be loaded. Saving keeps the roles already on this account.",
     "savingRoles": "Saving roles",
     "saveRoles": "Save roles for {name}",
     "enabling": "Enabling",
@@ -78,7 +78,7 @@
     "resetting": "Resetting password",
     "reset": "Reset password for {name}",
     "ldapNoPassword": "An LDAP account has no password here.",
-    "select": "Select an account to change its roles, status, or local password."
+    "select": "Select an account to manage it."
   },
   "create": {
     "title": "Create an account",
@@ -87,8 +87,8 @@
     "displayName": "Display name",
     "email": "Email",
     "initialPassword": "Initial password",
-    "initialHint": "Shown once after the account is created. The account must change it at the next sign-in.",
-    "ldapHint": "The directory checks the password. This account is created here so a role can be assigned before the first sign-in.",
+    "initialHint": "Shown once. Changed at the next sign-in.",
+    "ldapHint": "The directory checks the password.",
     "rolesProblem": "Roles could not be loaded. Creating now assigns no role.",
     "creating": "Creating account",
     "submit": "Create account"
@@ -96,6 +96,6 @@
   "roles": {
     "none": "No roles are defined.",
     "noPermissions": "No permissions",
-    "notInList": "Not in the role list. Left selected so a save does not drop it."
+    "notInList": "Not in the role list. Kept on save."
   }
 }

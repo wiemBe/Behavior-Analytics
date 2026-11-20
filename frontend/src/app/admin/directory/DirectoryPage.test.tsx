@@ -280,14 +280,14 @@ describe("DirectoryPage", () => {
     const base = within(form).getByLabelText("User search base");
     const hint = document.getElementById(base.getAttribute("aria-describedby") ?? "");
     expect(hint).not.toBeNull();
-    expect(hint).toHaveTextContent("Optional. Empty sends no search base.");
+    expect(hint).toHaveTextContent("Optional.");
     expect(hint?.className.split(" ")).toContain(styles.hint);
     expect(hint?.className.split(" ")).not.toContain(styles.sectionNote);
   });
 
   it("separates the test description from the first field", async () => {
     render(<DirectoryPage />);
-    const note = await screen.findByText(/sent with the form above/);
+    const note = await screen.findByText(/sent once and not saved/);
     expect(note.className.split(" ")).toContain(styles.hint);
     expect(note.className.split(" ")).toContain(styles.sectionNote);
     // The page header leaves --sp-6 under its description. This note does the same.

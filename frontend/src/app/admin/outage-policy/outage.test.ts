@@ -40,7 +40,7 @@ describe("classImpact", () => {
     const { lines, known } = classImpact(BASE);
     expect(known).toBe(true);
     expect(lines[0]).toBe("12 monitored sources in Firewall will no longer raise outage alerts.");
-    expect(lines[1]).toBe("2 sources keep alerting through their own overrides.");
+    expect(lines[1]).toBe("2 sources keep alerting (own overrides).");
   });
 
   it("says the opposite when switching back to ALERT", () => {
@@ -52,7 +52,7 @@ describe("classImpact", () => {
       recordOnlyOverrides: 1,
     });
     expect(lines[0]).toBe("12 monitored sources in Firewall will raise outage alerts again.");
-    expect(lines[1]).toBe("1 source stays record-only through its own override.");
+    expect(lines[1]).toBe("1 source stays record-only (own override).");
   });
 
   it("states no kept sources when there are no overrides", () => {
@@ -75,7 +75,7 @@ describe("classImpact", () => {
 
   it("says when the row decides no source", () => {
     const { lines } = classImpact({ ...BASE, covered: 0 });
-    expect(lines[0]).toMatch(/no source changes behaviour/i);
+    expect(lines[0]).toMatch(/No monitored source in Firewall is decided by this row/i);
   });
 
   it("reports a grace-only change in buckets and minutes", () => {
@@ -124,7 +124,7 @@ describe("classImpact", () => {
       toMode: "ALERT",
       removal: true,
     });
-    expect(lines[0]).toBe("Firewall already resolves to Alert; removing the row changes no mode.");
+    expect(lines[0]).toBe("Firewall already resolves to Alert; no mode changes.");
   });
 
   it("cannot count when the default mode is not reported", () => {

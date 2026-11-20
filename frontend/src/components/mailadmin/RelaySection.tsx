@@ -84,7 +84,6 @@ function RelayFacts({ settings }: { settings: EmailSettings }) {
             <span className={settings.configured ? "pill" : "pill warn"}>
               {settings.configured ? t("status.configured") : t("status.notConfigured")}
             </span>
-            {settings.configured ? <span className="cell-sub">{t("status.note")}</span> : null}
           </dd>
         </div>
         <div>

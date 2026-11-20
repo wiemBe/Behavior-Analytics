@@ -210,13 +210,9 @@ function Form({
             value={draft.html}
             spellCheck={false}
             wrap="off"
-            aria-describedby={`${ids.html}-hint`}
             onFocus={() => (lastField.current = "html")}
             onChange={(event) => workspace.edit(keyName, { html: event.target.value })}
           />
-          <p className="mail-hint" id={`${ids.html}-hint`}>
-            {t("htmlHint")}
-          </p>
         </div>
         <div className="mail-field">
           <label htmlFor={ids.text}>{t("text")}</label>
@@ -368,7 +364,6 @@ export function PlaceholderList({
         <p className="mail-hint">{t("unavailable")}</p>
       ) : (
         <>
-          <p className="mail-hint">{t("help", { syntax: placeholders.syntax })}</p>
           <ul className="mail-placeholder-list">
             {placeholders.placeholders.map((item) => (
               <li key={item.name}>
