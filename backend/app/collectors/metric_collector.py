@@ -84,6 +84,7 @@ from app.history.source_floors import SourceFloors
 from app.history.state import HistoryFamily, HistoryState, HistoryTrigger, next_state
 from app.history.topup import CHUNKS_KEY, CUTOFFS_KEY, TopupChunks
 from app.i18n.messages import MessageRef
+from app.log_source_policy import source_pause_enabled, target_filters
 from app.models.enums import BucketCompleteness, SearchFamily
 from app.models.instance import QRadarInstance
 from app.models.log_source import LogSource, LogSourceMetric
@@ -117,7 +118,9 @@ logger = logging.getLogger(__name__)
 
 
 async def monitored_source_map(
-    session: AsyncSession, instance_ids: Sequence[uuid.UUID]
+    session: AsyncSession,
+    instance_ids: Sequence[uuid.UUID],
+    settings: Settings | None = None,
 ) -> dict[uuid.UUID, dict[int, uuid.UUID]]:
     """The monitored sources of each console: QRadar id -> internal id.
 
@@ -125,11 +128,15 @@ async def monitored_source_map(
     QRadar-disabled source still costs a search, so it is monitored too. One
     statement for every console asked for, so a reader of the same set (the admin
     page, HB-17) needs no query per source.
+
+    With the D-52 switch on in the caller's resolved `settings`, a source QRadar has
+    disabled now leaves the map (current state only; stored history is untouched).
+    No settings means the legacy filter.
     """
     rows = await session.execute(
         select(LogSource.instance_id, LogSource.qradar_id, LogSource.id).where(
             LogSource.instance_id.in_(list(instance_ids)),
-            LogSource.monitoring_enabled.is_(True),
+            *target_filters(settings, LogSource.monitoring_enabled, LogSource.enabled),
         )
     )
     found: dict[uuid.UUID, dict[int, uuid.UUID]] = defaultdict(dict)
@@ -249,7 +256,7 @@ class MetricCollector:
             )
             # The search is console-wide, including unmonitored inventory. Reuse this
             # map for writes and size searches before spending an Ariel permit.
-            id_map = await self._log_source_id_map(instance.id)
+            id_map, paused_ids = await self._log_source_inventory(instance.id)
 
             try:
                 completed, searches_sent, splits, search_partial = (
@@ -291,6 +298,7 @@ class MetricCollector:
                     search_bucket_count=bucket.search_bucket_count,
                     split_depth=bucket.split_depth,
                     id_map=id_map,
+                    paused_ids=paused_ids,
                 )
                 total_samples += written
                 buckets_collected += 1
@@ -526,12 +534,17 @@ class MetricCollector:
         search_bucket_count: int | None = None,
         split_depth: int | None = None,
         id_map: dict[int, uuid.UUID] | None = None,
+        paused_ids: frozenset[uuid.UUID] = frozenset(),
     ) -> int:
-        """Persist one complete bucket through the existing upsert and zero-fill."""
+        """Persist one complete bucket through the existing upsert and zero-fill.
+
+        `paused_ids` are the inventory sources QRadar has disabled, with the D-52 switch on:
+        a sample for one is read with the console-wide search but not stored.
+        """
 
         # Map qradar_id -> internal LogSource id for this instance.
         if id_map is None:
-            id_map = await self._log_source_id_map(instance.id)
+            id_map, paused_ids = await self._log_source_inventory(instance.id)
 
         # Non-secret evidence of how these rows were produced. Never the token,
         # never response headers — only the shape of the request. What `event_count`
@@ -568,6 +581,8 @@ class MetricCollector:
             ls_id = id_map.get(s.qradar_id)
             if ls_id is None:
                 continue  # source not yet in inventory; a sync will add it
+            if ls_id in paused_ids:
+                continue  # disabled in QRadar now: no new row (D-52)
             rows.append(
                 {
                     "log_source_id": ls_id,
@@ -654,7 +669,9 @@ class MetricCollector:
                 await self.session.scalars(
                     select(LogSource.id).where(
                         LogSource.instance_id == instance.id,
-                        LogSource.monitoring_enabled.is_(True),
+                        *target_filters(
+                            self.settings, LogSource.monitoring_enabled, LogSource.enabled
+                        ),
                     )
                 )
             ).all()
@@ -872,7 +889,7 @@ class MetricCollector:
 
     async def _monitored_sources(self, instance_id: uuid.UUID) -> dict[int, uuid.UUID]:
         """QRadar id -> internal id of the monitored sources: the id map and the set, once."""
-        found = await monitored_source_map(self.session, [instance_id])
+        found = await monitored_source_map(self.session, [instance_id], self.settings)
         return found.get(instance_id, {})
 
     @ariel_caller(CALLER_HISTORY)
@@ -1126,15 +1143,27 @@ class MetricCollector:
                 state.chunks[i]["error"] is None, state.chunks[i]["read"],
             ))
             chunk = state.chunks[index]
+            # Frozen ids meet the current map just before the search: a source QRadar has
+            # disabled since is not searched. An empty chunk reads nothing and never
+            # becomes an unfiltered search; its frontier still advances.
+            live_ids = (
+                [q for q in chunk["ids"] if q in monitored]
+                if source_pause_enabled(self.settings)
+                else chunk["ids"]
+            )
+            if not live_ids:
+                chunk["read"] = state.buckets
+                chunk["error"] = None
+                continue
             first = state.start + chunk["read"] * ps.bucket
             width = progress.chunk_buckets or phase_a.planner_settings(
-                self.settings, monitored=len(chunk["ids"]), cadence_seconds=ps.cadence_seconds,
+                self.settings, monitored=len(live_ids), cadence_seconds=ps.cadence_seconds,
             ).initial_chunk_buckets
             count = min(width, state.buckets - chunk["read"])
             with ariel_background_priority():
                 found = await self._search_window(
                     first, count, ps.bucket_seconds, max_searches=budget - report.searches,
-                    deadline=deadline, qradar_ids=chunk["ids"],
+                    deadline=deadline, qradar_ids=live_ids,
                 )
             report.searches += found.searches
             deferred = isinstance(found.failure, ArielPermitUnavailable)
@@ -1146,7 +1175,7 @@ class MetricCollector:
                 failed.add(index)
             elif found.completed:
                 chunk["error"] = None
-            chosen = set(chunk["ids"])
+            chosen = set(live_ids)
             fold = phase_a.fold_step(
                 found.completed, monitored={q: s for q, s in monitored.items() if q in chosen},
                 floors=floors, read_start=progress.floor or progress.target_start,
@@ -1390,13 +1419,25 @@ class MetricCollector:
         )
         return step_row(base, progress=encode_progress(decoded.progress, adapter))
 
-    async def _log_source_id_map(self, instance_id: uuid.UUID) -> dict[int, uuid.UUID]:
+    async def _log_source_inventory(
+        self, instance_id: uuid.UUID
+    ) -> tuple[dict[int, uuid.UUID], frozenset[uuid.UUID]]:
+        """The whole inventory's id map, and (switch on) the ids QRadar has disabled.
+
+        One statement either way: the search and its row planning stay all-inventory.
+        """
         rows = await self.session.execute(
-            select(LogSource.qradar_id, LogSource.id).where(
+            select(LogSource.qradar_id, LogSource.id, LogSource.enabled).where(
                 LogSource.instance_id == instance_id
             )
         )
-        return {row[0]: row[1] for row in rows.all()}
+        found = rows.all()
+        paused = (
+            frozenset(row[1] for row in found if row[2] is not True)
+            if source_pause_enabled(self.settings)
+            else frozenset()
+        )
+        return {row[0]: row[1] for row in found}, paused
 
     async def _get_or_create_watermark(self, instance: QRadarInstance) -> CollectionWatermark:
         wm = await self.session.scalar(

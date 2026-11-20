@@ -57,6 +57,7 @@ from app.history.progress_codec import DecodedProgress, ProgressCodecError, deco
 from app.history.source_floors import SourceFloors
 from app.history.state import SCOPE_TABLE_FAMILIES, HistoryFamily, HistoryState
 from app.i18n.messages import MessageRef, render
+from app.log_source_policy import target_filters
 from app.models.catchall import CatchallBucket
 from app.models.enums import HistoryDecisionAnswer, HistoryDecisionSource
 from app.models.history_backfill import (
@@ -731,7 +732,7 @@ class HistoryBackfillService:
         (`app.collectors.metric_collector`, `app.collectors.catchall_collector`), so
         the page judges the per-source floors against exactly what the reading read.
         """
-        phase_a_sources = await monitored_source_map(self.session, instance_ids)
+        phase_a_sources = await monitored_source_map(self.session, instance_ids, self.settings)
         catchall_sources = await catchall_log_sources(
             self.session, instance_ids, self.settings.catchall_type_ids
         )
@@ -1037,13 +1038,13 @@ class HistoryBackfillService:
         counts: dict[str, Any] = {}
 
         # The collector's own filter (`metric_collector.py`): every source the platform
-        # monitors, whatever QRadar says about the source. A QRadar-disabled source still
-        # costs a search, so it counts here too.
+        # monitors, whatever QRadar says about the source (with the D-52 switch on, a
+        # source QRadar has disabled now leaves the count, as it leaves the target map).
         phase_a = await self.session.execute(
             select(LogSource.instance_id, func.count())
             .where(
                 LogSource.instance_id.in_(listed),
-                LogSource.monitoring_enabled.is_(True),
+                *target_filters(settings, LogSource.monitoring_enabled, LogSource.enabled),
             )
             .group_by(LogSource.instance_id)
         )
