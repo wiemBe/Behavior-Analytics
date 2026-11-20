@@ -1,0 +1,109 @@
+/* Admin → Features. Built from tokens only; tables, pills, notices and buttons are the shared ones. */
+
+.ft-page {
+  display: grid;
+  gap: var(--sp-4);
+  min-width: 0;
+}
+.ft-page > .notice,
+.ft-page > .banner {
+  margin: 0;
+}
+.ft-table th,
+.ft-table td {
+  padding: var(--sp-1) var(--sp-2) var(--sp-1) var(--sp-1);
+  vertical-align: top;
+}
+.ft-table td.cell-family {
+  min-width: 0;
+}
+.ft-table td .cell-sub {
+  margin-top: 0;
+}
+.ft-table .ft-state {
+  min-width: 0;
+}
+.ft-state .fm-radios {
+  flex-wrap: nowrap;
+  gap: var(--sp-2) var(--sp-3);
+}
+.ft-clip {
+  max-width: 16ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ft-extras {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-1) var(--sp-3);
+}
+.ft-table .fm-radio {
+  min-height: 0;
+  font-size: var(--fs-sm);
+}
+.ft-table .fm-radio input:disabled + span,
+.ft-table .fm-radio:has(input:disabled) {
+  color: var(--text-3);
+}
+.ft-reset {
+  padding: 0;
+  background: none;
+  border: 0;
+  color: var(--link);
+  font: inherit;
+  font-size: var(--fs-xs);
+  text-decoration: underline;
+  cursor: pointer;
+}
+.ft-reset:disabled {
+  cursor: progress;
+  opacity: 0.55;
+}
+.ft-confirm {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2) var(--sp-4);
+  font-size: var(--fs-sm);
+}
+.ft-confirm p {
+  margin: 0;
+}
+.ft-conflict code {
+  display: block;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  font-size: var(--fs-xs);
+  color: var(--warn-text);
+}
+.ft-conflict summary {
+  cursor: pointer;
+}
+.ft-table .ft-conflict {
+  display: block;
+  margin-top: var(--sp-1);
+}
+.ft-reset {
+  display: inline;
+}
+
+/* Two lines a row at most: nothing wraps unless it says so, and a narrow window scrolls the table
+   inside its own region instead of the page. */
+.ft-table td,
+.ft-table th {
+  white-space: normal;
+}
+.ft-table .nowrap,
+.ft-table .ft-state .fm-radios {
+  white-space: nowrap;
+}
+.ft-source .cell-sub {
+  margin-top: 0;
+}
+.ft-table td.ft-wrap,
+.ft-table .ft-wrap {
+  white-space: normal;
+}
+.ft-table td:nth-child(3) {
+  min-width: 20ch;
+}

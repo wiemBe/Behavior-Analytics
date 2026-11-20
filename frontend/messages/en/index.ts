@@ -27,6 +27,7 @@ import entities from "./entities.json";
 import enums from "./enums.json";
 import errors from "./errors.json";
 import evidence from "./evidence.json";
+import features from "./features.json";
 import fieldMapping from "./fieldMapping.json";
 import fleet from "./fleet.json";
 import format from "./format.json";
@@ -93,6 +94,7 @@ const messages = {
   enums,
   errors,
   evidence,
+  features,
   fieldMapping,
   fleet,
   format,

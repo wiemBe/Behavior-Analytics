@@ -161,6 +161,7 @@ describe("administration hub", () => {
       "History backfill",
       "SIEM load",
       "QRadar access",
+      "Features",
       "Alert e-mail",
       "Notification routing",
       "Users",
@@ -170,6 +171,24 @@ describe("administration hub", () => {
       "href",
       "/admin/siem-load",
     );
+  });
+
+  it("lists Features for read:features and read:*, never for an account without it", () => {
+    for (const permissions of [["read:features"], ["read:*"], ["admin:*"]]) {
+      const { unmount } = render(
+        <StaticSession value={ready(permissions)}>
+          <AdminPage />
+        </StaticSession>,
+      );
+      expect(screen.getByRole("link", { name: "Features" })).toHaveAttribute("href", "/admin/features");
+      unmount();
+    }
+    render(
+      <StaticSession value={ready(["read:alerts"])}>
+        <AdminPage />
+      </StaticSession>,
+    );
+    expect(screen.queryByRole("link", { name: "Features" })).not.toBeInTheDocument();
   });
 
   it("lists Alert e-mail for admin:notifications and admin:*, never for read:* or another admin permission", () => {

@@ -61,6 +61,7 @@ export const GUIDE_ROUTES = {
   "/admin/history-backfill": "history-backfill",
   "/admin/siem-load": "siem-load",
   "/admin/qradar-access": "qradar-access",
+  "/admin/features": "features",
   "/admin/email": "alert-email",
   "/admin/notifications": "notification-routing",
   "/admin/users": "users-and-directory",

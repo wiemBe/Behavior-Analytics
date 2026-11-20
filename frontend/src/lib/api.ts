@@ -5994,6 +5994,69 @@ export const qradarAccessApi = {
     request<AccessCheckAnswer>("/admin/qradar-access/check", { method: "POST", signal }),
 };
 
+// --- admin features (OPS-FLAGS-S5) ------------------------------------------
+// Mirrors `app/services/feature_overview.py`. A measurement that is missing is `null`, never zero.
+export type FeatureSource = "db" | "env" | "default" | "unreadable";
+
+export interface FeatureSwitchView {
+  enabled: boolean;
+  source: FeatureSource;
+  updated_at: string | null;
+  updated_by: string | null;
+  /** The switch that must be on for this one to act; null when it needs none. */
+  requires: string | null;
+  /** True while `requires` is off: the stored value does nothing. */
+  inert: boolean;
+}
+
+export interface FeatureEstimate {
+  upper_bound_searches_per_hour: number | null;
+  reason: string | null;
+  count: number;
+  count_unit: string;
+  enabled_consoles: number;
+}
+
+export interface FeatureRow {
+  family: string;
+  switches: Record<string, FeatureSwitchView>;
+  /** Profile, watch or rule counts; `validated` exists for WAF, IPS and identity only. */
+  prerequisites: { total: number; enabled: number; validated?: number } | null;
+  estimate: FeatureEstimate;
+  measured_last_hour: number | null;
+  measured_reason: string | null;
+  cadence_seconds: number | null;
+  last_run: {
+    at: string;
+    outcome: string | null;
+    searches: number | null;
+    buckets: number | null;
+  } | null;
+  last_run_reason: string | null;
+  /** Per console; null unless the caller holds `admin:*`. */
+  access: { instance_id: string; entries: AccessEntry[] }[] | null;
+}
+
+export interface FeatureOverview {
+  runtime_switches_active: boolean;
+  worker_switches_active: boolean;
+  /** `feature_switch_unreadable` when the switches could not be read: every family is off. */
+  reason: string | null;
+  families: FeatureRow[];
+  settings_problems: string[];
+}
+
+export const featuresApi = {
+  get: (signal?: AbortSignal) => request<FeatureOverview>("/admin/features", { signal }),
+  set: (key: string, enabled: boolean) =>
+    request<void>(`/admin/features/${encodeURIComponent(key)}`, {
+      method: "PUT",
+      body: JSON.stringify({ enabled }),
+    }),
+  reset: (key: string) =>
+    request<void>(`/admin/features/${encodeURIComponent(key)}`, { method: "DELETE" }),
+};
+
 // --- shell top bar (UI-1.5) -------------------------------------------------
 // Browser reads of existing endpoints. Each takes an AbortSignal so a superseded
 // or unmounted caller can cancel; none writes anything, and none reaches QRadar.

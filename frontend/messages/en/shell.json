@@ -40,6 +40,7 @@
     "ipsSources": "IPS sources",
     "historyBackfill": "History backfill",
     "siemLoad": "SIEM load",
+    "features": "Features",
     "qradarAccess": "QRadar access",
     "alertEmail": "Alert e-mail",
     "notificationRouting": "Notification routing",

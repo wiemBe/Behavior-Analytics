@@ -48,6 +48,7 @@
     "history-backfill": "History backfill",
     "siem-load": "SIEM load",
     "qradar-access": "QRadar access",
+    "features": "Features",
     "alert-email": "Alert e-mail",
     "notification-routing": "Notification routing",
     "users-and-directory": "Users and directory sign-in"
