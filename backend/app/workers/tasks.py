@@ -67,6 +67,11 @@ from app.services.catchall_retention import CatchallRetention
 from app.services.detection_coverage import DetectionCoverageEvaluator
 from app.services.digest import run_due_digests
 from app.services.entity_mention_backfill import EntityMentionBackfillService
+from app.services.feature_switches import (
+    effective_settings,
+    resolve,
+    unreadable_features,
+)
 from app.services.geo_retention import GeoRetention
 from app.services.handover_retention import HandoverRetention
 from app.services.identity_anomaly_retention import IdentityAnomalyRetention
@@ -123,6 +128,33 @@ def _run[T](coro: Coroutine[Any, Any, T]) -> T:
                 await dispose_engine()
 
     return asyncio.run(run_and_dispose())
+
+
+async def _effective_settings(task: str) -> tuple[Settings, str | None]:
+    """The settings a run decides from: the feature switches resolved once (OPS-FLAGS S3a).
+
+    A row in `feature_switch` wins over the `.env` value, which wins over the code
+    default. One statement per run, however many profiles or sources the run
+    fans out to. A read that fails resolves every switch to off and returns the
+    reason code, never the `.env` value: the caller returns `disabled` with it.
+    """
+    base = get_settings()
+    try:
+        async with get_sessionmaker()() as session:
+            resolved = await resolve(session, base)
+    except Exception:
+        resolved = unreadable_features()
+    if resolved.reason is not None:
+        logger.warning(
+            "feature switches unreadable; the task does not run",
+            extra={"task": task, "reason": resolved.reason},
+        )
+    return effective_settings(base, resolved), resolved.reason
+
+
+def _with_reason(result: dict, reason: str | None) -> dict:
+    """A `disabled` result, naming the unreadable switch table when that is why."""
+    return {**result, "reason": reason} if reason is not None else result
 
 
 # ---------------------------------------------------------------- collection
@@ -299,11 +331,15 @@ async def sync_log_sources(
     *,
     instance_id: str | None = None,
 ) -> dict:
+    settings, reason = await _effective_settings("sync_log_sources")
+    if reason is not None:
+        return _with_reason({"status": "disabled"}, reason)
+
     async def run(
         session: AsyncSession, instance: QRadarInstance, provider: QRadarProvider | None
     ) -> dict:
         assert provider is not None
-        report = await LogSourceCollector(session, provider).sync(instance)
+        report = await LogSourceCollector(session, provider, settings=settings).sync(instance)
         return {
             "status": (
                 "skipped_locked"
@@ -488,9 +524,9 @@ async def collect_rule_matches(instance_name: str | None = None) -> dict:
     The RULE_MATCH cadence slot is claimed first, in its own committed session,
     so a tick that is not due builds no provider and sends nothing to QRadar.
     """
-    settings = get_settings()
+    settings, reason = await _effective_settings("collect_rule_matches")
     if not settings.rule_match_collection_enabled:
-        return {"status": "disabled"}
+        return _with_reason({"status": "disabled"}, reason)
 
     from app.models.enums import SearchFamily
     from app.services.search_cadence import SearchCadenceService
@@ -581,9 +617,9 @@ async def collect_catchall_senders(instance_name: str | None = None) -> dict:
     cadence slot is claimed first, in its own committed session, so a tick that
     is not due builds no provider and sends nothing to QRadar.
     """
-    settings = get_settings()
+    settings, reason = await _effective_settings("collect_catchall_senders")
     if not settings.catchall_collection_enabled:
-        return {"status": "disabled"}
+        return _with_reason({"status": "disabled"}, reason)
 
     from app.models.enums import SearchFamily
     from app.services.search_cadence import SearchCadenceService
@@ -663,9 +699,9 @@ async def collect_geo_countries(instance_name: str | None = None) -> dict:
     claimed first, in its own committed session, so a tick that is not due builds no
     provider and sends nothing to QRadar.
     """
-    settings = get_settings()
+    settings, reason = await _effective_settings("collect_geo_countries")
     if not settings.geo_collection_enabled:
-        return {"status": "disabled"}
+        return _with_reason({"status": "disabled"}, reason)
 
     from app.models.enums import SearchFamily
     from app.services.search_cadence import SearchCadenceService
@@ -719,9 +755,9 @@ async def collect_qradar_health(instance_name: str | None = None) -> dict:
     is claimed first, in its own committed session, so a tick that is not due builds no
     provider and sends nothing to QRadar. The claimed slot also keys the run's REST sample.
     """
-    settings = get_settings()
+    settings, reason = await _effective_settings("collect_qradar_health")
     if not settings.qradar_health_collection_enabled:
-        return {"status": "disabled"}
+        return _with_reason({"status": "disabled"}, reason)
 
     from app.models.enums import SearchFamily
     from app.services.search_cadence import SearchCadenceService
@@ -1193,8 +1229,14 @@ ANOMALY_EVALUATION_LOCK_ID = uuid.UUID(int=0)
 
 
 async def evaluate_anomalies() -> dict:
-    """Evaluate pending anomaly buckets, one run at a time across the process."""
-    settings = get_settings()
+    """Evaluate pending anomaly buckets, one run at a time across the process.
+
+    The engine reads the explanation switch when it opens an anomaly, so it is built
+    from the effective settings; a run that cannot read them does not open any.
+    """
+    settings, reason = await _effective_settings("evaluate_anomalies")
+    if reason is not None:
+        return _with_reason({"status": "disabled"}, reason)
     maker = get_sessionmaker()
     # The engine's per-bucket idempotency reads the watermark and the detector
     # state without a row lock, so two overlapping runs could evaluate the same
@@ -1213,7 +1255,7 @@ async def evaluate_anomalies() -> dict:
         policy = default_policy()
         # Enqueue-only dispatcher: notifiers not needed to create rows.
         enqueuer = NotificationDispatcher(session, notifiers={}, policy=policy)
-        engine = AnomalyEngine(session, enqueuer=enqueuer)
+        engine = AnomalyEngine(session, settings=settings, enqueuer=enqueuer)
         sources = list(
             (
                 await session.scalars(
@@ -1246,9 +1288,9 @@ async def collect_anomaly_explanations(instance_name: str | None = None) -> dict
     rather than delaying alerts, and holds a per-instance advisory lock so two
     workers cannot both hammer Ariel with the same investigation queries.
     """
-    settings = get_settings()
+    settings, reason = await _effective_settings("collect_anomaly_explanations")
     if not settings.explanation_enabled:
-        return {"status": "disabled", "instances": 0, "results": []}
+        return _with_reason({"status": "disabled", "instances": 0, "results": []}, reason)
 
     from app.models.enums import SearchFamily
     from app.services.search_cadence import SearchCadenceService
@@ -1351,7 +1393,9 @@ async def run_alert_digest() -> dict:
     the task can be run at will in the lab, and a tick before the hour does
     nothing. Idempotency is the unique ``(instance_id, digest_date)`` row.
     """
-    settings = get_settings()
+    settings, reason = await _effective_settings("run_alert_digest")
+    if reason is not None:
+        return _with_reason({"status": "disabled"}, reason)
     maker = get_sessionmaker()
     async with maker() as session:
         results = await run_due_digests(session, settings=settings)
@@ -1435,9 +1479,9 @@ async def dispatch_waf_collection(enqueue: Callable[[str], object] | None = None
     `collect_waf_source` runs whenever it is enqueued. The per-source tasks run
     asynchronously and are not aggregated, so the run is recorded without counts.
     """
-    settings = get_settings()
+    settings, reason = await _effective_settings("dispatch_waf_collection")
     if not settings.waf_collection_enabled:
-        return {"status": "disabled", "dispatched": 0}
+        return _with_reason({"status": "disabled", "dispatched": 0}, reason)
 
     from app.models.enums import SearchFamily
     from app.services.search_cadence import SearchCadenceService
@@ -1502,7 +1546,14 @@ async def dispatch_waf_collection(enqueue: Callable[[str], object] | None = None
 
 
 async def collect_waf_source(profile_id: str) -> dict:
-    """Collect, evaluate and train one WAF source in its own session."""
+    """Collect, evaluate and train one WAF source in its own session.
+
+    Re-reads the switches, so a family turned off while the dispatch had already
+    enqueued the fleet stops at the next source.
+    """
+    settings, reason = await _effective_settings("collect_waf_source")
+    if not settings.waf_collection_enabled:
+        return _with_reason({"status": "disabled", "profile_id": profile_id}, reason)
     maker = get_sessionmaker()
     async with maker() as session:
         enqueuer = NotificationDispatcher(session, notifiers={}, policy=default_policy())
@@ -1512,6 +1563,7 @@ async def collect_waf_source(profile_id: str) -> dict:
             provider_factory=lambda instance: build_provider_for_instance(
                 instance, audit_session=session
             ),
+            settings=settings,
             enqueuer=enqueuer,
         )
 
@@ -1943,9 +1995,9 @@ async def evaluate_custom_rules() -> dict:
     A no-op, and no session, while CUSTOM_RULES_ENABLED is false. The first
     enabled run seeds each kind's watermark and judges nothing.
     """
-    settings = get_settings()
+    settings, reason = await _effective_settings("evaluate_custom_rules")
     if not settings.custom_rules_enabled:
-        return {"status": "disabled"}
+        return _with_reason({"status": "disabled"}, reason)
     maker = get_sessionmaker()
     async with maker() as session:
         # Enqueue only. Delivery stays on the notification beat, as for IPS.
@@ -1970,9 +2022,9 @@ async def apply_custom_rule_retention() -> dict:
 # ------------------------------------------------------------------ IPS (D.5)
 async def dispatch_ips_collection(instance_name: str | None = None) -> dict:
     """Run one fleet-wide IPS plan per instance after claiming its cadence slot."""
-    settings = get_settings()
+    settings, reason = await _effective_settings("dispatch_ips_collection")
     if not settings.ips_collection_enabled:
-        return {"status": "disabled", "instances": 0, "results": []}
+        return _with_reason({"status": "disabled", "instances": 0, "results": []}, reason)
 
     from app.models.enums import SearchFamily
     from app.services.search_cadence import SearchCadenceService
@@ -2030,9 +2082,9 @@ async def dispatch_identity_collection(instance_name: str | None = None) -> dict
     A no-op while ``IDENTITY_COLLECTION_ENABLED`` is false. The slot is claimed
     before any provider is built, so an early minute sends nothing to QRadar.
     """
-    settings = get_settings()
+    settings, reason = await _effective_settings("dispatch_identity_collection")
     if not settings.identity_collection_enabled:
-        return {"status": "disabled", "instances": 0, "results": []}
+        return _with_reason({"status": "disabled", "instances": 0, "results": []}, reason)
 
     from app.models.enums import SearchFamily
     from app.services.search_cadence import SearchCadenceService
@@ -2159,9 +2211,9 @@ async def dispatch_property_watch_collection(instance_name: str | None = None) -
     slot is claimed before any provider is built, so a losing or early minute sends nothing
     to QRadar.
     """
-    settings = get_settings()
+    settings, reason = await _effective_settings("dispatch_property_watch_collection")
     if not settings.pw_collection_enabled:
-        return {"status": "disabled", "instances": 0, "results": []}
+        return _with_reason({"status": "disabled", "instances": 0, "results": []}, reason)
 
     from app.models.enums import SearchFamily
     from app.services.search_cadence import SearchCadenceService
