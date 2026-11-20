@@ -17,6 +17,7 @@
 #   ./qradar-dash repair-state
 #   ./qradar-dash reset [--backup] [--include-secrets] [--non-interactive --yes] [--dry-run]
 #   ./qradar-dash config-export [--label LABEL] [--instance NAME] [--output FILE]
+#   ./qradar-dash config-import FILE (--dry-run | --apply) [--non-interactive --yes]
 #
 # Specified in docs/OPERATIONS-DESIGN.md section 3. The script needs bash and
 # Docker with Compose v2 on the host, plus openssl and curl. It never calls
@@ -65,6 +66,7 @@ Commands
   bundle        On a connected host: write the offline bundle (images, checkout and operator
                 documents) for an air-gapped host.
   config-export Write a secret-free operator-configuration JSON file on the host (mode 0600).
+  config-import Merge a secret-free operator-configuration JSON file into this site.
 
 backup options
   --no-verify       Skip the scratch-database restore (not allowed for pre-upgrade).
@@ -96,6 +98,12 @@ config-export options
   --output FILE     Host file to write (default: ./qradar-dash-config.json, relative to the
                     directory the command was run from). An existing file is replaced; the file
                     is always created with mode 0600. Nothing else is written.
+
+config-import options
+  --dry-run         Print the import plan and change nothing.
+  --apply           Apply the import (requires --yes when not on a terminal).
+  --non-interactive Refuse unless --yes is also present.
+  --yes             Confirm a non-interactive import.
 
 rollback options
   --non-interactive Refuse unless --yes is also present.
@@ -5017,6 +5025,131 @@ cmd_config_export() {
   say "$output_abs"
 }
 
+cmd_config_import() {
+  local file="" dry_run=no apply=no non_interactive=no yes=no
+  local actor rc dry_output dry_err instance_name answer head_part
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      -h | --help) usage; return 0 ;;
+      --dry-run) dry_run=yes ;;
+      --apply) apply=yes ;;
+      --non-interactive) non_interactive=yes ;;
+      --yes) yes=yes ;;
+      --*)
+        fail "unknown config-import argument: $1; usage: ./qradar-dash config-import FILE (--dry-run | --apply) [--non-interactive --yes]. Nothing was executed."
+        return 2
+        ;;
+      *)
+        if [ -z "$file" ]; then
+          file=$1
+        else
+          fail "config-import accepts one FILE; usage: ./qradar-dash config-import FILE (--dry-run | --apply) [--non-interactive --yes]. Nothing was executed."
+          return 2
+        fi
+        ;;
+    esac
+    shift
+  done
+
+  if [ "$dry_run" = yes ] && [ "$apply" = yes ]; then
+    fail "config-import: choose exactly one of --dry-run or --apply. Nothing was executed."
+    return 2
+  fi
+  if [ "$dry_run" = no ] && [ "$apply" = no ]; then
+    fail "config-import: one of --dry-run or --apply is required. Nothing was executed."
+    return 2
+  fi
+  if [ -z "$file" ]; then
+    fail "config-import: FILE is required. Nothing was executed."
+    return 2
+  fi
+  if [ -d "$file" ]; then
+    fail "config-import: FILE is a directory: $file. Nothing was executed."
+    return 2
+  fi
+  if [ ! -f "$file" ] || [ ! -r "$file" ]; then
+    fail "config-import: FILE is not readable: $file. Nothing was executed."
+    return 2
+  fi
+
+  need_installed
+  need_docker || return 1
+
+  actor=$(id -un)
+
+  if [ "$dry_run" = yes ]; then
+    set +e
+    dc exec -T backend python -m app.cli.config import --dry-run --actor "$actor" < "$file"
+    rc=$?
+    set -e
+    return "$rc"
+  fi
+
+  # --apply
+  if [ "$non_interactive" = yes ]; then
+    if [ "$yes" != yes ]; then
+      fail "config-import: --non-interactive requires --yes. Nothing was executed."
+      return 1
+    fi
+    set +e
+    dc exec -T backend python -m app.cli.config import --apply --yes --actor "$actor" < "$file"
+    rc=$?
+    set -e
+    return "$rc"
+  fi
+
+  if [ ! -t 0 ]; then
+    fail "config-import: --non-interactive requires --yes. Nothing was executed."
+    return 1
+  fi
+
+  # TTY path: dry-run first.
+  dry_err=$(mktemp "${TMPDIR:-/tmp}/.qradar-dash-config-import-err.XXXXXX" 2>/dev/null) || {
+    fail "config-import: cannot create a temporary file. Nothing was executed."
+    return 1
+  }
+  trap 'rm -f -- "$dry_err"' EXIT
+  install_signal_traps
+  set +e
+  dry_output=$(dc exec -T backend python -m app.cli.config import --dry-run --actor "$actor" < "$file" 2>"$dry_err")
+  rc=$?
+  set -e
+  if [ "$rc" -ne 0 ]; then
+    [ -n "$dry_output" ] && printf '%s\n' "$dry_output"
+    if [ -s "$dry_err" ]; then tail -n 5 -- "$dry_err" | sed 's/^/  | /' >&2; fi
+    trap - EXIT HUP INT TERM
+    rm -f -- "$dry_err"
+    return "$rc"
+  fi
+  [ -n "$dry_output" ] && printf '%s\n' "$dry_output"
+  # Cut at the first "sections" key: a section row may itself carry an "instance"
+  # key, and the greedy sed below would otherwise take the last one.
+  head_part=${dry_output%%'"sections":'*}
+  instance_name=$(printf '%s' "$head_part" | sed -n 's/.*"instance"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -n 1)
+  if [ -z "$instance_name" ]; then
+    fail "config-import: could not determine the instance name from the dry run. Nothing was applied."
+    trap - EXIT HUP INT TERM
+    rm -f -- "$dry_err"
+    return 1
+  fi
+  printf 'Type the instance name (%s) to apply: ' "$instance_name"
+  IFS= read -r answer || answer=""
+  [ -t 0 ] || printf '\n'
+  if [ "$answer" != "$instance_name" ]; then
+    fail "config-import: confirmation was not given. Nothing was applied."
+    trap - EXIT HUP INT TERM
+    rm -f -- "$dry_err"
+    return 1
+  fi
+  trap - EXIT HUP INT TERM
+  rm -f -- "$dry_err"
+  set +e
+  dc exec -T backend python -m app.cli.config import --apply --yes --actor "$actor" < "$file"
+  rc=$?
+  set -e
+  return "$rc"
+}
+
 main() {
   local cmd=${1:-}
   [ $# -eq 0 ] || shift
@@ -5034,6 +5167,7 @@ main() {
     reset) cmd_reset "$@" ;;
     bundle) cmd_bundle "$@" ;;
     config-export) cmd_config_export "$@" ;;
+    config-import) cmd_config_import "$@" ;;
     -h | --help | help | "") usage; [ -n "$cmd" ] || exit 2 ;;
     *) fail "unknown command: $cmd"; usage >&2; exit 2 ;;
   esac
