@@ -10,6 +10,11 @@ the validation state -- an imported row is never ``VALID`` and is never enabled 
 Slice 1d: policies, open suppressions, webhook destinations, notification rules and mail. Every
 reference is written as a local name object, and a destination's HMAC secret and encrypted header
 block are dropped, leaving the fixed ``secrets_omitted`` list (AGENTS §2 rule 5).
+
+Slice 1d2: the two sections 1d left out -- outage alert policies and e-mail recipients -- and the
+unresolved-reference rule. A ref that no longer resolves on this console keeps the shape the row
+spells (a null ref, or a null-named object) and the row gains a ``warnings`` entry, so a dangling
+id is never written silently; the entry names the field, never the id.
 """
 
 from __future__ import annotations
@@ -24,7 +29,7 @@ from app.config_transfer.document import build_document, format_timestamp
 from app.core.version import read_version
 from app.models.alert_policy import AlertPolicy
 from app.models.alert_suppression import AlertSuppression
-from app.models.email import EmailTemplate
+from app.models.email import EmailRecipient, EmailTemplate
 from app.models.fleet import ClassificationRule, LogSourceClassification, LogSourceGroup
 from app.models.identity import LdapConfig
 from app.models.identity_detection import IdentitySourceProfile
@@ -33,6 +38,7 @@ from app.models.ips import IpsSourceProfile
 from app.models.log_source import LogSource
 from app.models.notification_destination import NotificationDestination
 from app.models.notification_rule import NotificationRule
+from app.models.outage import OutageAlertPolicy
 from app.models.property_watch import PropertyWatch
 from app.models.rule import AnalyticsRule
 from app.models.search_cadence import SearchCadenceSetting
@@ -70,6 +76,17 @@ _LOG_SOURCE_ORDER = (
 def _log_source_ref(row: LogSource) -> dict[str, Any]:
     """A log source is referenced by name and type, never by a QRadar id or a UUID."""
     return {"name": row.name, "type_name": row.type_name}
+
+
+def _warn(row: dict[str, Any], kind: str) -> None:
+    """Record an unresolved reference on its row, so a null name is never silent.
+
+    The design's unresolved outcomes belong to import; it has no export-time rule for a ref
+    that no longer resolves (a deleted watch, rule or log source). The row is therefore kept
+    with the ref as the row spells it, and this fixed English entry is appended, naming the
+    field rather than the dangling id.
+    """
+    row.setdefault("warnings", []).append(f"{kind} ref does not resolve")
 
 
 async def _log_source_settings(
@@ -201,7 +218,7 @@ async def _alert_policies(
     for policy in ordered:
         watch = policy.family == "property_watch"
         source = policy.scope_kind == "SOURCE" and not watch
-        rows.append({
+        row: dict[str, Any] = {
             "scope": "global" if policy.instance_id is None else "instance",
             "scope_kind": policy.scope_kind, "family": policy.family,
             "log_source": refs["sources"].get(policy.scope_value) if source else None,
@@ -209,7 +226,46 @@ async def _alert_policies(
             if policy.scope_kind == "CLASS" and not watch else None,
             "watch": {"name": refs["watches"].get(policy.scope_value)} if watch else None,
             "detector_type": policy.detector_type, "mode": policy.mode,
-        })
+        }
+        if watch:
+            if policy.scope_value not in refs["watches"]:
+                _warn(row, "watch")
+        elif source and policy.scope_value not in refs["sources"]:
+            _warn(row, "log source")
+        rows.append(row)
+    return rows
+
+
+async def _outage_alert_policies(
+    session: AsyncSession, instance: QRadarInstance, refs: dict[str, Any]
+) -> list[dict[str, Any]]:
+    """A ``NO_EVENTS`` policy: a class string, or one log source by name and type.
+
+    Outage has no watch scope (design, "Identity of referenced objects"), so a SOURCE row
+    resolves only against this console's log sources.
+    """
+    scope = or_(
+        OutageAlertPolicy.instance_id == instance.id,
+        OutageAlertPolicy.instance_id.is_(None),
+    )
+    policies = (await session.scalars(select(OutageAlertPolicy).where(scope))).all()
+    ordered = sorted(policies, key=lambda r: (
+        0 if r.instance_id is None else 1, str(r.scope_kind), r.scope_value, str(r.mode),
+    ))
+    rows: list[dict[str, Any]] = []
+    for policy in ordered:
+        source = policy.scope_kind == "SOURCE"
+        row: dict[str, Any] = {
+            "scope": "global" if policy.instance_id is None else "instance",
+            "scope_kind": policy.scope_kind,
+            "source_class": None if source else policy.scope_value,
+            "log_source": refs["sources"].get(policy.scope_value) if source else None,
+            "mode": policy.mode,
+            "silence_grace_buckets": policy.silence_grace_buckets,
+        }
+        if source and policy.scope_value not in refs["sources"]:
+            _warn(row, "log source")
+        rows.append(row)
     return rows
 
 
@@ -228,13 +284,17 @@ async def _alert_suppressions(
     result: list[dict[str, Any]] = []
     for row in ordered:
         subject: dict[str, Any] | None
+        key = str(row.subject_id)
         if row.family == "property_watch":
-            subject = {"name": refs["watches"].get(str(row.subject_id))}
+            subject = {"name": refs["watches"].get(key)}
+            missing = None if key in refs["watches"] else "watch"
         elif row.family == "rule":
-            subject = refs["rules"].get(str(row.subject_id), {"name": None})
+            subject = refs["rules"].get(key, {"name": None})
+            missing = None if key in refs["rules"] else "rule"
         else:
-            subject = refs["sources"].get(str(row.subject_id))
-        result.append({
+            subject = refs["sources"].get(key)
+            missing = None if key in refs["sources"] else "log source"
+        entry: dict[str, Any] = {
             "family": row.family, "detector_type": row.detector_type,
             "log_source": subject if row.family in ("log_source", "waf", "ips", "identity")
             else None,
@@ -243,7 +303,10 @@ async def _alert_suppressions(
             "kind": row.kind, "reason": row.reason, "owner": row.owner,
             "starts_at": format_timestamp(row.starts_at),
             "ends_at": format_timestamp(row.ends_at), "reference": row.reference,
-        })
+        }
+        if missing is not None:
+            _warn(entry, missing)
+        result.append(entry)
     return result
 
 
@@ -272,25 +335,42 @@ async def _notification_rules(
               "parent_name": groups[parent][0] if parent is not None and parent in groups else None}
         for qid, (name, parent) in groups.items()
     }
+    # A group whose parent id points at a group this console no longer holds would otherwise
+    # read as a top-level group and match a different row on import.
+    orphan_parents = {
+        qid for qid, (_name, parent) in groups.items()
+        if parent is not None and parent not in groups
+    }
     rows: list[dict[str, Any]] = []
     for rule in rules:
-        destinations = sorted(
-            ({"name": refs["destinations"].get(str(did))} for did in rule.destination_ids),
-            key=lambda ref: ref["name"] or "",
-        )
-        group_list = sorted(
-            (group_ref.get(gid, {"name": None, "parent_name": None})
-             for gid in rule.group_ids or []),
-            key=lambda ref: ref["name"] or "",
-        )
-        rows.append({
+        missing: set[str] = set()
+        destinations: list[dict[str, Any]] = []
+        for did in rule.destination_ids:
+            name = refs["destinations"].get(str(did))
+            destinations.append({"name": name})
+            if name is None:
+                missing.add("destination")
+        destinations.sort(key=lambda ref: ref["name"] or "")
+        group_list: list[dict[str, Any]] = []
+        for gid in rule.group_ids or []:
+            ref = group_ref.get(gid, {"name": None, "parent_name": None})
+            group_list.append(ref)
+            if ref["name"] is None:
+                missing.add("group")
+            elif gid in orphan_parents:
+                missing.add("group parent")
+        group_list.sort(key=lambda ref: ref["name"] or "")
+        row: dict[str, Any] = {
             "name": rule.name, "enabled": rule.enabled, "priority": rule.priority,
             "min_severity": rule.min_severity, "families": rule.families, "owners": rule.owners,
             "source_classes": rule.source_classes, "groups": group_list,
             "window_start_minute": rule.window_start_minute,
             "window_end_minute": rule.window_end_minute, "destinations": destinations,
             "stop_default": rule.stop_default,
-        })
+        }
+        for kind in sorted(missing):
+            _warn(row, kind)
+        rows.append(row)
     return rows
 
 
@@ -301,6 +381,20 @@ async def _email_templates(session: AsyncSession) -> list[dict[str, Any]]:
     return [{
         "alert_type": row.alert_type, "subject": row.subject, "html_body": row.html_body,
         "text_body": row.text_body, "enabled": row.enabled,
+    } for row in rows]
+
+
+async def _email_recipients(session: AsyncSession) -> list[dict[str, Any]]:
+    """One mailbox and how it is routed: an address is configuration, not a credential.
+
+    ``updated_by`` and the timestamps are the actor's, not the routing rule's.
+    """
+    rows = (await session.scalars(
+        select(EmailRecipient).order_by(EmailRecipient.address)
+    )).all()
+    return [{
+        "address": row.address, "min_severity": row.min_severity,
+        "alert_types": row.alert_types, "enabled": row.enabled,
     } for row in rows]
 
 
@@ -354,10 +448,12 @@ async def export_document(
             "ips_source_profiles": await _ips_source_profiles(session, instance),
             "identity_source_profiles": await _identity_source_profiles(session, instance),
             "alert_policies": await _alert_policies(session, instance, refs),
+            "outage_alert_policies": await _outage_alert_policies(session, instance, refs),
             "alert_suppressions": await _alert_suppressions(session, refs, datetime.now(UTC)),
             "notification_destinations": await _notification_destinations(session),
             "notification_rules": await _notification_rules(session, refs),
             "email_templates": await _email_templates(session),
+            "email_recipients": await _email_recipients(session),
             "ldap_config": await _ldap_config(session),
             "search_cadence": await _search_cadence(session),
         },
