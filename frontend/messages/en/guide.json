@@ -174,7 +174,7 @@
           "p": "**Template, not saved**; **Unsaved changes.**; **A dashboard holds at most 24 widgets.**; **Widen the window to customize**; a widget's stale or forbidden state."
         },
         {
-          "p": "**Not collected** on a fresh install: no source is monitored until monitoring is enabled on a log source, and the offense snapshot and inventory arrive with the first collections; nothing is drawn as zero. A failed read changes nothing; refresh from the top bar. **PW_COLLECTION_ENABLED is false** sends no property watch search, so no new bucket is drawn; the watch page shows the history. A widget that reads one watch, search, endpoint or source is set under **Customize**, then **Configure**; Apply stays off until every choice comes from what its read returned."
+          "p": "**Not collected** on a fresh install: no source is monitored until monitoring is enabled on a log source, and the offense snapshot and inventory arrive with the first collections; nothing is drawn as zero. A failed read changes nothing; refresh from the top bar. When property-watch collection is off (a switch on Administration → Features; initial default from `.env`: `PW_COLLECTION_ENABLED`), no property watch search is sent, so no new bucket is drawn; the watch page shows the history. A widget that reads one watch, search, endpoint or source is set under **Customize**, then **Configure**; Apply stays off until every choice comes from what its read returned."
         }
       ]
     },
@@ -402,7 +402,7 @@
           "p": "Watches are judged on collected 5-minute buckets, a set time after events arrive; the schedule is the PROPERTY_WATCH family's setting in **Search cadence**. This is not a seconds-level correlation engine: for alerting within seconds, use QRadar's own rules. A threshold rule on a pinned value can use a new pin after the next property-watch collection."
         },
         {
-          "p": "Two notices qualify the list: **COLLECTION OFF.** when `PW_COLLECTION_ENABLED` is false, so no search is sent for any watch whatever a row says, and **SHADOW MODE.** when incidents are recorded but nothing pages until `PW_ALERTING_ENABLED` is on. **SWITCHES NOT READ.** means the page could not say whether watches are being collected. Editing needs `property_watch:write`; reading needs `read:property_watches`."
+          "p": "Two notices qualify the list: **COLLECTION OFF.** when property-watch collection is off (an administrator turns it on under Administration → Features; initial default from `.env`: `PW_COLLECTION_ENABLED`), so no search is sent for any watch whatever a row says, and **SHADOW MODE.** when incidents are recorded but nothing pages until `PW_ALERTING_ENABLED` is on. **SWITCHES NOT READ.** means the page could not say whether watches are being collected. Editing needs `property_watch:write`; reading needs `read:property_watches`."
         },
         {
           "p": "The detail page draws the pinned values and the top values of the last bucket in events per 5-minute bucket, with the scope's coverage (the parsed share of the scope's events, with the coverage floor) in a lower panel, and lists the active incidents. **Edit watch** opens the editor. The header states the status, the history state when one was requested, the scope, the properties and the last collected bucket. The window buttons choose 1 hour to 7 days."
@@ -684,7 +684,7 @@
           "p": "A custom rule judges one collected metric for one subject over consecutive 5-minute buckets. Rules are judged on collected buckets, up to the family's search cadence after the events arrive (the schedule is set on **Search cadence**). This is not a seconds-level correlation engine: for alerting within seconds, use QRadar's own rules. The list shows **Name**, **Status**, **Subject**, **Condition**, **Severity**, **Enabled** and **Last evaluated (UTC)**. Creating, editing, enabling and deleting need `custom_rule:write`, held by the admin and `detection_engineer` roles."
         },
         {
-          "p": "Two states qualify every rule. **Rule evaluation is off; enabled rules are not judged.** appears when `CUSTOM_RULES_ENABLED` is false (the setting is under **Details**). **Shadow mode: breaches are recorded, nothing pages.** appears when `CUSTOM_RULES_ALERTING_ENABLED` is off: breaches and rule state are written, but nothing opens, refreshes or resolves an alert. When evaluation is off, only the first is shown."
+          "p": "Two states qualify every rule. **Rule evaluation is off; enabled rules are not judged.** appears when custom-rule evaluation is off (the switch is on Administration → Features; the notice's **Details** say so; initial default from `.env`: `CUSTOM_RULES_ENABLED`). **Shadow mode: breaches are recorded, nothing pages.** appears when `CUSTOM_RULES_ALERTING_ENABLED` is off: breaches and rule state are written, but nothing opens, refreshes or resolves an alert. When evaluation is off, only the first is shown."
         },
         {
           "p": "The detail page shows the current state, what the rule read, the active breach, the breach history and the rule definition. What the rule read is a chart of the stored measurements, with gaps left unconnected; a bucket that was not measured is a gap, not zero. A subject that stopped being tracked gives the rule no verdict from later buckets. **Edit rule**, **Enable**, **Disable** and **Delete** act on the rule; deleting a rule with an open alert resolves the alert before the rule and its history are removed. **New rule** opens the editor."
@@ -956,7 +956,7 @@
       ],
       "states": [
         {
-          "p": "**COLLECTION OFF** when the family switch `PW_COLLECTION_ENABLED` is false (the default): enabling stores the choice but nothing is collected; shadow mode when `PW_ALERTING_ENABLED` is false (the default), where incidents are recorded and no alert opens; **Enabled. Saving disables it until you enable it again**; a preview rate limit; **Delete** refused while a custom rule pins one of its values; the write notice when the role lacks `property_watch:write`."
+          "p": "**COLLECTION OFF** when property-watch collection is off on Administration → Features (the default; initial default from `.env`: `PW_COLLECTION_ENABLED`): enabling stores the choice but nothing is collected; shadow mode when `PW_ALERTING_ENABLED` is false (the default), where incidents are recorded and no alert opens; **Enabled. Saving disables it until you enable it again**; a preview rate limit; **Delete** refused while a custom rule pins one of its values; the write notice when the role lacks `property_watch:write`."
         }
       ]
     },
@@ -989,7 +989,7 @@
       ],
       "states": [
         {
-          "p": "**Rule evaluation is off**, in which case enabled rules are not judged (the default), with `CUSTOM_RULES_ENABLED` under **Details**; **Shadow mode: breaches are recorded, nothing pages**, until `CUSTOM_RULES_ALERTING_ENABLED` is on (also the default); **Stale**, **No verdict** and **Subject retired** states on a saved rule; the write notice when the role lacks `custom_rule:write`; **Reload the current rule** after a concurrent change. Deleting a rule resolves its open alert first."
+          "p": "**Rule evaluation is off**, in which case enabled rules are not judged (the default), with the switch on Administration → Features named under **Details** (initial default from `.env`: `CUSTOM_RULES_ENABLED`); **Shadow mode: breaches are recorded, nothing pages**, until `CUSTOM_RULES_ALERTING_ENABLED` is on (also the default); **Stale**, **No verdict** and **Subject retired** states on a saved rule; the write notice when the role lacks `custom_rule:write`; **Reload the current rule** after a concurrent change. Deleting a rule resolves its open alert first."
         }
       ]
     },

@@ -87,6 +87,20 @@ export function family(over: Partial<HistoryFamily> = {}): HistoryFamily {
   };
 }
 
+/**
+ * A family row stored before the switches moved to Administration → Features: the sentence and
+ * code are the old ones, which still render (a stored row is never rewritten).
+ */
+export function legacySwitchedOffFamily(): HistoryFamily {
+  return family({
+    family: "RULE_MATCH",
+    collection_enabled: false,
+    collection_reason: "RULE_MATCH_COLLECTION_ENABLED is off",
+    collection_reason_code: "history.family.switch_off",
+    collection_reason_params: { setting: "RULE_MATCH_COLLECTION_ENABLED" },
+  });
+}
+
 export function consoleOf(over: Partial<HistoryConsole> = {}): HistoryConsole {
   return {
     instance_id: LAB_ID,
@@ -97,9 +111,9 @@ export function consoleOf(over: Partial<HistoryConsole> = {}): HistoryConsole {
       family(),
       family({
         family: "WAF",
-        collection_reason: "WAF_COLLECTION_ENABLED is on",
-        collection_reason_code: "history.family.switch_on",
-        collection_reason_params: { setting: "WAF_COLLECTION_ENABLED" },
+        collection_reason: "WAF collection is on.",
+        collection_reason_code: "history.family.feature_on",
+        collection_reason_params: { family: "WAF collection" },
         sources: [
           {
             scope_key: "1",
@@ -115,24 +129,24 @@ export function consoleOf(over: Partial<HistoryConsole> = {}): HistoryConsole {
       family({
         family: "IPS",
         collection_enabled: false,
-        collection_reason: "IPS_COLLECTION_ENABLED is off",
-        collection_reason_code: "history.family.switch_off",
-        collection_reason_params: { setting: "IPS_COLLECTION_ENABLED" },
+        collection_reason: "IPS collection is off. An administrator can turn it on under Administration → Features.",
+        collection_reason_code: "history.family.feature_off",
+        collection_reason_params: { family: "IPS collection" },
         sources: [],
         later_yes: null,
       }),
       family({
         family: "CATCHALL",
-        collection_reason: "CATCHALL_COLLECTION_ENABLED is on",
-        collection_reason_code: "history.family.switch_on",
-        collection_reason_params: { setting: "CATCHALL_COLLECTION_ENABLED" },
+        collection_reason: "Catch-all collection is on.",
+        collection_reason_code: "history.family.feature_on",
+        collection_reason_params: { family: "Catch-all collection" },
       }),
       family({
         family: "RULE_MATCH",
         collection_enabled: false,
-        collection_reason: "RULE_MATCH_COLLECTION_ENABLED is off",
-        collection_reason_code: "history.family.switch_off",
-        collection_reason_params: { setting: "RULE_MATCH_COLLECTION_ENABLED" },
+        collection_reason: "Rule-match collection is off. An administrator can turn it on under Administration → Features.",
+        collection_reason_code: "history.family.feature_off",
+        collection_reason_params: { family: "Rule-match collection" },
       }),
     ],
     message: null,
@@ -195,12 +209,12 @@ export function estimateOf(over: Partial<HistoryConsoleEstimate> = {}): HistoryC
         ticks: null,
         hours: null,
         days_fitted: null,
-        reason: "no estimate: collection is switched off (IPS_COLLECTION_ENABLED is off)",
-        reason_code: "history.estimate.no_collection",
+        reason: "no estimate: collection is switched off (IPS collection is off. An administrator can turn it on under Administration → Features.)",
+        reason_code: "history.estimate.feature_off",
         reason_params: {
           reason: {
-            code: "history.family.switch_off",
-            params: { setting: "IPS_COLLECTION_ENABLED" },
+            code: "history.family.feature_off",
+            params: { family: "IPS collection" },
           },
         },
         assumptions: [],
@@ -213,12 +227,12 @@ export function estimateOf(over: Partial<HistoryConsoleEstimate> = {}): HistoryC
         ticks: null,
         hours: null,
         days_fitted: null,
-        reason: "no estimate: collection is switched off (RULE_MATCH_COLLECTION_ENABLED is off)",
-        reason_code: "history.estimate.no_collection",
+        reason: "no estimate: collection is switched off (Rule-match collection is off. An administrator can turn it on under Administration → Features.)",
+        reason_code: "history.estimate.feature_off",
         reason_params: {
           reason: {
-            code: "history.family.switch_off",
-            params: { setting: "RULE_MATCH_COLLECTION_ENABLED" },
+            code: "history.family.feature_off",
+            params: { family: "Rule-match collection" },
           },
         },
         assumptions: [],

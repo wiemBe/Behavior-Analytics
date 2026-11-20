@@ -206,7 +206,8 @@ describe("custom-rule routes in Turkish", () => {
     vi.spyOn(api, "customRuleCatalog").mockResolvedValue(catalog({ evaluation_enabled: false, alerting_mode: "shadow" }));
     vi.spyOn(api, "customRules").mockResolvedValue([customRule()]);
     render(await CustomRulesPage());
-    expect(screen.getByText("CUSTOM_RULES_ENABLED").tagName).toBe("CODE");
+    // The detail sentence is a new English key with no Turkish twin (D-45): the old `<code>` is gone.
+    expect(document.querySelector("details code")).toBeNull();
     // One banner at most: with evaluation off the shadow-mode setting is not named.
     expect(screen.queryByText("CUSTOM_RULES_ALERTING_ENABLED")).toBeNull();
   });

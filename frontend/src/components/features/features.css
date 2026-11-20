@@ -107,3 +107,10 @@
 .ft-table td:nth-child(3) {
   min-width: 20ch;
 }
+
+/* "Administration → Features" inside a notice: one anchor, underlined end to end. */
+.features-link {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  white-space: nowrap;
+}

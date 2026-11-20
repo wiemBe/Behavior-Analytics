@@ -114,7 +114,7 @@
     "errorHelp": "Nothing was changed. Check the backend, then try again."
   },
   "familyState": {
-    "switchedOff": "Switched off. {reason}.",
+    "switchedOff": "Switched off. {reason}",
     "unavailable": "Unavailable. {reason}",
     "windowNotFitted": "The window could not be fitted.",
     "sources": "{count, plural, one {# source} other {# sources}} enabled; {rest}.",

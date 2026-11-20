@@ -8,6 +8,8 @@ import { ApiError, api } from "@/lib/api";
 
 vi.mock("@/components/customrules/subjects", () => ({ resolveRuleSubjects: vi.fn() }));
 
+const TURN_ON = "An administrator can turn rule evaluation on under Administration → Features.";
+
 beforeEach(() => {
   vi.mocked(resolveRuleSubjects).mockResolvedValue(new Map());
   vi.spyOn(api, "caller").mockResolvedValue(reader);
@@ -92,16 +94,33 @@ describe("custom-rule list latency figure", () => {
 });
 
 describe("custom-rule list honesty", () => {
-  it("names the evaluation-off state and keeps its setting behind Details", async () => {
+  it("names the evaluation-off state and keeps where to turn it on behind Details, linked for read:features", async () => {
     vi.spyOn(api, "customRuleCatalog").mockResolvedValue(catalog({ evaluation_enabled: false, alerting_mode: "shadow" }));
     vi.spyOn(api, "customRules").mockResolvedValue([rule()]);
     render(await CustomRulesPage());
     expect(screen.getByText("Rule evaluation is off; enabled rules are not judged.")).toBeInTheDocument();
-    expect(screen.getByText("CUSTOM_RULES_ENABLED").tagName).toBe("CODE");
-    expect(screen.getByText("CUSTOM_RULES_ENABLED").closest("details")).not.toBeNull();
+    const link = screen.getByRole("link", { name: "Administration → Features" });
+    expect(link).toHaveAttribute("href", "/admin/features");
+    expect(link.closest("details")).not.toBeNull();
+    expect(link.parentElement).toHaveTextContent(TURN_ON);
+    expect(document.body.textContent).not.toContain("CUSTOM_RULES_ENABLED");
     // One banner at most: with evaluation off the shadow line is not added.
     expect(screen.queryByText(/Shadow mode/)).toBeNull();
     expect(screen.queryByText("CUSTOM_RULES_ALERTING_ENABLED")).toBeNull();
+  });
+
+  it.each([
+    ["a custom-rule writer without read:features", writer],
+    ["an unreadable account", null],
+  ])("shows the same sentence without a link for %s", async (_name, caller) => {
+    vi.spyOn(api, "customRuleCatalog").mockResolvedValue(catalog({ evaluation_enabled: false }));
+    vi.spyOn(api, "customRules").mockResolvedValue([rule()]);
+    if (caller === null) vi.spyOn(api, "caller").mockRejectedValue(new ApiError(500, "x"));
+    else vi.spyOn(api, "caller").mockResolvedValue(caller);
+    render(await CustomRulesPage());
+    const note = screen.getByText((_, el) => el?.tagName === "P" && el.textContent === TURN_ON);
+    expect(note).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Administration → Features" })).toBeNull();
   });
 
   it("says shadow mode in one plain line when evaluation is on", async () => {

@@ -12,6 +12,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { getTranslations } from "next-intl/server";
 
+import { canReadFeatures, featuresRich } from "@/components/features/featuresRich";
 import { PwStatus } from "@/components/propertywatch/PwStatus";
 import {
   propertyWatchAccessFrom,
@@ -49,6 +50,7 @@ async function PropertyWatchesPage() {
   let forbidden = false;
   let failed = false;
   let access: PropertyWatchAccess = "unknown";
+  let featuresLinked = false;
   try {
     watches = await api.propertyWatches();
   } catch (error) {
@@ -64,6 +66,7 @@ async function PropertyWatchesPage() {
     catalog = await api.propertyWatchCatalog().catch(() => null);
     const caller = await api.caller().catch(() => null);
     access = caller ? propertyWatchAccessFrom(caller) : "unknown";
+    featuresLinked = canReadFeatures(caller);
   }
   const now = new Date();
   const rows = sortWatches(watches);
@@ -120,7 +123,7 @@ async function PropertyWatchesPage() {
                   <div className="banner warn" role="status">
                     <span>
                       <strong>{t("list.collectionOffTitle")}</strong>{" "}
-                      {t.rich("list.collectionOffBody", { setting: (chunks) => <code>{chunks}</code> })}
+                      {t.rich("list.collectionOffText", featuresRich(featuresLinked))}
                     </span>
                   </div>
                 )}

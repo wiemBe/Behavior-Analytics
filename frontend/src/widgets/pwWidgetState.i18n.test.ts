@@ -17,15 +17,14 @@ describe("earlyState in Turkish", () => {
   it("names the setting when collection is off", () => {
     const s = earlyState(watch({ status: "OK" }), catalog({ collection_enabled: false }), tr, "tr");
     expect(s?.kind).toBe("not_collected");
-    expect(reasonOf(s)).toContain("PW_COLLECTION_ENABLED kapalı olduğu için");
-    expect(reasonOf(s)).toContain("Geçmişi görmek için izlemeyi açın.");
+    // The sentence is a new English key with no Turkish twin (D-45): the old one is not rendered.
+    expect(reasonOf(s)).not.toContain("PW_COLLECTION_ENABLED");
   });
 
   it("puts the setting before the API's reason for NOT_ENABLED, and keeps the API's words", () => {
     const s = earlyState(watch({ status: "NOT_ENABLED", status_reason: "switch off" }), null, tr, "tr");
-    expect(reasonOf(s)).toBe(
-      "PW_COLLECTION_ENABLED kapalı olduğu için hiçbir izleme için arama gönderilmiyor. switch off Geçmişi görmek için izlemeyi açın.",
-    );
+    expect(reasonOf(s)).not.toContain("PW_COLLECTION_ENABLED");
+    expect(reasonOf(s)).toMatch(/ switch off Geçmişi görmek için izlemeyi açın\.$/);
   });
 
   it("words the progress of a history read", () => {
@@ -86,7 +85,7 @@ describe("earlyState in Turkish", () => {
 
   it("is English when no translator is passed", () => {
     const s = earlyState(watch({ status: "NOT_ENABLED" }), null);
-    expect(reasonOf(s)).toContain("PW_COLLECTION_ENABLED is false");
+    expect(reasonOf(s)).toContain("Property-watch collection is off; no watch is collected. An administrator can turn it on under {features}.");
   });
 
   it("lets a collected, applicable watch through in both languages", () => {

@@ -210,7 +210,7 @@ describe("history backfill words in Turkish", () => {
     const ips = undecided.find((r) => r.family === "IPS")!;
     expect(ips.scope).toBe("Yapılandırılmış kaynak yok");
     // The API's own reason for a switched-off family is shown as sent.
-    expect(ips.reason).toBe("IPS_COLLECTION_ENABLED is off");
+    expect(ips.reason).toBe("IPS collection is off. An administrator can turn it on under Administration → Features.");
     expect(ips.state.label).toBe("Kapalı");
     expect(rowsOf(consoleOf({ mode: "NO" }), TR)[0].reason).toBe("Yanıt Hayır.");
     expect(rowsOf(consoleOf({ mode: "STOPPED" }), TR)[0].reason).toBe("Okuma, bu başlamadan önce durduruldu.");
@@ -493,8 +493,8 @@ describe("the first-run dialog in Turkish", () => {
     expect(row("WAF")).toHaveTextContent("2.100 arama, yaklaşık 72 saat");
     expect(row("WAF")).toHaveTextContent("Azaltıldı: 20 of 28 days fit in 72 hours");
     // MSG-8a: the fixture's codes make the dialog word them (it read the API's English before).
-    expect(row("IPS")).toHaveTextContent("Kapalı. IPS_COLLECTION_ENABLED kapalı.");
-    expect(row("IPS")).toHaveTextContent("Tahmin yok: toplama kapalı (IPS_COLLECTION_ENABLED kapalı)");
+    expect(row("IPS")).toHaveTextContent("Kapalı. IPS collection is off. An administrator can turn it on under Administration → Features.");
+    expect(row("IPS")).toHaveTextContent("no estimate: collection is switched off (IPS collection is off. An administrator can turn it on under Administration → Features.)");
     expect(row("IPS")).not.toHaveTextContent(/\b0 arama\b/);
     expect(row("Coğrafya")).toHaveTextContent("Dışarıda bırakıldı. Doldurulacak baseline yok.");
     expect(within(dialog).getByRole("list", { name: "WAF için varsayımlar" })).toBeInTheDocument();

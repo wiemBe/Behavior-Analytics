@@ -48,6 +48,8 @@ import {
 } from "@/components/propertywatch/fixtures";
 import { ApiError, api, type PropertyWatch, type PwBucket, type PwValue } from "@/lib/api";
 
+import { StaticSession, type SessionValue } from "@/components/auth/session";
+import type { CallerInfo } from "@/lib/api";
 import { PropertyWatchWidget, PW_WIDGET_FORBIDDEN } from "./PropertyWatchWidget";
 
 class TestResizeObserver {
@@ -101,8 +103,30 @@ function world(w: World = {}) {
   });
 }
 
+function session(permissions: string[]): SessionValue {
+  const me = {
+    subject: "ada",
+    email: null,
+    permissions,
+    effective_permissions: permissions,
+    username: "ada",
+    auth_source: "LOCAL",
+    must_change_password: false,
+    roles: [],
+  } as CallerInfo;
+  return { status: "ready", me, error: null, reload: vi.fn(), signOut: vi.fn() };
+}
+
 function renderWidget(config: { watch_id: string | null } = { watch_id: WATCH_ID }) {
   return render(<PropertyWatchWidget id="w_pw1" config={config} range={null} expanded={false} />);
+}
+
+function renderWidgetAs(permissions: string[]) {
+  return render(
+    <StaticSession value={session(permissions)}>
+      <PropertyWatchWidget id="w_pw1" config={{ watch_id: WATCH_ID }} range={null} expanded={false} />
+    </StaticSession>,
+  );
 }
 
 const drill = () => screen.getByRole("link", { name: "Watch" });
@@ -371,13 +395,44 @@ describe("chart.property_watch, the other states", () => {
     expect(drill()).toBeInTheDocument();
   });
 
-  it("not_collected: names PW_COLLECTION_ENABLED when the switch is off", async () => {
+  const OFF =
+    "Property-watch collection is off; no watch is collected. An administrator can turn it on under Administration → Features.";
+  const offText = (_: string, el: Element | null) => el?.tagName !== "BODY" && el?.tagName !== "DIV" && (el?.textContent ?? "").includes(OFF);
+
+  it("not_collected: says where an administrator turns collection on, with a link for read:features", async () => {
     world({ catalog: catalog({ collection_enabled: false }) });
-    renderWidget();
-    expect(await screen.findByText(/PW_COLLECTION_ENABLED is false/)).toBeInTheDocument();
+    renderWidgetAs(["read:features"]);
+    const link = await screen.findByRole("link", { name: "Administration → Features" });
+    expect(link).toHaveAttribute("href", "/admin/features");
+    expect(link.parentElement?.textContent).toContain(OFF);
     expect(screen.getByText("Not collected.")).toBeInTheDocument();
     expect(screen.queryByRole("img")).toBeNull();
     expect(drill()).toBeInTheDocument();
+    expect(document.body.textContent).not.toContain("_ENABLED");
+  });
+
+  it("not_collected: the same sentence, without a link, for an account without read:features", async () => {
+    world({ catalog: catalog({ collection_enabled: false }) });
+    renderWidgetAs(["read:property_watches"]);
+    expect((await screen.findAllByText(offText)).length).toBeGreaterThan(0);
+    expect(screen.queryByRole("link", { name: "Administration → Features" })).toBeNull();
+    expect(drill()).toBeInTheDocument();
+  });
+
+  it("not_collected: before the session is read there is no link", async () => {
+    world({ catalog: catalog({ collection_enabled: false }) });
+    render(<PropertyWatchWidget id="w_pw1" config={{ watch_id: WATCH_ID }} range={null} expanded={false} />);
+    expect((await screen.findAllByText(offText)).length).toBeGreaterThan(0);
+    expect(screen.queryByRole("link", { name: "Administration → Features" })).toBeNull();
+  });
+
+  it("not_collected: a NOT_ENABLED watch says the same, linked for read:features", async () => {
+    world({ watch: watch({ status: "NOT_ENABLED", status_reason: null }), catalog: catalog({ collection_enabled: true }) });
+    renderWidgetAs(["read:*"]);
+    expect(await screen.findByRole("link", { name: "Administration → Features" })).toHaveAttribute(
+      "href",
+      "/admin/features",
+    );
   });
 
   it.each([
