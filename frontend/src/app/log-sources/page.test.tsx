@@ -2,7 +2,7 @@ import { render, screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import LogSourcesPage from "./page";
-import { ApiError, api, type LogSourceSummary } from "@/lib/api";
+import { ApiError, api, type LogSourceSummary, type Page } from "@/lib/api";
 
 // States this route renders, from `page.tsx`:
 //  - the read fails: the 403 / 401 / failure sentence from `loadErrorMessage`;
@@ -34,8 +34,13 @@ function source(over: Partial<LogSourceSummary> = {}): LogSourceSummary {
   };
 }
 
+
+function pageOf(items: LogSourceSummary[], total = items.length): Page<LogSourceSummary> {
+  return { items, total, limit: 100, offset: 0 };
+}
+
 async function renderPage() {
-  return render(await LogSourcesPage());
+  return render(await LogSourcesPage({ searchParams: Promise.resolve({}) }));
 }
 
 beforeEach(() => vi.restoreAllMocks());
@@ -64,7 +69,7 @@ describe("log source list states", () => {
   });
 
   it("says what to do when no source has been collected", async () => {
-    vi.spyOn(api, "logSources").mockResolvedValue([]);
+    vi.spyOn(api, "logSources").mockResolvedValue(pageOf([]));
     await renderPage();
     expect(
       screen.getByText(
@@ -76,7 +81,7 @@ describe("log source list states", () => {
 });
 
 describe("log source list contents", () => {
-  beforeEach(() => vi.spyOn(api, "logSources").mockResolvedValue([source()]));
+  beforeEach(() => vi.spyOn(api, "logSources").mockResolvedValue(pageOf([source()])));
 
   it("keeps the SOC-owned fields visible and links each source", async () => {
     await renderPage();
@@ -109,19 +114,19 @@ describe("log source list contents", () => {
   });
 
   it("marks a source in maintenance and tones its status", async () => {
-    vi.spyOn(api, "logSources").mockResolvedValue([
+    vi.spyOn(api, "logSources").mockResolvedValue(pageOf([
       source({ maintenance_mode: true }),
-    ]);
+    ]));
     await renderPage();
     expect(screen.getByText("maint")).toHaveClass("warn");
     expect(screen.getByText("SUCCESS")).toHaveClass("ok");
   });
 
   it("shows a positive anomaly count as an alarm and a zero as a plain zero", async () => {
-    vi.spyOn(api, "logSources").mockResolvedValue([
+    vi.spyOn(api, "logSources").mockResolvedValue(pageOf([
       source({ id: "s-1", name: "Core Firewall", open_anomaly_count: 3 }),
       source({ id: "s-2", name: "DNS Resolver", open_anomaly_count: 0 }),
-    ]);
+    ]));
     await renderPage();
     const rows = within(screen.getByRole("table")).getAllByRole("row").slice(1);
     expect(rows[0]).toHaveTextContent("3");
@@ -131,9 +136,9 @@ describe("log source list contents", () => {
   });
 
   it("draws missing values as em dashes and unknown, never zero", async () => {
-    vi.spyOn(api, "logSources").mockResolvedValue([
+    vi.spyOn(api, "logSources").mockResolvedValue(pageOf([
       source({ type_name: null, qradar_status: null, last_event_time: null }),
-    ]);
+    ]));
     await renderPage();
     const row = screen.getByRole("table").querySelector("tbody tr") as HTMLElement;
     // The type is unmeasured.
@@ -155,7 +160,7 @@ describe("log source list honesty", () => {
 
   // A null QRadar status used to be drawn in the alarm ("crit") tone although it is unknown.
   it("tones an unknown QRadar status neutrally, not as critical", async () => {
-    vi.spyOn(api, "logSources").mockResolvedValue([source({ qradar_status: null })]);
+    vi.spyOn(api, "logSources").mockResolvedValue(pageOf([source({ qradar_status: null })]));
     await renderPage();
     const pill = screen.getByText("unknown");
     expect(pill).toHaveClass("pill");
@@ -165,16 +170,16 @@ describe("log source list honesty", () => {
   });
 
   it("still tones a reported non-SUCCESS status as a problem", async () => {
-    vi.spyOn(api, "logSources").mockResolvedValue([source({ qradar_status: "ERROR" })]);
+    vi.spyOn(api, "logSources").mockResolvedValue(pageOf([source({ qradar_status: "ERROR" })]));
     await renderPage();
     expect(screen.getByText("ERROR")).toHaveClass("crit");
   });
 
   // The last-event time used to be locale-formatted with no timezone.
   it("renders the last-event time with its timezone like the rest of the app", async () => {
-    vi.spyOn(api, "logSources").mockResolvedValue([
+    vi.spyOn(api, "logSources").mockResolvedValue(pageOf([
       source({ last_event_time: "2026-10-15T08:59:00Z" }),
-    ]);
+    ]));
     await renderPage();
     expect(screen.getByText("10-15 08:59 UTC")).toBeInTheDocument();
   });
@@ -182,7 +187,7 @@ describe("log source list honesty", () => {
 
 describe("log source list layout", () => {
   it("names the page with the one h1 and keeps the table inside a scroll region", async () => {
-    vi.spyOn(api, "logSources").mockResolvedValue([source()]);
+    vi.spyOn(api, "logSources").mockResolvedValue(pageOf([source()]));
     await renderPage();
     expect(screen.getByRole("heading", { name: "Log Sources", level: 1 })).toBeInTheDocument();
     const region = screen.getByRole("region", { name: "Log sources" });
@@ -190,7 +195,7 @@ describe("log source list layout", () => {
   });
 
   it("right-aligns the anomaly figure", async () => {
-    vi.spyOn(api, "logSources").mockResolvedValue([source()]);
+    vi.spyOn(api, "logSources").mockResolvedValue(pageOf([source()]));
     await renderPage();
     const row = within(screen.getByRole("table")).getAllByRole("row")[1];
     const cells = within(row).getAllByRole("cell");
@@ -211,15 +216,111 @@ describe("QRadar status tones", () => {
     ["WARNING", "warn"],
     ["ERROR", "crit"],
   ])("tones %s as %s", async (status, tone) => {
-    vi.spyOn(api, "logSources").mockResolvedValue([source({ qradar_status: status })]);
+    vi.spyOn(api, "logSources").mockResolvedValue(pageOf([source({ qradar_status: status })]));
     await renderPage();
     expect(screen.getByText(status, { selector: ".pill" })).toHaveClass(tone);
   });
 
   it.each(["DISABLED", "NA"])("keeps %s neutral and labels it as QRadar reported it", async (status) => {
-    vi.spyOn(api, "logSources").mockResolvedValue([source({ qradar_status: status })]);
+    vi.spyOn(api, "logSources").mockResolvedValue(pageOf([source({ qradar_status: status })]));
     await renderPage();
     const pill = screen.getByText(status, { selector: ".pill" });
     for (const t of ["ok", "warn", "crit"]) expect(pill).not.toHaveClass(t);
+  });
+});
+
+describe("log source list paging and search", () => {
+  async function renderAt(raw: Record<string, string | string[] | undefined> = {}) {
+    return render(await LogSourcesPage({ searchParams: Promise.resolve(raw) }));
+  }
+
+  it("asks for the first page of 100 with no search by default", async () => {
+    const read = vi.spyOn(api, "logSources").mockResolvedValue(pageOf([source()], 8000));
+    await renderAt();
+    expect(read).toHaveBeenCalledTimes(1);
+    expect(read).toHaveBeenCalledWith({ q: "", limit: 100, offset: 0 });
+  });
+
+  it("states the exact total, not the rows on the page, and links the next page", async () => {
+    vi.spyOn(api, "logSources").mockResolvedValue(pageOf([source()], 8000));
+    await renderAt();
+    expect(screen.getByText(/^8,000 sources$/)).toBeInTheDocument();
+    const nav = screen.getByRole("navigation", { name: "Pagination" });
+    expect(within(nav).getByText("1–100 of 8,000")).toBeInTheDocument();
+    expect(within(nav).getByRole("link", { name: "Next" })).toHaveAttribute(
+      "href",
+      "/log-sources?offset=100",
+    );
+    expect(within(nav).queryByRole("link", { name: "Previous" })).toBeNull();
+  });
+
+  it("reads the offset from the address and links back, keeping the search", async () => {
+    const read = vi.spyOn(api, "logSources").mockResolvedValue(pageOf([source()], 350));
+    await renderAt({ offset: "100", q: "fw" });
+    expect(read).toHaveBeenCalledWith({ q: "fw", limit: 100, offset: 100 });
+    const nav = screen.getByRole("navigation", { name: "Pagination" });
+    expect(within(nav).getByRole("link", { name: "Previous" })).toHaveAttribute(
+      "href",
+      "/log-sources?q=fw",
+    );
+    expect(within(nav).getByRole("link", { name: "Next" })).toHaveAttribute(
+      "href",
+      "/log-sources?q=fw&offset=200",
+    );
+  });
+
+  it.each([
+    [{ offset: "-5" }, 0],
+    [{ offset: "abc" }, 0],
+    [{ offset: ["300", "5"] }, 300],
+  ])("treats the offset %j as %i", async (raw, expected) => {
+    const read = vi.spyOn(api, "logSources").mockResolvedValue(pageOf([source()], 1000));
+    await renderAt(raw);
+    expect(read).toHaveBeenCalledWith(expect.objectContaining({ offset: expected }));
+  });
+
+  it("is a plain GET search form carrying the typed word and clearing it by link", async () => {
+    vi.spyOn(api, "logSources").mockResolvedValue(pageOf([source()], 1));
+    await renderAt({ q: "  core " });
+    const form = screen.getByRole("search");
+    expect(form).toHaveAttribute("method", "get");
+    expect(form).toHaveAttribute("action", "/log-sources");
+    const box = within(form).getByRole("searchbox", { name: "Search log sources" });
+    expect(box).toHaveAttribute("name", "q");
+    expect(box).toHaveValue("core");
+    expect(within(form).getByRole("link", { name: "Clear search" })).toHaveAttribute(
+      "href",
+      "/log-sources",
+    );
+  });
+
+  it("says no source matches the search, and keeps the box to change it", async () => {
+    vi.spyOn(api, "logSources").mockResolvedValue(pageOf([], 0));
+    await renderAt({ q: "zzz" });
+    expect(screen.getByText('No log source name or identifier contains "zzz".')).toBeInTheDocument();
+    expect(screen.queryByText(/No log sources yet/)).toBeNull();
+    expect(screen.getByRole("searchbox")).toBeInTheDocument();
+    expect(screen.queryByRole("table")).toBeNull();
+  });
+
+  it("explains a page past the end and links to the first page", async () => {
+    vi.spyOn(api, "logSources").mockResolvedValue(pageOf([], 50));
+    await renderAt({ offset: "500" });
+    expect(screen.getByText(/past the last log source/)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Back to the first page" })).toHaveAttribute(
+      "href",
+      "/log-sources",
+    );
+  });
+
+  it("shows no search box on an empty inventory or a failed read", async () => {
+    vi.spyOn(api, "logSources").mockResolvedValue(pageOf([], 0));
+    const a = await renderAt();
+    expect(screen.queryByRole("search")).toBeNull();
+    a.unmount();
+    vi.spyOn(api, "logSources").mockRejectedValue(new ApiError(403, "x"));
+    await renderAt({ q: "fw" });
+    expect(screen.queryByRole("search")).toBeNull();
+    expect(screen.getByRole("alert")).toHaveTextContent("read:log_sources");
   });
 });

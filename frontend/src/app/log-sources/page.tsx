@@ -3,7 +3,8 @@ import Link from "next/link";
 import { enumLabel } from "@/i18n/enumLabels";
 import { asTextTranslator } from "@/i18n/textTranslator";
 import { plainCount } from "@/lib/fleetText";
-import type { FormatLocale } from "@/lib/format";
+import { formatCount, type FormatLocale } from "@/lib/format";
+import { Pagination } from "@/components/Pagination";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { guideFor } from "@/lib/guideRoutes";
 import { TableScroll } from "@/components/ui/TableScroll";
@@ -14,16 +15,21 @@ import { withRouteMessages } from "@/i18n/RouteMessages";
 
 
 import "./log-sources.css";
+import { LOG_SOURCES_PAGE_SIZE, Q_MAX, parseLogSourceQuery, type RawQuery } from "./query";
 import { qradarStatusLabel, qradarStatusTone } from "./qradarStatus";
 
-async function LogSourcesPage() {
+async function LogSourcesPage({ searchParams }: { searchParams: Promise<RawQuery> }) {
+  const { q, offset } = parseLogSourceQuery(await searchParams);
   const t = await getTranslations("logSources");
   const say = asTextTranslator(await getTranslations());
   const locale = (await getLocale()) as FormatLocale;
   let sources: LogSourceSummary[] = [];
+  let total = 0;
   let error: string | null = null;
   try {
-    sources = await api.logSources();
+    const page = await api.logSources({ q, limit: LOG_SOURCES_PAGE_SIZE, offset });
+    sources = page.items;
+    total = page.total;
   } catch (err) {
     error = loadErrorMessage(err, t("loadNoun"), "read:log_sources", say);
   }
@@ -35,9 +41,28 @@ async function LogSourcesPage() {
         title={t("title")}
         description={
           // A failed read has no count: "0 sources" would claim an empty inventory.
-          error ? undefined : t("countLead", { count: plainCount(sources.length, locale) })
+          error ? undefined : t("countLead", { count: formatCount(total, locale) })
         }
       />
+
+      {(q || total > 0 || offset > 0) && !error && (
+        <form className="filters" method="get" action="/log-sources" role="search">
+          <label className="sr-only" htmlFor="log-source-q">
+            {t("searchLabel")}
+          </label>
+          <input
+            id="log-source-q"
+            type="search"
+            name="q"
+            defaultValue={q}
+            placeholder={t("searchPlaceholder")}
+            maxLength={Q_MAX}
+            autoComplete="off"
+          />
+          <button type="submit">{t("apply")}</button>
+          {q && <Link href="/log-sources">{t("clearSearch")}</Link>}
+        </form>
+      )}
 
       {error ? (
         <div className="notice" role="alert">
@@ -45,9 +70,18 @@ async function LogSourcesPage() {
         </div>
       ) : sources.length === 0 ? (
         <div className="notice">
-          {t("empty")}
+          {q ? (
+            t("noMatch", { q })
+          ) : total > 0 ? (
+            <>
+              {t("pastEnd")} <Link href="/log-sources">{t("firstPage")}</Link>
+            </>
+          ) : (
+            t("empty")
+          )}
         </div>
       ) : (
+        <>
         <TableScroll label={t("table.label")}>
           <table className="table-dense log-sources-table" aria-label={t("table.label")}>
             <thead>
@@ -95,6 +129,14 @@ async function LogSourcesPage() {
             </tbody>
           </table>
         </TableScroll>
+        <Pagination
+          total={total}
+          limit={LOG_SOURCES_PAGE_SIZE}
+          offset={offset}
+          basePath="/log-sources"
+          params={{ q }}
+        />
+        </>
       )}
     </>
   );

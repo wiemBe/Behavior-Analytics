@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import builtins
 import uuid
+from collections.abc import Sequence
 from typing import TypedDict
 
-from sqlalchemy import func, select
+from sqlalchemy import ColumnElement, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.enums import ACTIVE_ANOMALY_STATES
@@ -44,6 +45,48 @@ class LogSourceRepository:
             stmt = stmt.where(LogSource.monitoring_enabled.is_(True))
         return list((await self.session.scalars(stmt)).all())
 
+    async def list_page(
+        self,
+        *,
+        limit: int,
+        offset: int,
+        q: str | None = None,
+        ids: Sequence[uuid.UUID] | None = None,
+        monitored_only: bool = False,
+    ) -> tuple[builtins.list[LogSource], int]:
+        """One page of the inventory by name, and the exact count of what matches.
+
+        Two statements however many sources there are. `q` is a case-insensitive "contains"
+        over the name and the identifier; `ids` restricts to those sources.
+        """
+        conditions: builtins.list[ColumnElement[bool]] = []
+        if monitored_only:
+            conditions.append(LogSource.monitoring_enabled.is_(True))
+        if ids is not None:
+            conditions.append(LogSource.id.in_(list(ids)))
+        needle = (q or "").strip()
+        if needle:
+            escaped = needle.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+            pattern = f"%{escaped}%"
+            conditions.append(
+                or_(
+                    LogSource.name.ilike(pattern, escape="\\"),
+                    LogSource.identifier.ilike(pattern, escape="\\"),
+                )
+            )
+        page = (
+            select(LogSource)
+            .where(*conditions)
+            .order_by(LogSource.name, LogSource.id)
+            .limit(limit)
+            .offset(offset)
+        )
+        items = builtins.list((await self.session.scalars(page)).all())
+        total = await self.session.scalar(
+            select(func.count()).select_from(LogSource).where(*conditions)
+        )
+        return items, int(total or 0)
+
     async def get(self, log_source_id: uuid.UUID) -> LogSource | None:
         return await self.session.get(LogSource, log_source_id)
 
@@ -54,8 +97,13 @@ class LogSourceRepository:
         )
         return {row.qradar_id: row for row in rows}
 
-    async def open_anomaly_counts(self) -> dict[uuid.UUID, int]:
-        """Map of log_source_id -> count of active, unsuppressed anomalies."""
+    async def open_anomaly_counts(
+        self, log_source_ids: Sequence[uuid.UUID] | None = None
+    ) -> dict[uuid.UUID, int]:
+        """Map of log_source_id -> count of active, unsuppressed anomalies.
+
+        With `log_source_ids` only those sources are counted (a page's worth).
+        """
         stmt = (
             select(LogSourceAnomaly.log_source_id, func.count())
             .where(
@@ -64,6 +112,8 @@ class LogSourceRepository:
             )
             .group_by(LogSourceAnomaly.log_source_id)
         )
+        if log_source_ids is not None:
+            stmt = stmt.where(LogSourceAnomaly.log_source_id.in_(list(log_source_ids)))
         rows = await self.session.execute(stmt)
         return {row[0]: row[1] for row in rows}
 

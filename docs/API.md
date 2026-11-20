@@ -258,6 +258,22 @@ selected group; the optional `group_q` (at most 100 characters, case-insensitive
 group name, LIKE wildcards literal) narrows only this facet and never the list. The request runs a
 constant number of statements: page ids, rows, group names, count and the facet reads.
 
+## Log-source list
+
+`GET /log-sources` (`read:log_sources`) returns one page of the inventory by name in the fleet
+envelope `{items, total, limit, offset}`; `total` is exact. Items are the log-source summary, with
+`open_anomaly_count` counted for the returned page only.
+
+| Parameter | Meaning |
+|---|---|
+| `limit`, `offset` | `limit` defaults to 200 and is clamped to `api_max_page_size`; the envelope reports the limit used. `limit=0` is refused (422). |
+| `q` | Case-insensitive substring of name or identifier (max 200 characters; `%` and `_` are literal). |
+| `ids` | Repeatable log-source UUIDs, at most 200 (more is a 422 naming `ids`). Unknown ids are simply absent. The Alerts page asks for the names of its selected sources this way. |
+| `monitored_only` | Only sources with monitoring enabled. |
+
+The request runs three statements however many sources exist: the page, its count and the
+open-anomaly counts of the page.
+
 `GET /log-sources/{id}/classification` (`read:fleet` and the log-source read) returns one source in the
 list's row shape (class, `basis`, override fields, review status, WAF/IPS/identity profile states);
 404 for an unknown id. It reuses the list's row loader.

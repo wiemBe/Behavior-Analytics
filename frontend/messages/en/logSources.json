@@ -6,6 +6,13 @@
   "countLead": "{count} sources",
   "description": "See Guide.",
   "empty": "No log sources yet. Run an inventory sync.",
+  "searchLabel": "Search log sources",
+  "searchPlaceholder": "Name or identifier",
+  "apply": "Search",
+  "clearSearch": "Clear search",
+  "noMatch": "No log source name or identifier contains \"{q}\".",
+  "pastEnd": "This page is past the last log source.",
+  "firstPage": "Back to the first page",
   "table": {
     "label": "Log sources",
     "name": "Name",

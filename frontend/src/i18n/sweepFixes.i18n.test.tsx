@@ -53,12 +53,13 @@ const source = (over: Partial<LogSourceSummary> = {}): LogSourceSummary =>
 
 describe("the log source inventory's criticality", () => {
   it("reads in Turkish; an unknown level and an inherited name show as sent", async () => {
-    vi.spyOn(api, "logSources").mockResolvedValue([
+    const items = [
       source(),
       source({ id: "s-2", name: "B", criticality: "constructor" }),
       source({ id: "s-3", name: "C", criticality: "SEVERE" }),
-    ]);
-    render(await LogSourcesPage());
+    ];
+    vi.spyOn(api, "logSources").mockResolvedValue({ items, total: 3, limit: 100, offset: 0 });
+    render(await LogSourcesPage({ searchParams: Promise.resolve({}) }));
     const rows = within(screen.getByRole("table")).getAllByRole("row");
     expect(rows[1]).toHaveTextContent("YÜKSEK");
     expect(rows[2]).toHaveTextContent("constructor");

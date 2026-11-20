@@ -2169,7 +2169,7 @@ In the interface this page is called **Alerts**, the route is `/alerts`. Lifecyc
 
 **Action:**
 
-- Open `/alerts`. Read the counts beside the status, severity and kind controls. Choose one severity (for example “HIGH”) and read all the counts again. Choose a kind, add a log source (“Add a log source…”), type a word in “Search alert titles” and press “Apply”. Choose a range chip (“1h”, “24h”, “7d”, “30d”) and “Custom” with a start and an end. Press “Copy link”, open the copied address in a new tab.
+- Open `/alerts`. Read the counts beside the status, severity and kind controls. Choose one severity (for example “HIGH”) and read all the counts again. Choose a kind, add a log source (type at least two characters of its name or identifier in “Add a log source…” and pick one of the listed matches; a broad search lists the first 20 and says how many matched), type a word in “Search alert titles” and press “Apply”. Choose a range chip (“1h”, “24h”, “7d”, “30d”) and “Custom” with a start and an end. Press “Copy link”, open the copied address in a new tab.
 - Open `/alerts?severity=BOGUS` and `/alerts?range=2y`. Open `/anomalies` and choose each range chip.
 - Read the facet counts from the API:
 

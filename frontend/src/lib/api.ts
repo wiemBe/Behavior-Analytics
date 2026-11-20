@@ -493,6 +493,15 @@ export interface SocOverview {
   alerts: { open: number; acknowledged: number; by_severity: Record<string, number> };
 }
 
+/** The `GET /log-sources` filters. `ids` repeats; more than 200 is refused by the API. */
+export interface LogSourceListParams {
+  q?: string;
+  ids?: string[];
+  limit?: number;
+  offset?: number;
+  monitored_only?: boolean;
+}
+
 export interface LogSourceSummary {
   id: string;
   qradar_id: number;
@@ -3322,7 +3331,19 @@ export function trafficCsvUrl(
 }
 
 export const api = {
-  logSources: () => request<LogSourceSummary[]>("/log-sources"),
+  /** One page of the inventory (`limit` 200 by default, `ids` at most 200, `q` name or identifier). */
+  logSources: (params: LogSourceListParams = {}, signal?: AbortSignal) =>
+    // A fixed parameter order, whatever order the caller wrote them in: the address is stable.
+    request<Page<LogSourceSummary>>(
+      `/log-sources${qs({
+        q: params.q,
+        ids: params.ids,
+        monitored_only: params.monitored_only,
+        limit: params.limit,
+        offset: params.offset,
+      })}`,
+      { signal },
+    ),
   logSource: (id: string) => request<LogSourceDetail>(`/log-sources/${id}`),
   logSourcePivot: (id: string) => request<Pivot>(`/log-sources/${id}/pivot`),
 

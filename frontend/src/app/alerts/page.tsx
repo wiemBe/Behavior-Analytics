@@ -86,12 +86,15 @@ async function AlertsPage({
   const locale = (await getLocale()) as Locale;
 
   // The list, the counts and the log source names are three reads. Only the list decides
-  // whether the page has content: a failed count read or source read costs the counts or the
-  // picker and nothing else.
+  // whether the page has content: a failed count read or name read costs the counts or the
+  // names and nothing else. The names are asked for by id (the selected sources, at most 25),
+  // never for the inventory, and not at all when no source is selected.
   const [listed, counted, sourced] = await Promise.allSettled([
     api.alerts(alertListParams(query)),
     api.alertFacets(alertFilterParams(query)),
-    api.logSources(),
+    query.logSourceIds.length > 0
+      ? api.logSources({ ids: query.logSourceIds, limit: query.logSourceIds.length })
+      : Promise.resolve(null),
   ]);
   let page: AlertPage | null = null;
   let error: string | null = null;
@@ -104,10 +107,9 @@ async function AlertsPage({
     error = loadErrorMessage(listed.reason, t("loadNoun"), "read:alerts", say);
   }
   const facets: AlertFacets | null = counted.status === "fulfilled" ? counted.value : null;
-  const sourceRows: LogSourceSummary[] = sourced.status === "fulfilled" ? sourced.value : [];
-  const sources = sourceRows
-    .map((s) => ({ id: s.id, name: s.name }))
-    .sort((a, b) => a.name.localeCompare(b.name));
+  const sourceRows: LogSourceSummary[] =
+    sourced.status === "fulfilled" && sourced.value ? sourced.value.items : [];
+  const sources = sourceRows.map((s) => ({ id: s.id, name: s.name }));
   const alerts = page?.items ?? [];
   const filtered = isAlertFiltered(query);
   const shownWindow = rangeWindow(query.range, nowMs);
