@@ -131,3 +131,21 @@ class JdbcSourceRow(JdbcResponse):
     flow: JdbcFlowOut
     monitoring: JdbcMonitoringOut
 JdbcSourceDetail = JdbcSourceRow
+
+
+class JdbcSnapshotOut(JdbcResponse):
+    """The console inventory passes behind `total`: stored rows, never QRadar's own count."""
+
+    complete: bool
+    state: flow.AttemptState
+    stale: bool
+    last_complete_at: UtcDatetime | None
+    consoles: Count
+
+
+class JdbcSourcePage(JdbcResponse):
+    items: list[JdbcSourceRow]
+    total: Count
+    limit: Annotated[int, Field(ge=1)]
+    offset: Count
+    snapshot: JdbcSnapshotOut
