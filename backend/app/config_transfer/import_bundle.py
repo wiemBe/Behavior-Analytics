@@ -1,10 +1,11 @@
 """Plan configuration merges using only local data; the caller owns the transaction."""
 
+import copy
 import math
 import uuid
 from collections import Counter
 from collections.abc import Callable
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -18,10 +19,13 @@ from app.config_transfer.document import TIMESTAMP_FORMAT
 from app.config_transfer.refs import ResolutionCatalog
 from app.config_transfer.report import ImportReport
 from app.core.config import get_settings
+from app.custom_rules.validation import CustomRuleDraft, validate_rule_draft
 from app.identity.reference import IdentityFieldMapping, IdentityReferenceError
 from app.ips.profile import IpsFieldMapping, IpsFieldReference, IpsProfileError
 from app.models.alert_policy import AlertPolicy
 from app.models.alert_suppression import AlertSuppression
+from app.models.custom_rule import CustomRule
+from app.models.dashboard import Dashboard, DashboardVisibility, UserDashboardPref
 from app.models.email import (
     EMAIL_ALERT_TYPES,
     EMAIL_RECIPIENT_ALERT_TYPES,
@@ -33,6 +37,7 @@ from app.models.enums import (
     AnomalyFamily,
     AnomalyType,
     ClassificationRuleKind,
+    CustomRuleSubjectKind,
     IdentityAnomalyType,
     IdentityProfileValidationStatus,
     IpsAnomalyType,
@@ -58,18 +63,20 @@ from app.models.fleet import (
 from app.models.identity import LdapConfig
 from app.models.identity_detection import IdentitySourceProfile
 from app.models.instance import QRadarInstance
-from app.models.ips import IpsSourceProfile
+from app.models.ips import IpsEntity, IpsSourceProfile
 from app.models.log_source import LogSource
 from app.models.notification_destination import NotificationDestination
 from app.models.notification_rule import NotificationRule
 from app.models.outage import OutageAlertPolicy
-from app.models.property_watch import PropertyWatch
+from app.models.property_watch import PropertyWatch, PwValue
 from app.models.rule import AnalyticsRule, TechniqueMapping
 from app.models.search import ScheduledSearch, SearchQueryVersion
 from app.models.search_cadence import SearchCadenceSetting
-from app.models.waf import WafSourceProfile
+from app.models.waf import WafEndpoint, WafSourceProfile
 from app.schemas.alert_policy import AlertPolicyUpsert
 from app.schemas.coverage import TechniqueMappingIn
+from app.schemas.custom_rule import CustomRuleCreate
+from app.schemas.dashboard import SUPPORTED_LAYOUT_VERSIONS, DashboardCreate
 from app.schemas.email import RecipientIn
 from app.schemas.fleet import ClassificationRuleCreate, check_pattern
 from app.schemas.ips import IpsProfileIn
@@ -160,8 +167,12 @@ def _key(section: str, row: dict[str, Any]) -> str:
         subject = row.get("log_source") or row.get("watch") or row.get("rule") or {}
         values = [row.get("family"), _ref_name(subject), row.get("detector_type")]
     elif section in ("notification_destinations", "notification_rules", "property_watches",
-                     "scheduled_searches"):
+                     "scheduled_searches", "custom_rules"):
         values = [row.get("name")]
+    elif section == "dashboards":
+        values = [row.get("owner_subject"), row.get("name")]
+    elif section == "dashboard_prefs":
+        values = [row.get("owner_subject")]
     elif section in ("analytics_rule_settings", "technique_mappings"):
         found = row.get("rule")
         rule_ref: dict[str, Any] = found if isinstance(found, dict) else {}
@@ -213,6 +224,10 @@ class _Ctx:
     ldap: LdapConfig | None
     #: Name -> UUID of every destination this plan matched or created, for the rules that follow.
     destination_ids: dict[str, uuid.UUID]
+    #: (watch id, value_key, watch_version) -> `pw_value` id, only for values a file names.
+    pw_values: dict[tuple[str, str, int], str] = field(default_factory=dict)
+    #: (owner_subject, name) -> id of every dashboard this plan created or found equal.
+    dashboard_ids: dict[tuple[str, str], uuid.UUID] = field(default_factory=dict)
 
 
 #: A section's applier: (context, row, resolved local id or None) -> (outcome, reason or None).
@@ -819,9 +834,162 @@ def _scheduled_searches(ctx: _Ctx, row: dict[str, Any], local_id: str | None) ->
             search_id=search.id, version=1, aql_query=search.aql_query,
             changed_by=ctx.actor[:255], change_note="initial version"))
         ctx.existing["scheduled_searches"][payload.name] = search
+        # A dashboard later in this file may chart the search just created.
+        ctx.catalog = replace(ctx.catalog, searches=(*ctx.catalog.searches,
+                                                     (str(search.id), search.name)))
         return "created", None
     stored = {key: getattr(existing, key) for key in values}  # `enabled` is the operator's
     return ("unchanged" if stored == values else "conflict"), None
+
+
+#: The subject reference each custom-rule kind names; every other reference stays null.
+SUBJECT_REF = {
+    CustomRuleSubjectKind.LOG_SOURCE: "log_source", CustomRuleSubjectKind.IPS_SOURCE: "log_source",
+    CustomRuleSubjectKind.FLEET_CLASS: "source_class",
+    CustomRuleSubjectKind.WAF_ENDPOINT: "waf_endpoint",
+    CustomRuleSubjectKind.IPS_ENTITY: "ips_entity", CustomRuleSubjectKind.PW_VALUE: "pw_value",
+}
+RULE_COLUMNS = ("description", "subject_kind", "log_source_id", "source_class", "waf_endpoint_id",
+                "ips_entity_id", "pw_value_id", "metric", "operator", "threshold_value",
+                "sustain_buckets", "recovery_buckets", "severity")
+
+
+def _subject_columns(ctx: _Ctx, kind: CustomRuleSubjectKind, row: dict[str, Any]) -> dict[str, Any]:
+    """The one subject column the kind names, resolved on this console; a missing target stays
+    unresolved so the operator imports again after collection has admitted it."""
+    named = SUBJECT_REF[kind]
+    refs = ("log_source", "source_class", "waf_endpoint", "ips_entity", "pw_value")
+    if any((row[name] is not None) != (name == named) for name in refs):
+        raise RowError("custom rule subject does not match subject_kind")
+    columns: dict[str, Any] = {"log_source_id": None, "source_class": None,
+                               "waf_endpoint_id": None, "ips_entity_id": None, "pw_value_id": None}
+    ref = row[named]
+    if named == "log_source":
+        columns["log_source_id"] = uuid.UUID(str(_only(ctx.catalog.match_log_source(ref))))
+    elif named == "source_class":
+        columns["source_class"] = SourceClass(ref).value if isinstance(ref, str) else None
+    elif named == "waf_endpoint":
+        columns["waf_endpoint_id"] = uuid.UUID(str(_only(ctx.catalog.match_waf_endpoint(ref))))
+    elif named == "ips_entity":
+        columns["ips_entity_id"] = uuid.UUID(str(_only(ctx.catalog.match_ips_entity(ref))))
+    else:
+        version = ref.get("watch_version") if isinstance(ref, dict) else None
+        key = ref.get("value_key") if isinstance(ref, dict) else None
+        if not isinstance(key, str) or type(version) is not int:
+            raise RowError("property watch value ref needs watch, value_key, and watch_version")
+        watch = _only(ctx.catalog.match_watch(ref.get("watch")))
+        found = ctx.pw_values.get((str(watch), key, version))
+        if found is None:
+            raise RowError("no property watch value has this watch, key, and version")
+        columns["pw_value_id"] = uuid.UUID(found)
+    return columns
+
+
+def _custom_rules(ctx: _Ctx, row: dict[str, Any], local_id: str | None) -> Result:
+    _shape(row, {"name", "description", "enabled_on_source", "subject_kind", "log_source",
+                 "source_class", "waf_endpoint", "ips_entity", "pw_value", "metric", "operator",
+                 "threshold_value", "sustain_buckets", "recovery_buckets", "severity"})
+    if type(row["enabled_on_source"]) is not bool:
+        raise RowError("enabled_on_source must be a boolean")
+    if any(type(row[key]) is bool for key in ("threshold_value", "sustain_buckets",
+                                              "recovery_buckets")):
+        raise RowError("custom rule numbers must not be booleans")
+    kind = CustomRuleSubjectKind(row["subject_kind"])
+    subject = _subject_columns(ctx, kind, row)
+    payload = CustomRuleCreate.model_validate({
+        key: row[key] for key in ("name", "description", "subject_kind", "metric", "operator",
+                                  "threshold_value", "sustain_buckets", "recovery_buckets",
+                                  "severity")} | subject | {"enabled": False})
+    # A reason can carry the metric or class text, so only the fixed sentence is reported.
+    if validate_rule_draft(CustomRuleDraft(
+            subject_kind=payload.subject_kind, metric=payload.metric, operator=payload.operator,
+            threshold_value=payload.threshold_value, sustain_buckets=payload.sustain_buckets,
+            recovery_buckets=payload.recovery_buckets, log_source_id=payload.log_source_id,
+            source_class=payload.source_class, waf_endpoint_id=payload.waf_endpoint_id,
+            ips_entity_id=payload.ips_entity_id, pw_value_id=payload.pw_value_id)):
+        raise RowError("custom rule failed the draft validation")
+    values = {key: getattr(payload, key) for key in RULE_COLUMNS}
+    values["subject_kind"], values["severity"] = payload.subject_kind.value, payload.severity.value
+    existing = ctx.existing["custom_rules"].get(payload.name)
+    if existing is None:
+        rule = CustomRule(
+            name=payload.name, **values, enabled=False, consecutive_breaching=0,
+            consecutive_under=0, created_by=ctx.actor[:255], updated_by=ctx.actor[:255])
+        ctx.session.add(rule)
+        ctx.existing["custom_rules"][payload.name] = rule
+        return "created", None
+    # `enabled` and the hysteresis and evaluation columns are the operator's and the engine's.
+    stored = {key: getattr(existing, key) for key in values}
+    return ("unchanged" if stored == values else "conflict"), None
+
+
+def _rewrite_layout(ctx: _Ctx, layout: Any) -> dict[str, Any]:
+    """The file's layout with every widget name ref replaced by the local id; all or nothing."""
+    version = layout.get("v") if isinstance(layout, dict) else None
+    if type(version) is not int or version not in SUPPORTED_LAYOUT_VERSIONS:
+        raise RowError("layout version is not supported")
+    if not isinstance(layout.get("widgets"), list):
+        raise RowError("dashboard layout widgets are not a list")
+    rewritten = copy.deepcopy(layout)
+    for widget in rewritten["widgets"]:
+        if not isinstance(widget, dict) or not isinstance(widget.get("type"), str):
+            raise RowError("dashboard widget is malformed")
+        config = widget.get("config", {})
+        found = ctx.catalog.match_widget_config(widget["type"], config)
+        if found.unresolved:  # the reasons carry counts, never the looked-up text
+            raise RowError("dashboard widget does not resolve: " + found.unresolved[0].reason)
+        for binding in found.bindings:
+            if binding.match is not None:
+                config[binding.key] = str(binding.match.exact_id)
+    return rewritten
+
+
+def _dashboards(ctx: _Ctx, row: dict[str, Any], local_id: str | None) -> Result:
+    _shape(row, {"owner_subject", "name", "description", "visibility", "template_key",
+                 "template_version", "schema_version", "layout"})
+    if not isinstance(row["visibility"], str) or row["visibility"] not in {
+            item.value for item in DashboardVisibility}:
+        raise RowError("dashboard visibility is not PRIVATE or SHARED")
+    owner = row["owner_subject"]
+    if not isinstance(owner, str) or not 1 <= len(owner) <= 255:
+        raise RowError("dashboard owner_subject is not text of 1 to 255 characters")
+    payload = DashboardCreate.model_validate({
+        key: row[key] for key in ("name", "description", "template_key", "template_version")
+    } | {"layout": _rewrite_layout(ctx, row["layout"])})
+    if type(row["schema_version"]) is not int or row["schema_version"] != payload.layout.v:
+        raise RowError("dashboard schema_version does not match the layout version")
+    values = {"description": payload.description, "visibility": row["visibility"],
+              "template_key": payload.template_key, "template_version": payload.template_version,
+              "schema_version": payload.layout.v, "layout": payload.layout.model_dump(mode="json")}
+    existing = ctx.existing["dashboards"].get((owner, payload.name))
+    if existing is None:
+        dashboard = Dashboard(id=uuid.uuid4(), owner_subject=owner, name=payload.name, **values,
+                              revision=1, updated_by=ctx.actor[:255])
+        ctx.session.add(dashboard)
+        ctx.existing["dashboards"][(owner, payload.name)] = dashboard
+        ctx.dashboard_ids[(owner, payload.name)] = dashboard.id
+        return "created", None
+    if {key: getattr(existing, key) for key in values} != values:
+        return "conflict", None  # a dashboard that differs is not matched, so no pref follows it
+    ctx.dashboard_ids[(owner, payload.name)] = existing.id
+    return "unchanged", None
+
+
+def _dashboard_prefs(ctx: _Ctx, row: dict[str, Any], local_id: str | None) -> Result:
+    _shape(row, {"owner_subject", "dashboard_name"})
+    owner, name = row["owner_subject"], row["dashboard_name"]
+    if not isinstance(owner, str) or not 1 <= len(owner) <= 255 or not isinstance(name, str):
+        raise RowError("dashboard preference owner_subject or dashboard_name is not text")
+    target = ctx.dashboard_ids.get((owner, name))
+    if target is None:
+        raise RowError("dashboard was not created or matched in this import")
+    existing = ctx.existing["dashboard_prefs"].get(owner)
+    if existing is None:
+        pref = UserDashboardPref(owner_subject=owner, default_dashboard_id=target)
+        ctx.session.add(pref)
+        ctx.existing["dashboard_prefs"][owner] = pref
+        return "created", None
+    return ("unchanged" if existing.default_dashboard_id == target else "conflict"), None
 
 
 APPLIERS: dict[str, Applier] = {
@@ -844,6 +1012,9 @@ APPLIERS: dict[str, Applier] = {
     "technique_mappings": _technique_mappings,
     "property_watches": _property_watches,
     "scheduled_searches": _scheduled_searches,
+    "custom_rules": _custom_rules,
+    "dashboards": _dashboards,
+    "dashboard_prefs": _dashboard_prefs,
 }
 
 
@@ -854,6 +1025,51 @@ def _failure(exc: Exception) -> str:
     if isinstance(exc, WafProfileError | IpsProfileError) and exc.ref is not None:
         return exc.ref.code
     return "row validation failed"
+
+
+def _wanted(document: dict[str, Any]) -> tuple[set[str], set[str], set[str]]:
+    """The endpoint paths, IPS value keys and watch value keys the file names, and nothing else."""
+    sections = document["sections"]
+    named: list[tuple[Any, str, Any]] = []
+    for row in sections.get("custom_rules", []):
+        named += [(row.get("waf_endpoint"), "normalized_endpoint", 0),
+                  (row.get("ips_entity"), "value_key", 1), (row.get("pw_value"), "value_key", 2)]
+    for dashboard in sections.get("dashboards", []):
+        layout = dashboard.get("layout")
+        for widget in (layout.get("widgets") if isinstance(layout, dict) else None) or []:
+            config = widget.get("config") if isinstance(widget, dict) else None
+            if isinstance(config, dict) and widget.get("type") == "waf.endpoint_traffic":
+                named.append((config.get("endpoint"), "normalized_endpoint", 0))
+    found: tuple[set[str], set[str], set[str]] = (set(), set(), set())
+    for ref, key, slot in named:
+        if isinstance(ref, dict) and isinstance(ref.get(key), str):
+            found[slot].add(ref[key])
+    return found
+
+
+async def _load_subjects(session: AsyncSession, instance: QRadarInstance,
+                         document: dict[str, Any]) -> tuple[list[Any], list[Any], dict[Any, str]]:
+    """Endpoint, IPS entity and watch value rows a file names: a few queries, 10,000 names each."""
+    paths, entity_keys, value_keys = (sorted(group) for group in _wanted(document))
+    chunk = 10_000
+    endpoints: list[Any] = []
+    entities: list[Any] = []
+    values: dict[Any, str] = {}
+    for start in range(0, len(paths), chunk):
+        endpoints += list(await session.scalars(select(WafEndpoint).where(
+            WafEndpoint.instance_id == instance.id,
+            WafEndpoint.normalized_endpoint.in_(paths[start:start + chunk]))))
+    for start in range(0, len(entity_keys), chunk):
+        entities += list(await session.scalars(select(IpsEntity).where(
+            IpsEntity.instance_id == instance.id,
+            IpsEntity.value_key.in_(entity_keys[start:start + chunk]))))
+    for start in range(0, len(value_keys), chunk):
+        for value in await session.scalars(select(PwValue).join(
+                PropertyWatch, PropertyWatch.id == PwValue.watch_id).where(
+                PropertyWatch.instance_id == instance.id,
+                PwValue.value_key.in_(value_keys[start:start + chunk]))):
+            values[(str(value.watch_id), value.value_key, value.watch_version)] = str(value.id)
+    return endpoints, entities, values
 
 
 async def plan(session: AsyncSession, document: dict[str, Any], instance: QRadarInstance,
@@ -899,6 +1115,14 @@ async def plan(session: AsyncSession, document: dict[str, Any], instance: QRadar
         watches=tuple((str(row.id), row.name) for row in watches),
         destinations=tuple((str(row.id), row.name) for row in destinations),
     )
+    endpoints, entities, pw_values = await _load_subjects(session, instance, document)
+    catalog = replace(
+        catalog,
+        waf_endpoints=tuple((str(row.id), str(row.log_source_id), row.virtual_host,
+                             row.normalized_endpoint, row.http_method, row.normalizer_version)
+                            for row in endpoints),
+        ips_entities=tuple((str(row.id), str(row.log_source_id), row.dimension, row.value_key,
+                            row.normalizer_version) for row in entities))
     def scope_key(value: uuid.UUID | None) -> str:
         return str(value) if value is not None else ""
 
@@ -926,7 +1150,12 @@ async def plan(session: AsyncSession, document: dict[str, Any], instance: QRadar
             TechniqueMapping.instance_id == instance.id),
         "property_watches": {row.name: row for row in all_watches},
         "scheduled_searches": await load(ScheduledSearch, lambda r: r.name),
+        "custom_rules": await load(CustomRule, lambda r: r.name),
+        "dashboards": await load(Dashboard, lambda r: (r.owner_subject, r.name)),
+        "dashboard_prefs": await load(UserDashboardPref, lambda r: r.owner_subject),
     }
+    catalog = replace(catalog, searches=tuple(
+        (str(row.id), name) for name, row in existing["scheduled_searches"].items()))
     ctx = _Ctx(
         session, instance, actor, datetime.now(UTC), {str(row.id): row for row in sources},
         classifications,
@@ -940,7 +1169,7 @@ async def plan(session: AsyncSession, document: dict[str, Any], instance: QRadar
          "conflict": "stored configuration differs from the file and is not default"},
         "profile inserted disabled and UNVALIDATED" if mode == "apply" else
         "no profile for this log source; would insert disabled and UNVALIDATED",
-        catalog, existing, await session.get(LdapConfig, 1), {})
+        catalog, existing, await session.get(LdapConfig, 1), {}, pw_values)
     for section, rows in document["sections"].items():
         keys = Counter(_key(section, row) for row in rows)
         for row in rows:

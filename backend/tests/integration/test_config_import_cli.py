@@ -401,7 +401,9 @@ async def test_duplicate_keys_and_later_sections_are_reported(db_schema, db_sess
     report = _report(_run(db_schema, tmp_path, "--apply", "--yes", document=document))
     assert len(_lines(report, "log_source_settings", "unresolved")) == 2
     for section in ("custom_rules", "dashboard_prefs", "dashboards"):
-        assert _lines(report, section, "unresolved")[0]["reason"] == "not applied in this release"
+        # The section is applied now: a row of the wrong shape is rejected by its applier.
+        assert _lines(report, section, "unresolved")[0]["reason"] == (
+            "row fields do not match the section")
     source = await db_session.scalar(select(LogSource))
     await db_session.refresh(source)
     assert source.owner is None
