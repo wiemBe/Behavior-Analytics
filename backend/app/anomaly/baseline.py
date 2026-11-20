@@ -24,7 +24,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from typing import cast
 
-from sqlalchemy import Table, select, tuple_, update
+from sqlalchemy import Float, Interval, Table, func, select, tuple_, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -45,6 +45,7 @@ from app.models.log_source import (
     LogSourceBaseline,
     LogSourceMetric,
 )
+from app.services.source_pause_spans import bucket_overlaps_pause
 
 # Which metric columns get baselines. These are the ones anomaly detection
 # compares against a historical norm.
@@ -79,6 +80,11 @@ class ExclusionTally:
     #: The (weekday, hour) cells analyst exclusions removed a bucket from. Working data for
     #: the rebuild, not part of the stored counts.
     analyst_slots: set[tuple[int, int]] = field(default_factory=set)
+    #: Buckets overlapping a QRadar-disabled span (JDBC-1 P9a), only with the policy on.
+    #: Charged after every other reason, so a bucket is counted once.
+    qradar_paused: int = 0
+    #: The cells a pause removed a bucket from; working data, like `analyst_slots`.
+    paused_slots: set[tuple[int, int]] = field(default_factory=set)
 
     @property
     def total(self) -> int:
@@ -89,6 +95,7 @@ class ExclusionTally:
             + self.incomplete
             + self.unfinished
             + self.analyst_exclusion
+            + self.qradar_paused
         )
 
     def as_dict(self) -> dict[str, int]:
@@ -103,13 +110,25 @@ class ExclusionTally:
         # stores exactly the document it always did.
         if self.analyst_exclusion:
             counts["analyst_exclusion"] = self.analyst_exclusion
+        # Likewise only when a pause took effect (policy on and a bucket overlapped).
+        if self.qradar_paused:
+            counts["qradar_paused"] = self.qradar_paused
         return counts
 
 
 class BaselineBuilder:
-    def __init__(self, session: AsyncSession, *, settings: Settings | None = None) -> None:
+    def __init__(
+        self,
+        session: AsyncSession,
+        *,
+        settings: Settings | None = None,
+        source_pause_policy: bool = False,
+    ) -> None:
+        """`source_pause_policy` is resolved by the caller (never read from settings here):
+        on, a bucket overlapping a QRadar-disabled span is dropped from the baseline."""
         self.session = session
         self.settings = settings or get_settings()
+        self.source_pause_policy = source_pause_policy
         self._stale_sink: list[tuple[uuid.UUID, str, int, int]] | None = None
 
     async def rebuild_many(
@@ -211,12 +230,12 @@ class BaselineBuilder:
             for (metric, weekday, hour), values in cells.items()
         ]
         await self._upsert_cells(rows)
-        # A cell the analyst's exclusions left with no observation must not keep its old
-        # band (design 2.5, fail closed). Cells that lost samples to anything else stay
-        # untouched, as before.
+        # A cell the analyst's exclusions or a QRadar pause left with no observation must not
+        # keep its old band (design 2.5, fail closed). Cells that lost samples to anything
+        # else stay untouched, as before.
         stale = [
             (log_source.id, metric, weekday, hour)
-            for weekday, hour in sorted(tally.analyst_slots)
+            for weekday, hour in sorted(tally.analyst_slots | tally.paused_slots)
             for metric in BASELINE_METRICS
             if (metric, weekday, hour) not in cells
         ]
@@ -231,19 +250,31 @@ class BaselineBuilder:
     ) -> tuple[list[Observation], ExclusionTally, int]:
         """Return usable observations, why the rest were dropped, and how many
         candidate buckets were considered."""
-        rows = list(
-            (
-                await self.session.scalars(
-                    select(LogSourceMetric)
-                    .where(
-                        LogSourceMetric.log_source_id == log_source.id,
-                        LogSourceMetric.bucket_start >= start,
-                        LogSourceMetric.bucket_start < end,
-                    )
-                    .order_by(LogSourceMetric.bucket_start)
-                )
-            ).all()
+        query = (
+            select(LogSourceMetric)
+            .where(
+                LogSourceMetric.log_source_id == log_source.id,
+                LogSourceMetric.bucket_start >= start,
+                LogSourceMetric.bucket_start < end,
+            )
+            .order_by(LogSourceMetric.bucket_start)
         )
+        if self.source_pause_policy:
+            # The overlap flag rides in this same SELECT: no query per source or cell.
+            bucket_end = LogSourceMetric.bucket_start + func.make_interval(
+                0, 0, 0, 0, 0, 0, LogSourceMetric.bucket_seconds.cast(Float), type_=Interval
+            )
+            flag = bucket_overlaps_pause(
+                LogSourceMetric.log_source_id.expression,
+                LogSourceMetric.bucket_start.expression,
+                bucket_end,
+            )
+            flagged = (await self.session.execute(query.add_columns(flag))).all()
+            samples = [(row[0], bool(row[1])) for row in flagged]
+        else:
+            loaded = (await self.session.scalars(query)).all()
+            samples = [(m, False) for m in loaded]
+        rows = [m for m, _ in samples]
 
         excluded = await self._excluded_intervals(log_source, start, end)
         tally = ExclusionTally()
@@ -252,7 +283,7 @@ class BaselineBuilder:
         # would drag every cell it lands in downwards, so it never enters a
         # baseline regardless of what completeness it claims.
         observations: list[Observation] = []
-        for m in rows:
+        for m, paused in samples:
             if m.bucket_end > end:
                 tally.unfinished += 1
                 continue
@@ -263,6 +294,9 @@ class BaselineBuilder:
             if reason is None and any(lo <= m.bucket_start < hi for lo, hi in analyst_spans):
                 reason = "analyst_exclusion"
                 tally.analyst_slots.add(seasonal_key(m.bucket_start))
+            if reason is None and paused:
+                reason = "qradar_paused"
+                tally.paused_slots.add(seasonal_key(m.bucket_start))
             if reason is not None:
                 setattr(tally, reason, getattr(tally, reason) + 1)
                 continue
