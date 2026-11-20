@@ -1508,6 +1508,20 @@ class Settings(BaseSettings):
         return self
 
     @model_validator(mode="after")
+    def _default_metric_retention_covers_readers(self) -> Settings:
+        """Derive unset retention before the checks, preserving code-default provenance."""
+        for retention, readers in (
+            (
+                "waf_metric_retention_days",
+                (self.baseline_lookback_days, self.waf_new_endpoint_history_days),
+            ),
+            ("ips_metric_retention_days", (self.ips_baseline_lookback_days,)),
+        ):
+            if retention not in self.model_fields_set:
+                object.__setattr__(self, retention, max(35, *(days + 1 for days in readers)))
+        return self
+
+    @model_validator(mode="after")
     def _waf_retention_covers_the_baseline(self) -> Settings:
         """Deleting metrics the baseline still needs would silently thin it.
 

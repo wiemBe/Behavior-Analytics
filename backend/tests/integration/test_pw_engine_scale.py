@@ -56,6 +56,7 @@ ALL_FIVE = [d.value for d in PwAnomalyType]
 
 def scale_settings(**extra: object):  # type: ignore[no-untyped-def]
     return cfg(
+        pw_alerting_enabled=False,
         pw_max_searches_per_tick=200,
         pw_max_searches_per_watch_per_tick=12,
         pw_max_active_values_per_watch=300,

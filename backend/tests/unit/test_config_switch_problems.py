@@ -257,7 +257,8 @@ def test_second_switch_off_suppresses_checks_with_collection_on() -> None:
 
 
 def test_waf_novelty_problems_violation() -> None:
-    base = Settings(waf_collection_enabled=False, waf_new_endpoint_history_days=40)
+    base = Settings(waf_collection_enabled=False, waf_new_endpoint_history_days=40,
+                    waf_metric_retention_days=35)
     violating = base.model_copy(update={"waf_collection_enabled": True})
     expected = (
         "WAF_NEW_ENDPOINT_HISTORY_DAYS must be below WAF_METRIC_RETENTION_DAYS "
@@ -265,7 +266,8 @@ def test_waf_novelty_problems_violation() -> None:
     )
     assert _waf_novelty_history_is_retained_problems(violating) == [expected]
     with pytest.raises(ValidationError) as exc:
-        Settings(waf_collection_enabled=True, waf_new_endpoint_history_days=40)
+        Settings(waf_collection_enabled=True, waf_new_endpoint_history_days=40,
+                 waf_metric_retention_days=35)
     assert expected in str(exc.value)
 
 
@@ -445,3 +447,108 @@ def test_no_secret_in_messages() -> None:
     ):
         for m in fn(violating):
             assert SECRET_MARKER not in m
+
+@pytest.mark.parametrize(
+    ("baseline", "novelty", "ips_baseline", "waf_retention", "ips_retention"),
+    [(1, 1, 1, 35, 35), (34, 34, 34, 35, 35), (35, 7, 35, 36, 36),
+     (28, 60, 60, 61, 61), (60, 7, 28, 61, 35), (120, 7, 120, 121, 121),
+     (900, 7, 900, 901, 901)],
+)
+def test_unset_metric_retention_is_the_smallest_safe_default(
+    monkeypatch, baseline, novelty, ips_baseline, waf_retention, ips_retention
+) -> None:
+    for key in ("WAF_METRIC_RETENTION_DAYS", "IPS_METRIC_RETENTION_DAYS"):
+        monkeypatch.delenv(key, raising=False)
+    settings = Settings(
+        _env_file=None,
+        baseline_lookback_days=baseline,
+        waf_new_endpoint_history_days=novelty,
+        ips_baseline_lookback_days=ips_baseline,
+    )
+    assert settings.waf_metric_retention_days == waf_retention
+    assert settings.ips_metric_retention_days == ips_retention
+    assert "waf_metric_retention_days" not in settings.model_fields_set
+    assert "ips_metric_retention_days" not in settings.model_fields_set
+    assert _waf_retention_covers_the_baseline_problems(settings) == []
+    assert _waf_novelty_history_is_retained_problems(settings) == []
+    assert _ips_retention_covers_the_baseline_problems(settings) == []
+    assert switch_dependent_problems(settings) == []
+
+
+def test_retention_derivation_runs_before_every_reader_check(monkeypatch) -> None:
+    from app.core import config
+
+    seen = []
+    for name in (
+        "_waf_retention_covers_the_baseline_problems",
+        "_ips_retention_covers_the_baseline_problems",
+        "_waf_novelty_history_is_retained_problems",
+    ):
+        original = getattr(config, name)
+
+        def record(settings, original=original, name=name):
+            seen.append((name, settings.waf_metric_retention_days,
+                         settings.ips_metric_retention_days))
+            return original(settings)
+
+        monkeypatch.setattr(config, name, record)
+    Settings(_env_file=None, baseline_lookback_days=120, ips_baseline_lookback_days=60,
+             waf_new_endpoint_history_days=60)
+    assert seen == [
+        ("_waf_retention_covers_the_baseline_problems", 121, 61),
+        ("_ips_retention_covers_the_baseline_problems", 121, 61),
+        ("_waf_novelty_history_is_retained_problems", 121, 61),
+    ]
+
+
+@pytest.mark.parametrize("from_env", [False, True])
+@pytest.mark.parametrize(
+    ("overrides", "message"),
+    [
+        ({"baseline_lookback_days": 60, "waf_metric_retention_days": 35},
+         "WAF_METRIC_RETENTION_DAYS must exceed BASELINE_LOOKBACK_DAYS (35 <= 60)"),
+        ({"waf_new_endpoint_history_days": 35, "waf_metric_retention_days": 35},
+         "WAF_NEW_ENDPOINT_HISTORY_DAYS must be below WAF_METRIC_RETENTION_DAYS (35 >= 35)"),
+        ({"ips_baseline_lookback_days": 60, "ips_metric_retention_days": 35},
+         "IPS_METRIC_RETENTION_DAYS must exceed IPS_BASELINE_LOOKBACK_DAYS (35 <= 60)"),
+    ],
+)
+def test_explicit_retention_still_refuses_the_exact_conflict(
+    monkeypatch, from_env, overrides, message
+) -> None:
+    if from_env:
+        for key, value in overrides.items():
+            monkeypatch.setenv(key.upper(), str(value))
+        overrides = {}
+    with pytest.raises(ValidationError) as exc:
+        Settings(_env_file=None, **overrides)
+    assert exc.value.errors()[0]["msg"] == f"Value error, {message}"
+
+
+@pytest.mark.parametrize("from_env", [False, True])
+def test_explicit_safe_retention_is_preserved_with_its_provenance(monkeypatch, from_env) -> None:
+    overrides = {"waf_metric_retention_days": 200, "ips_metric_retention_days": 150}
+    if from_env:
+        for key, value in overrides.items():
+            monkeypatch.setenv(key.upper(), str(value))
+        overrides = {}
+    settings = Settings(_env_file=None, **overrides)
+    assert settings.waf_metric_retention_days == 200
+    assert settings.ips_metric_retention_days == 150
+    assert {"waf_metric_retention_days", "ips_metric_retention_days"} <= settings.model_fields_set
+
+
+def test_unset_retention_is_safe_when_collection_and_retention_are_off() -> None:
+    settings = Settings(
+        _env_file=None, waf_collection_enabled=False, waf_retention_enabled=False,
+        ips_collection_enabled=False, ips_retention_enabled=False,
+        baseline_lookback_days=120, waf_new_endpoint_history_days=60,
+        ips_baseline_lookback_days=60,
+    )
+    assert settings.waf_metric_retention_days == 121
+    assert settings.ips_metric_retention_days == 61
+    enabled = settings.model_copy(update={
+        "waf_collection_enabled": True, "waf_retention_enabled": True,
+        "ips_collection_enabled": True, "ips_retention_enabled": True,
+    })
+    assert switch_dependent_problems(enabled) == []

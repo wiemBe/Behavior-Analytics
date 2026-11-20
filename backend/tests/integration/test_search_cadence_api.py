@@ -71,6 +71,9 @@ async def test_readonly_can_get_but_cannot_put_and_last_run_is_null(
         db_schema,
         Principal(subject="viewer", permissions=frozenset({"read:*"})),
     )
+    client.app.dependency_overrides[get_settings] = lambda: get_settings().model_copy(
+        update={"waf_collection_enabled": False}
+    )
     response = client.get("/api/v1/admin/search-cadence")
     assert response.status_code == 200, response.text
     body = response.json()

@@ -130,9 +130,9 @@ class WafRetention:
             report.skipped_reason = "WAF retention is disabled"
             return report
         if self.settings.waf_metric_retention_days <= self.settings.baseline_lookback_days:
-            # Startup refuses this combination only when WAF collection is on,
-            # so it can still reach a run. Deleting would remove samples every
-            # baseline rebuild relies on; do nothing and say why.
+            # Unset retention derives above every reader at startup. An explicit
+            # conflict can still reach a run with collection off, or via a settings
+            # copy. Deleting would remove baseline samples; do nothing and say why.
             report.skipped_reason = (
                 "WAF_METRIC_RETENTION_DAYS does not exceed BASELINE_LOOKBACK_DAYS; "
                 "nothing deleted"

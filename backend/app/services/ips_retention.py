@@ -84,8 +84,8 @@ class IpsRetention:
             report.skipped_reason = "IPS retention is disabled"
             return report
         if self.settings.ips_metric_retention_days <= self.settings.ips_baseline_lookback_days:
-            # Startup refuses this only when IPS collection and retention are
-            # both on, so a collection-off deploy can still reach a run.
+            # Unset retention derives above the lookback at startup. An explicit
+            # conflict can still reach a run with collection off, or via a settings copy.
             # Deleting would drop samples a baseline rebuild relies on.
             report.skipped_reason = (
                 "IPS_METRIC_RETENTION_DAYS does not exceed IPS_BASELINE_LOOKBACK_DAYS; "

@@ -846,7 +846,8 @@ async def test_logs_and_audit_hold_no_pinned_or_seeded_value_text(
 # --------------------------------------------------------------------------- the reads
 async def test_catalog_scope_options_and_property_options(db_session, db_schema: str) -> None:
     world = await _seed(db_session)
-    client = _client(db_schema, _principal("viewer"), provider=MockQRadarProvider())
+    client = _client(db_schema, _principal("viewer"), provider=MockQRadarProvider(),
+                     pw_collection_enabled=False, pw_alerting_enabled=False)
     catalog = client.get(f"{PREFIX}/catalog").json()
     assert catalog["collection_enabled"] is False
     assert catalog["alerting_mode"] == "shadow"
@@ -943,7 +944,7 @@ async def test_list_and_detail_with_status_coverage_and_incidents(
     db_session, db_schema: str
 ) -> None:
     await _seed(db_session)
-    client = _client(db_schema, _principal("viewer"))
+    client = _client(db_schema, _principal("viewer"), pw_alerting_enabled=False)
     writer = _client(db_schema, _principal("detection_engineer"))
     made = _create(writer, "reads", detectors=["PW_VALUE_SPIKE", "PW_VALUE_DROP"])
     watch_id = uuid.UUID(made["id"])

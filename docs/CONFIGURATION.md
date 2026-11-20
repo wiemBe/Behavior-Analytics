@@ -270,7 +270,7 @@ current version has validated successfully.
 | `WAF_MAX_EVALUATION_BUCKETS_PER_RUN` | `24` | Buckets evaluated per source and run |
 | `WAF_BASELINE_ENDPOINTS_PER_RUN` | `50` | Endpoints rebuilt per baseline run |
 | `WAF_ENDPOINT_ACTIVE_DAYS` | `7` | Idle days before an endpoint retires |
-| `WAF_METRIC_RETENTION_DAYS` | `35` | Endpoint metric retention |
+| `WAF_METRIC_RETENTION_DAYS` | derived, at least `35` | When unset, one day above the larger of `BASELINE_LOOKBACK_DAYS` and `WAF_NEW_ENDPOINT_HISTORY_DAYS`, never below 35. Explicit values keep the existing validation checks |
 | `WAF_ANOMALY_RETENTION_DAYS` | `180` | Resolved WAF incident retention |
 | `WAF_URL_PROPERTY` | `URL` | Default URL property name. Scheduled collection reads the profile; the API uses this as the default |
 | `WAF_METHOD_PROPERTY` | `HTTP_Method` | Default method property name. Same split as `WAF_URL_PROPERTY` |
@@ -348,7 +348,7 @@ Field names and blocked/allowed values belong to each source's versioned profile
 | `IPS_BASELINE_LOOKBACK_DAYS` | `28` | Compatible history used for a baseline |
 | `IPS_BASELINE_REBUILD_BATCH_SIZE` | `50` | Subjects rebuilt in one batch |
 | `IPS_RETENTION_ENABLED` | `true` | Run bounded IPS metric retention. Does not gate closed-incident retention |
-| `IPS_METRIC_RETENTION_DAYS` | `35` | Bucket and entity-metric retention. Must exceed `IPS_BASELINE_LOOKBACK_DAYS` when collection and this switch are both on |
+| `IPS_METRIC_RETENTION_DAYS` | derived, at least `35` | When unset, one day above `IPS_BASELINE_LOOKBACK_DAYS`, never below 35. Explicit values must exceed that lookback when collection and retention are both on |
 | `IPS_RETENTION_BATCH_SIZE` | `5000` | Rows deleted per batch |
 | `IPS_RETENTION_MAX_BATCHES` | `20` | Batches per retention run |
 | `IPS_RETENTION_INTERVAL_SECONDS` | `86400` | Metric retention schedule |

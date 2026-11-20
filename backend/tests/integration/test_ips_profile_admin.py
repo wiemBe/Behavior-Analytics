@@ -27,14 +27,13 @@ from app.models.identity import AuditLog
 from app.models.instance import QRadarInstance
 from app.models.ips import IpsSourceProfile
 from app.models.log_source import LogSource
+from app.models.property_catalog import PropertyCatalogEntry, PropertyCatalogState
 from app.providers.dto import LogSourceDTO
 from app.providers.mock import MockQRadarProvider
-from app.schemas.property_catalog import PropertyCatalogItemOut, PropertyCatalogOut
 from app.security.auth import get_principal
 from app.security.rbac import Principal
 from app.services.ariel_permit import _ARIEL_PRIORITY, ArielPermitUnavailable
 from app.services.ips_profiles import IpsProfileService
-from app.services.property_catalog import get_property_catalog_service
 from app.workers import tasks
 from tests.integration.test_rule_match_collection import recorded_statements
 
@@ -192,22 +191,18 @@ async def test_schema_presets_unknown_resources_and_property_catalog(
     await db_session.commit()
     assert api.get(f"/api/v1/ips/log-sources/{source.id}/profile").status_code == 404
 
-    class Catalog:
-        async def catalog(self, **_kwargs):  # type: ignore[no-untyped-def]
-            return PropertyCatalogOut(
-                status="AVAILABLE",
-                filtered_by_source_type=True,
-                properties=[
-                    PropertyCatalogItemOut(
-                        name="IPS_Action",
-                        property_type="string",
-                        applies_to_source_type=True,
-                        name_allowed=True,
-                    )
-                ],
-            )
-
-    api.app.dependency_overrides[get_property_catalog_service] = lambda: Catalog()
+    db_session.add_all([
+        PropertyCatalogState(
+            instance_id=source.instance_id, status="COMPLETE", as_of=NOW,
+            applicability_complete=True, property_count=1, expression_count=1,
+        ),
+        PropertyCatalogEntry(
+            instance_id=source.instance_id, qradar_id=1, identifier="IPS_Action",
+            name="IPS_Action", property_type="string", use_for_rule_engine=False,
+            auto_discovered=False, name_allowed=True, type_ids=[source.type_id],
+        ),
+    ])
+    await db_session.commit()
     catalog = api.get(f"/api/v1/ips/log-sources/{source.id}/property-catalog")
     assert catalog.status_code == 200
     assert catalog.json()["properties"][0]["name"] == "IPS_Action"
