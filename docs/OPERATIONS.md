@@ -279,7 +279,8 @@ token değeri `.env` içinde yoktur.
     **durmaz**: konsol kararsız kalır, özet "not recorded (exit N)" yazar ve ilk yönetici oturum
     açmasında soru sorulur. Kayıtlı bir karar varsa komut onu değiştirmez.
 
-9. Vekil (harici değilse), backend, frontend, `celery-worker` ve `celery-beat` başlar. `mcp` profili
+9. Vekil (harici değilse), backend, frontend, `celery-worker`, `celery-walker` ve `celery-beat`
+   başlar. `mcp` profili
    başlamaz.
 10. Bu servislerin sağlıklı olması (migrate için 0 koduyla çıkması) beklenir. Bekleme süresi 180 sn.
 11. Ana makineden `GET http://127.0.0.1:8000/api/v1/health/ready` ve
@@ -740,10 +741,10 @@ Hiçbir konteyner durdurulmadan önce, betik kontrolleri şu sırayla yapar:
 ### Yedek, sonra migrasyon
 
 1. Çalışan imaj özetleri durum dosyasına `previous_images` olarak yazılır.
-2. Yazıcılar durdurulur: `backend`, `celery-worker`, `celery-beat`. `postgres` ve `redis` açık
-   kalır. `frontend` ve `proxy` de durdurulur; analistler yarım çalışan bir arayüz yerine bağlantı
-   hatası görür. Sebep: migrasyon `NOT NULL` sütunlar ekler ve doldurma varsayılanını kaldırır;
-   eski kodla çalışan bir süreç bir sonraki ekleme işleminde hata alır.
+2. Yazıcılar durdurulur: `backend`, `celery-worker`, `celery-walker`, `celery-beat`. `postgres`
+   ve `redis` açık kalır. `frontend` ve `proxy` de durdurulur; analistler yarım çalışan bir
+   arayüz yerine bağlantı hatası görür. Sebep: migrasyon `NOT NULL` sütunlar ekler ve doldurma
+   varsayılanını kaldırır; eski kodla çalışan bir süreç bir sonraki ekleme işleminde hata alır.
 3. Yedek alınır, nedeni `pre-upgrade`, geçici veritabanına geri yükleme testi dahil. Test
    başarısızsa yükseltme iptal edilir ve yazıcılar **eski** özetlerle yeniden başlar.
 4. Redis boşaltılır (`redis-cli FLUSHALL`). Başarısızsa yazıcılar **eski** özetlerle yeniden
@@ -756,7 +757,7 @@ Hiçbir konteyner durdurulmadan önce, betik kontrolleri şu sırayla yapar:
 6. Compose projesi yeni özetlere çevrilir (`.env` içindeki `QRADAR_DASH_VERSION` tek satırda
    atomik güncellenir).
 7. **Yeni** backend imajıyla `run --rm migrate`.
-8. Migrate 0 ile çıkarsa: backend, worker, beat, frontend ve proxy `up -d`.
+8. Migrate 0 ile çıkarsa: backend, worker, walker, beat, frontend ve proxy `up -d`.
 9. 180 sn'ye kadar sağlık beklenir. Sonra:
    - `GET /api/v1/health/ready` 200 döner ve `"database": "ok"` der.
    - `GET /api/v1/version` hedef sürümü bildirir.
@@ -1735,8 +1736,8 @@ içinden aynı ana makineye TCP bağlantısı başarısız olur.
 (`qradar-vmnet`; `--ip-range` DHCP havuzunun dışında). Örneği git tarafından yok
 sayılan `docker-compose.override.yml` olarak kopyala. Örnek ağı yeniden tanımlamaz;
 `external: true` ve `name: qradar-vmnet` ile betiğin oluşturduğu ağa bağlanır. Ağ
-yalnız QRadar'a bağlantı açan servislerdedir: `backend`, `celery-worker` ve profil
-açıksa `qradar-mcp`. `celery-beat` yalnız görev adını brokera yollar; `migrate`
+yalnız QRadar'a bağlantı açan servislerdedir: `backend`, `celery-worker`, `celery-walker` ve
+profil açıksa `qradar-mcp`. `celery-beat` yalnız görev adını brokera yollar; `migrate`
 yalnız Postgres'e konuşur. Betik dosya varsa bütün Compose çağrılarına ekler ve
 kullanımını yazdırır. Ya da bir rota. Betik bir güvenlik duvarı değişikliği yapmaz.
 `:z` ve `label=disable` kullanılmaz.
@@ -1877,9 +1878,9 @@ söylüyor.
 başlat:
 
 ```bash
-docker compose stop backend celery-worker celery-beat
+docker compose stop backend celery-worker celery-walker celery-beat
 docker compose run --rm migrate            # alembic upgrade head
-docker compose up -d backend frontend celery-worker celery-beat
+docker compose up -d backend frontend celery-worker celery-walker celery-beat
 ```
 
 Veritabanı imajdan **yeniyse downgrade etme**. İmaja uyan yedeği geri yükle (Yedek ve geri alma).

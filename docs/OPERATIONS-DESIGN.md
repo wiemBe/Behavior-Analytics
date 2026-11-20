@@ -95,7 +95,7 @@ There is no `latest` tag. `upgrade` takes an explicit version.
 
 | Image | Build arg / label |
 |---|---|
-| backend (also migrate, celery-worker, celery-beat) | `ARG APP_VERSION`, `ARG GIT_SHA`. OCI labels `org.opencontainers.image.version` and `org.opencontainers.image.revision`. The file `VERSION` is copied into the image at `/app/VERSION`. |
+| backend (also migrate, celery-worker, celery-walker, celery-beat) | `ARG APP_VERSION`, `ARG GIT_SHA`. OCI labels `org.opencontainers.image.version` and `org.opencontainers.image.revision`. The file `VERSION` is copied into the image at `/app/VERSION`. |
 | frontend | same labels. `NEXT_PUBLIC_APP_VERSION` is inlined at build the same way the API base is (§2.3). |
 | postgres | labels carry the app version and the base `2.17.2-pg16`. |
 | qradar-mcp | labels carry the app version and the pin `b8f6a4a3fe901eac4f55e4ca5d146d952f55db51` ([INSTALL.md](INSTALL.md) "Clone the repository"). |
@@ -208,7 +208,7 @@ workflow's first run (`v0.1.5` was, and failed).
 
 | Compose service | Image | Notes |
 |---|---|---|
-| backend, migrate, celery-worker, celery-beat | `ghcr.io/wiembe/behavior-analytics/backend` | One image. Migrate is `alembic upgrade head` (`docker-compose.yml:137-143`). Worker and beat are the same image with other commands (`docker-compose.yml:145-179`). |
+| backend, migrate, celery-worker, celery-walker, celery-beat | `ghcr.io/wiembe/behavior-analytics/backend` | One image. Migrate is `alembic upgrade head` (`docker-compose.yml:137-143`). Worker, walker and beat are the same image with other commands (`docker-compose.yml:145-179`). |
 | frontend | `ghcr.io/wiembe/behavior-analytics/frontend` | Built with `NEXT_PUBLIC_API_BASE_URL=/api/v1` (§2.3). |
 | postgres | `ghcr.io/wiembe/behavior-analytics/postgres` | Built from `deploy/postgres/Dockerfile:10-12` on `timescale/timescaledb:2.17.2-pg16`. Also tagged `2.17.2-pg16` when the Dockerfile has not changed. |
 | qradar-mcp | `ghcr.io/wiembe/behavior-analytics/qradar-mcp` | Built from the pinned submodule. Not started unless the `mcp` profile is requested (`docker-compose.yml:121`). |
@@ -697,7 +697,7 @@ Order:
    in the summary, and does not throw away the admin password already printed.
 
 9. `up -d` the proxy (unless external), backend, frontend, celery-worker,
-   celery-beat. Not the `mcp` profile.
+   celery-walker, celery-beat. Not the `mcp` profile.
 10. Wait until those services are healthy or, for migrate, exited 0. The
     backend start period is 40 s (`docker-compose.yml:135`). The wait budget
     is 180 s. Frontend health is `GET /api/health` inside the container
@@ -800,7 +800,7 @@ change a recorded version: with `.qradar-dash/state.json` present, it refuses (a
 ### 4.2 Backup, then the migration
 
 1. Record the running image digests into the state file as `previous_images`.
-2. Stop writers: `backend`, `celery-worker`, `celery-beat`. Leave `postgres`
+2. Stop writers: `backend`, `celery-worker`, `celery-walker`, `celery-beat`. Leave `postgres`
    and `redis` up. Stop `frontend` and `proxy` as well so analysts get a
    connection failure rather than a half-working UI. The README's rule is the
    reason: a migration adds `NOT NULL` columns and drops the backfill default,
@@ -813,7 +813,7 @@ change a recorded version: with `.qradar-dash/state.json` present, it refuses (a
    digests (the prod compose file's tags are updated by the script's env,
    `QRADAR_DASH_VERSION=<version>`, which the prod file interpolates).
 5. `run --rm migrate` on the **new** backend image.
-6. On migrate exit 0: `up -d` backend, worker, beat, frontend, proxy.
+6. On migrate exit 0: `up -d` backend, worker, walker, beat, frontend, proxy.
 7. Wait up to 180 s for health. Then:
    - `GET /api/v1/health/ready` is 200 and `"database": "ok"`.
    - `GET /api/v1/version` reports the target version.
