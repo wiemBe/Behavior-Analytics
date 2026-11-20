@@ -64,6 +64,7 @@ from app.models.log_source import (
     LogSourceDetectorState,
     LogSourceMetric,
 )
+from app.models.log_source_pause import LogSourcePause
 from app.models.monitoring import (
     AnomalyEvaluationFault,
     AnomalyEvaluationWatermark,
@@ -229,6 +230,7 @@ __all__ = [
     "LogSourceDetectorState",
     "LogSourceGroup",
     "LogSourceMetric",
+    "LogSourcePause",
     "LogSourceType",
     "NotificationAttempt",
     "NotificationDestination",
