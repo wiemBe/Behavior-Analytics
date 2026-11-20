@@ -50,15 +50,17 @@ from app.custom_rules.engine import CustomRuleEngine
 from app.custom_rules.retention import CustomRuleRetention
 from app.i18n.messages import MessageRef, render
 from app.identity.collector import IdentityCollector
+from app.identity.profiles import IdentityProfileError, IdentityProfileService
 from app.identity.retention import IdentityRetention
-from app.identity.revalidation import IdentityRevalidator
+from app.identity.revalidation import IdentityRevalidator, failure_token
 from app.models.enums import AlertDigestState, EvidenceStatus, Severity
+from app.models.identity_detection import IdentitySourceProfile
 from app.models.instance import QRadarInstance
 from app.models.ips import IpsSourceProfile
 from app.models.log_source import LogSource, LogSourceAnomaly
 from app.models.monitoring import CollectionWatermark
 from app.models.waf import WafSourceProfile
-from app.providers.base import QRadarProvider
+from app.providers.base import ProviderCapability, QRadarProvider
 from app.providers.factory import build_provider, build_provider_for_instance
 from app.repositories.offense import OffenseRepository
 from app.rules.engine import RuleMatchEngine
@@ -2219,6 +2221,122 @@ async def dispatch_identity_collection(instance_name: str | None = None) -> dict
     return result
 
 
+async def validate_identity_profile(
+    profile_id: str,
+    lock_retry_count: int = 0,
+    enqueue: Callable[[str, int, int], object] | None = None,
+) -> dict:
+    """Run the identity probe for one requested profile, and store what it found.
+
+    The route only marks the profile pending. Here the four searches run, and every exit
+    clears the marker: an outcome, a refused mapping, a console failure (stored beside the
+    unchanged status, never as VALID), or a source that is gone. A mapping change while the
+    probe ran wins: the result belongs to the old version and is dropped. Identity has no
+    per-source pipeline lock, so ``lock_retry_count`` is carried for the shared task shape
+    and is not used.
+    """
+    maker = get_sessionmaker()
+    async with maker() as session:
+        profile_uuid = uuid.UUID(profile_id)
+        profile = await session.get(IdentitySourceProfile, profile_uuid)
+        if profile is None:
+            return {"status": "not_found", "profile_id": profile_id}
+        if profile.validation_requested_at is None:
+            return {"status": "not_pending", "profile_id": profile_id}
+
+        source = await session.get(LogSource, profile.log_source_id)
+        instance = await session.get(QRadarInstance, profile.instance_id)
+        actor = profile.validation_requested_by or "system"
+        started_version = profile.profile_version
+        settings = get_settings()
+
+        def send(retry_count: int, countdown: int) -> object:
+            if enqueue is not None:
+                return enqueue(profile_id, retry_count, countdown)
+            return validate_identity_profile_task.apply_async(
+                args=[profile_id, retry_count], countdown=countdown
+            )
+
+        async def current_row() -> IdentitySourceProfile | None:
+            return await session.scalar(
+                select(IdentitySourceProfile)
+                .where(IdentitySourceProfile.id == profile_uuid)
+                .with_for_update()
+                .execution_options(populate_existing=True)
+            )
+
+        async def stale(current: IdentitySourceProfile) -> dict:
+            await session.commit()
+            if current.validation_requested_at is not None:
+                send(0, 0)
+            return {
+                "status": "stale_requeued",
+                "profile_id": profile_id,
+                "validated_version": started_version,
+                "current_version": current.profile_version,
+            }
+
+        async def fail(reason: str, *, invalid: bool = False) -> dict:
+            await session.rollback()
+            current = await current_row()
+            if current is None:
+                await session.commit()
+                return {"status": "not_found", "profile_id": profile_id}
+            if current.profile_version != started_version:
+                return await stale(current)
+            await IdentityProfileService(session, settings=settings).record_validation_failure(
+                current, actor=actor, reason=reason, invalid=invalid
+            )
+            await session.commit()
+            return {"status": "failed", "profile_id": profile_id, "error_class": reason}
+
+        if source is None or instance is None:
+            return await fail("source_not_found")
+
+        provider: QRadarProvider | None = None
+        probe = None
+        error: str | None = None
+        invalid = False
+        service = IdentityProfileService(session, settings=settings)
+        try:
+            provider = build_provider_for_instance(instance, audit_session=session)
+            if not provider.supports(ProviderCapability.AQL_EXECUTION):
+                error = "provider_unsupported"
+            else:
+                probe = await service.run_probe(profile, provider)
+        except IdentityProfileError:
+            error, invalid = "profile_invalid", True
+        except Exception as exc:
+            error = failure_token(type(exc).__name__)
+        finally:
+            if provider is not None:
+                try:
+                    await provider.aclose()
+                except Exception as exc:
+                    error = error or failure_token(type(exc).__name__)
+        if error is not None:
+            return await fail(error, invalid=invalid)
+        assert probe is not None
+
+        current = await current_row()
+        if current is None:
+            await session.commit()
+            return {"status": "not_found", "profile_id": profile_id}
+        if current.profile_version != started_version:
+            return await stale(current)
+        try:
+            result = await service.store_validation(current, probe, actor=actor)
+        except IdentityProfileError:
+            return await fail("profile_invalid", invalid=True)
+        await session.commit()
+        return {
+            "status": "ok",
+            "profile_id": profile_id,
+            "profile_version": started_version,
+            "validation_status": result.status.value,
+        }
+
+
 async def revalidate_identity_profiles(instance_name: str | None = None) -> dict:
     """Probe every enabled identity profile again.
 
@@ -2642,6 +2760,11 @@ def apply_ips_retention_task() -> dict:
 @celery_app.task(name="dispatch_identity_collection")
 def dispatch_identity_collection_task(instance_name: str | None = None) -> dict:
     return _run(dispatch_identity_collection(instance_name))
+
+
+@celery_app.task(name="validate_identity_profile")
+def validate_identity_profile_task(profile_id: str, lock_retry_count: int = 0) -> dict:
+    return _run(validate_identity_profile(profile_id, lock_retry_count))
 
 
 @celery_app.task(name="revalidate_identity_profiles")

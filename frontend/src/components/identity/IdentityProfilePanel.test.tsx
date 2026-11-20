@@ -133,3 +133,156 @@ describe("IdentityProfilePanel: write", () => {
     await waitFor(() => expect(save).toHaveBeenCalled());
   });
 });
+
+const queued = (over = {}) =>
+  profile({
+    validation_pending: true,
+    validation_requested_at: "2026-11-20T10:00:00Z",
+    validation_requested_by: "analyst",
+    ...over,
+  });
+
+const detail = (profileOver = {}) => ({
+  profile: profile(profileOver),
+  series: [],
+});
+
+describe("IdentityProfilePanel: queued validation", () => {
+  it("shows the queued state with its UTC time after the 202, and disables Validate", async () => {
+    const validate = vi.spyOn(identityApi, "validate").mockResolvedValue(queued());
+    vi.spyOn(identityApi, "source").mockReturnValue(new Promise(() => {}));
+    panel();
+    await userEvent.click(screen.getByRole("button", { name: "Validate" }));
+    expect(validate).toHaveBeenCalledWith(SOURCE_ID);
+    expect(await screen.findByText(/Queued at/)).toBeInTheDocument();
+    expect(screen.getByText(/2026-11-20 10:00:00 UTC/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Validation queued" })).toBeDisabled();
+    expect(screen.queryByText("Validation finished.")).toBeNull();
+  });
+
+  it("polls a pending profile and shows the stored outcome when it clears", async () => {
+    const source = vi
+      .spyOn(identityApi, "source")
+      .mockResolvedValueOnce(detail({ ...queued() }) as never)
+      .mockResolvedValue(detail({ validation_status: "VALID" }) as never);
+    render(
+      <IdentityProfilePanel logSourceId={SOURCE_ID} profile={queued()} canAdmin pollMs={10} />,
+    );
+    expect(screen.getByText(/Queued at/)).toBeInTheDocument();
+    expect(await screen.findByText("Validation finished.")).toBeInTheDocument();
+    expect(screen.getByText("Valid")).toBeInTheDocument();
+    expect(screen.queryByText(/Queued at/)).toBeNull();
+    const calls = source.mock.calls.length;
+    await new Promise((r) => setTimeout(r, 60));
+    expect(source.mock.calls.length).toBe(calls);
+  });
+
+  it("stops polling when the panel unmounts", async () => {
+    const source = vi.spyOn(identityApi, "source").mockResolvedValue(detail(queued() as never) as never);
+    const view = render(
+      <IdentityProfilePanel logSourceId={SOURCE_ID} profile={queued()} canAdmin pollMs={10} />,
+    );
+    await waitFor(() => expect(source).toHaveBeenCalled());
+    view.unmount();
+    const calls = source.mock.calls.length;
+    await new Promise((r) => setTimeout(r, 60));
+    expect(source.mock.calls.length).toBe(calls);
+  });
+
+  it("does not poll an idle profile", async () => {
+    const source = vi.spyOn(identityApi, "source");
+    render(<IdentityProfilePanel logSourceId={SOURCE_ID} profile={profile()} canAdmin pollMs={10} />);
+    await new Promise((r) => setTimeout(r, 50));
+    expect(source).not.toHaveBeenCalled();
+  });
+
+  it("keeps the last state and keeps polling when one poll fails", async () => {
+    vi.spyOn(identityApi, "source")
+      .mockRejectedValueOnce(new ApiError(502, "bad gateway"))
+      .mockResolvedValue(detail({ validation_status: "VALID" }) as never);
+    render(
+      <IdentityProfilePanel logSourceId={SOURCE_ID} profile={queued()} canAdmin pollMs={10} />,
+    );
+    expect(await screen.findByText("Validation finished.")).toBeInTheDocument();
+  });
+
+  it("says why an invalid result is invalid", () => {
+    panel(
+      profile({
+        validation_status: "INVALID",
+        validation_report: { event_id_rejected: false, catalog_overlap: 0, total_events: 900 },
+      }),
+    );
+    expect(screen.getByText("Invalid")).toBeInTheDocument();
+    expect(
+      screen.getByText("None of the enabled event IDs appeared in the probe window."),
+    ).toBeInTheDocument();
+  });
+
+  it("says a refused property is the reason, without naming it", () => {
+    panel(
+      profile({
+        validation_status: "INVALID",
+        validation_report: { username_rejected: true },
+      }),
+    );
+    expect(screen.getByText(/QRadar refused a mapped property/)).toBeInTheDocument();
+  });
+
+  it("says too few populated events when the ratio is low", () => {
+    panel(
+      profile({
+        validation_status: "INVALID",
+        validation_report: { catalog_overlap: 2, total_events: 900 },
+      }),
+    );
+    expect(screen.getByText(/Too few events carry the mapped event ID/)).toBeInTheDocument();
+  });
+
+  it("says an inconclusive probe could not judge the mapping", () => {
+    panel(
+      profile({
+        validation_status: "INCONCLUSIVE",
+        validation_report: { total_events: 0 },
+      }),
+    );
+    expect(screen.getByText("Inconclusive")).toBeInTheDocument();
+    expect(screen.getByText(/held no events/)).toBeInTheDocument();
+  });
+
+  it("says the probe did not finish, with the stored reason, and keeps the old status", () => {
+    panel(
+      profile({
+        validation_status: "UNVALIDATED",
+        validated_profile_version: null,
+        validated_at: null,
+        validation_report: { validation_error: "provider_error" },
+      }),
+    );
+    expect(screen.getAllByText("Not validated").length).toBeGreaterThan(0);
+    expect(
+      screen.getByText("The probe did not finish (provider_error). The stored status is unchanged."),
+    ).toBeInTheDocument();
+  });
+
+  it("shows nothing about a reason for a valid profile", () => {
+    panel();
+    expect(screen.queryByText(/probe window/)).toBeNull();
+    expect(screen.queryByText(/did not finish/)).toBeNull();
+  });
+
+  it("shows the already-running refusal and follows the queued validation", async () => {
+    vi.spyOn(identityApi, "validate").mockRejectedValue(
+      new ApiError(409, "validation of version 2 is already running since 2026-11-20T10:00:00+00:00", {
+        message: "validation of version 2 is already running since 2026-11-20T10:00:00+00:00",
+        code: "validation.profile.conflict.running",
+        params: { profile_version: "2", since: "2026-11-20T10:00:00+00:00" },
+      }),
+    );
+    vi.spyOn(identityApi, "source").mockResolvedValue(detail(queued() as never) as never);
+    panel();
+    await userEvent.click(screen.getByRole("button", { name: "Validate" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent(/already running since/);
+    expect(await screen.findByText(/Queued at/)).toBeInTheDocument();
+  });
+});

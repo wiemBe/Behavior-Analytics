@@ -15,6 +15,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings, get_settings
+from app.i18n.messages import MessageRef
 from app.identity.dto import IdentityProbeResult
 from app.identity.reference import (
     PROBE_MAX_WINDOW_SECONDS,
@@ -33,7 +34,14 @@ _ENABLE_REFUSED = "profile version {version} is UNVALIDATED; run validate before
 
 
 class IdentityProfileError(Exception):
-    """The profile cannot be changed. The message does not echo operator text."""
+    """The profile cannot be changed. The message does not echo operator text.
+
+    ``ref`` is the coded sentence when the refusal has one (a validation already running).
+    """
+
+    def __init__(self, message: str = "", *, ref: MessageRef | None = None) -> None:
+        super().__init__(message)
+        self.ref = ref
 
 
 class IdentityProfileService:
@@ -192,6 +200,16 @@ class IdentityProfileService:
         if not provider.supports(ProviderCapability.AQL_EXECUTION):
             raise IdentityProfileError("this provider cannot run an identity validation probe")
         probe = await self.run_probe(profile, provider)
+        return await self.store_validation(profile, probe, actor=actor)
+
+    async def store_validation(
+        self,
+        profile: IdentitySourceProfile,
+        probe: IdentityProbeResult,
+        *,
+        actor: str,
+    ) -> IdentityValidation:
+        """Store the probe's outcome and audit it. The pending marker is cleared."""
         result = await self.store_probe(profile, probe, actor=actor)
         await record_audit(
             self.session,
@@ -202,6 +220,97 @@ class IdentityProfileService:
             detail={"profile_version": profile.profile_version, "status": result.status.value},
         )
         return result
+
+    async def request_validation(
+        self,
+        profile: IdentitySourceProfile,
+        *,
+        actor: str,
+        enqueue: Callable[[str], object] | None = None,
+    ) -> None:
+        """Mark the profile pending, commit, then queue the probe.
+
+        A request younger than ``identity_validation_pending_timeout_seconds`` is refused
+        with the coded "already running" sentence. An older marker is a task that never
+        reported back, so a new request replaces it.
+        """
+        now = self._clock()
+        requested_at = profile.validation_requested_at
+        if requested_at is not None:
+            if requested_at.tzinfo is None:
+                requested_at = requested_at.replace(tzinfo=UTC)
+            if now - requested_at < timedelta(
+                seconds=self.settings.identity_validation_pending_timeout_seconds
+            ):
+                raise IdentityProfileError(
+                    "a validation of this profile is already running",
+                    ref=MessageRef(
+                        "validation.profile.conflict.running",
+                        {
+                            "profile_version": profile.profile_version,
+                            "since": requested_at.isoformat(),
+                        },
+                    ),
+                )
+        profile.validation_requested_at = now
+        profile.validation_requested_by = actor
+        profile.updated_by = actor
+        await self.session.flush()
+        await record_audit(
+            self.session,
+            action="identity.profile.validation_requested",
+            actor=actor,
+            object_type=AUDIT_OBJECT,
+            object_id=str(profile.id),
+            detail={"profile_version": profile.profile_version},
+        )
+        await self.session.commit()
+        if enqueue is None:
+            from app.workers.tasks import validate_identity_profile_task
+
+            enqueue = validate_identity_profile_task.delay
+        enqueue(str(profile.id))
+
+    async def record_validation_failure(
+        self,
+        profile: IdentitySourceProfile,
+        *,
+        actor: str,
+        reason: str,
+        invalid: bool = False,
+    ) -> None:
+        """A probe that could not finish. It never stores VALID and clears the pending marker.
+
+        ``invalid`` is for a mapping the profile itself refuses: the version is stored
+        INVALID. Any other failure (the console, the provider, a missing source) leaves the
+        stored status as it was and records the reason beside it, so a transient outage does
+        not stop a collecting source.
+        """
+        now = self._clock()
+        report = (
+            dict(profile.validation_report) if isinstance(profile.validation_report, dict) else {}
+        )
+        report["validation_error"] = reason
+        report["validation_attempted_at"] = now.astimezone(UTC).isoformat()
+        if invalid:
+            report["status"] = IdentityProfileValidationStatus.INVALID.value
+            profile.validation_status = IdentityProfileValidationStatus.INVALID.value
+            profile.validated_profile_version = profile.profile_version
+            profile.validated_at = now
+        profile.validation_report = report
+        profile.validation_requested_at = None
+        profile.validation_requested_by = None
+        profile.updated_by = actor
+        await self.session.flush()
+        await record_audit(
+            self.session,
+            action="identity.profile.validated",
+            actor=actor,
+            object_type=AUDIT_OBJECT,
+            object_id=str(profile.id),
+            outcome="FAILURE",
+            detail={"profile_version": profile.profile_version, "error": reason},
+        )
 
     async def run_probe(
         self, profile: IdentitySourceProfile, provider: QRadarProvider
@@ -241,8 +350,8 @@ class IdentityProfileService:
         profile.validated_profile_version = profile.profile_version
         profile.validated_at = now
         profile.validation_report = result.report
-        profile.validation_requested_at = now
-        profile.validation_requested_by = actor
+        profile.validation_requested_at = None
+        profile.validation_requested_by = None
         profile.updated_by = actor
         await self.session.flush()
         return result

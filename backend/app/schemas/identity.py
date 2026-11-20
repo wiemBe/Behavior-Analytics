@@ -35,6 +35,9 @@ class IdentityProfileOut(BaseModel):
     validated_profile_version: int | None = None
     validated_at: datetime | None = None
     validation_report: dict[str, object] = Field(default_factory=dict)
+    validation_pending: bool = False
+    validation_requested_at: datetime | None = None
+    validation_requested_by: str | None = None
 
 
 class IdentityCollectionOut(BaseModel):

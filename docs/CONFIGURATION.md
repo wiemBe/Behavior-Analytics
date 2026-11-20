@@ -429,6 +429,7 @@ alert's evidence snapshot are the copies that outlive the series.
 | `IDENTITY_RETENTION_INTERVAL_SECONDS` | `86400` | Retention schedule. At least `3600` |
 | `IDENTITY_VALIDATION_WINDOW_SECONDS` | `900` | Recent interval the validation probe reads. `60`–`3600` |
 | `IDENTITY_VALIDATION_MIN_RATIO` | `0.90` | Minimum share of events that must carry the mapped event id and username |
+| `IDENTITY_VALIDATION_PENDING_TIMEOUT_SECONDS` | `900` | Age after which a queued identity validation that never reported back can be replaced. Minimum `60` |
 | `IDENTITY_REVALIDATION_INTERVAL_SECONDS` | `86400` | How often every enabled profile is probed again. At least `3600` |
 | `IDENTITY_ALERTING_ENABLED` | `true` | Open alerts for identity incidents. Incidents are recorded either way |
 | `IDENTITY_OPEN_AFTER_INTERVALS` | `1` | Anomalous buckets before an incident opens. `1`–`100` |

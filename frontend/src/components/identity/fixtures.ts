@@ -29,6 +29,9 @@ export function profile(over: Partial<IdentityProfile> = {}): IdentityProfile {
     validated_profile_version: 2,
     validated_at: "2026-11-13T08:00:00Z",
     validation_report: {},
+    validation_pending: false,
+    validation_requested_at: null,
+    validation_requested_by: null,
     ...over,
   };
 }

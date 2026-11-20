@@ -423,6 +423,14 @@ The `/ips` administration API supplies the mapping schema, candidates, profiles,
 history and property catalog. Mapping changes are versioned and stale writes return `409`. There is
 no IPS profile CLI.
 
+`POST /api/v1/identity/sources/{log_source_id}/validate` queues the identity probe and answers `202`
+with the profile (`validation_pending: true`, `validation_requested_at`, `validation_requested_by`).
+The four Ariel searches run in a worker, never in the request. Poll `GET /identity/sources/{id}`
+until `validation_pending` is false, then read `validation_status` and `validation_report`. A
+request while one is pending and younger than `IDENTITY_VALIDATION_PENDING_TIMEOUT_SECONDS` returns
+`409` (`validation.profile.conflict.running`, with `since`). A probe that could not finish never
+stores VALID: the report carries `validation_error` and the stored status is left as it was.
+
 Analyst reads live under `/behavior/ips`: sources, entities, metrics and seasonal baselines. IPS
 incidents also appear in `/anomalies`. An unmeasured bucket is `null`; source IP values are not
 served outside a bounded stored contributor list, and these routes do not expose that list.

@@ -533,6 +533,8 @@ class Settings(BaseSettings):
     identity_retention_interval_seconds: int = Field(default=86400, ge=3600)
     identity_validation_window_seconds: int = Field(default=900, ge=60, le=3600)
     identity_validation_min_ratio: float = Field(default=0.90, gt=0, le=1)
+    #: A queued validation older than this is treated as lost; a new request replaces it.
+    identity_validation_pending_timeout_seconds: int = Field(default=900, ge=60)
     #: How often every enabled identity profile is probed again. A finished
     #: probe writes the same outcome as ``validate``. A probe that does not
     #: finish leaves the status. At least one hour, so Ariel spend stays bounded.
