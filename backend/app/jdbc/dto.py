@@ -110,6 +110,7 @@ class JdbcWalkFailure(StrEnum):
     NETWORK = "network"
     MALFORMED = "malformed"
     PAGE_CEILING = "page_ceiling"
+    FILTER_REJECTED = "filter_rejected"
 
 
 class JdbcRowRejection(StrEnum):
@@ -121,7 +122,7 @@ class JdbcRowRejection(StrEnum):
 
 @dataclass(frozen=True)
 class JdbcConfigWalk:
-    """Safe configs, received list-page/row counts and first fixed failure code.
+    """Safe configs, received list-page/row counts and terminal fixed failure code.
 
     Rejected pages contribute counts but no configs. Only a successful short
     terminator without any failure proves completeness, including empty.
@@ -135,6 +136,7 @@ class JdbcConfigWalk:
     pages_failed: int = 0
     rejected_rows: dict[JdbcRowRejection, int] = field(default_factory=dict)
     elapsed_seconds: float = 0.0
+    failed_page: int | None = None
 
     @property
     def complete(self) -> bool:

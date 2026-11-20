@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import gc
 import json
 import logging
 import time
@@ -274,8 +275,8 @@ async def test_partial_keeps_safe_pages() -> None:
     (403, JdbcWalkFailure.AUTH, 1, 1),
     (500, JdbcWalkFailure.UPSTREAM, 3, 3),
     (429, JdbcWalkFailure.RATE_LIMITED, 3, 3),
-    ("wall", JdbcWalkFailure.TIMEOUT, 0, 1),
-    ("ceiling", JdbcWalkFailure.PAGE_CEILING, 1, 1),
+    ("wall", JdbcWalkFailure.TIMEOUT, 0, 0),
+    ("ceiling", JdbcWalkFailure.PAGE_CEILING, 1, 0),
 ])
 async def test_auth_three_failures_wall_ceiling(
     failure: int | str, code: JdbcWalkFailure, gets: int, failed: int,
@@ -640,5 +641,403 @@ async def test_expired_during_projection_never_completes(monkeypatch: pytest.Mon
     finally:
         await walker.aclose()
     assert result.state is JdbcWalkState.PARTIAL and not result.complete
-    assert result.failure_code is JdbcWalkFailure.TIMEOUT and result.pages_failed == 1
+    assert result.failure_code is JdbcWalkFailure.TIMEOUT and result.pages_failed == 0
     assert [config.qradar_id for config in result.configs] == [1]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("failure", ["gzip", "deep_json", "runtime"])
+@pytest.mark.parametrize("safe_pages", [0, 1])
+async def test_unexpected_page_failure_returns_safe_result(
+    failure: str, safe_pages: int, caplog: pytest.LogCaptureFixture,
+) -> None:
+    caplog.set_level(logging.DEBUG)
+    ranges: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        ranges.append(request.headers["Range"])
+        if len(ranges) <= safe_pages:
+            return httpx.Response(200, json=page(request, 200))
+        if failure == "gzip":
+            return httpx.Response(
+                200, headers={"Content-Encoding": "gzip"}, content=CANARY.encode(),
+            )
+        if failure == "deep_json":
+            return httpx.Response(200, content=b"[" * 200_000 + json.dumps(CANARY).encode()
+                                  + b"]" * 200_000)
+        try:
+            raise ValueError(CANARY)
+        except ValueError as exc:
+            raise RuntimeError(CANARY) from exc
+
+    walker = provider(handler)
+    try:
+        result = await walker.walk_jdbc_configs()
+    finally:
+        await walker.aclose()
+    assert result.state is (JdbcWalkState.PARTIAL if safe_pages else JdbcWalkState.FAILED)
+    assert not result.complete and result.failure_code is JdbcWalkFailure.MALFORMED
+    assert [config.qradar_id for config in result.configs] == list(range(safe_pages * 100))
+    assert (result.pages_read, result.rows_read, result.pages_failed, result.failed_page) == (
+        safe_pages, safe_pages * 100, 1, safe_pages,
+    )
+    assert result.rejected_rows == {} and len(ranges) == safe_pages + 1
+    rendered = repr(result) + json.dumps(
+        asdict(result), default=lambda config: config.model_dump(mode="json"),
+    ) + caplog.text
+    rendered += repr([record.__dict__ for record in caplog.records])
+    assert CANARY not in rendered
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("signal", [asyncio.CancelledError, KeyboardInterrupt, SystemExit])
+async def test_process_control_exceptions_propagate(signal: type[BaseException]) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise signal("control")
+
+    walker = provider(handler)
+    try:
+        with pytest.raises(signal, match="control"):
+            await walker.walk_jdbc_configs()
+    finally:
+        await walker.aclose()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(("terminal", "code", "failed", "read", "rows"), [
+    (401, JdbcWalkFailure.AUTH, 2, 1, 100),
+    (403, JdbcWalkFailure.AUTH, 2, 1, 100),
+    ("ceiling", JdbcWalkFailure.PAGE_CEILING, 1, 2, 200),
+    ("deadline", JdbcWalkFailure.TIMEOUT, 2, 1, 100),
+    ("malformed", JdbcWalkFailure.MALFORMED, 2, 1, 100),
+])
+async def test_terminal_failure_overrides_earlier_upstream(
+    terminal: int | str, code: JdbcWalkFailure, failed: int, read: int, rows: int,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    ranges: list[str] = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        ranges.append(request.headers["Range"])
+        if len(ranges) == 2:
+            return httpx.Response(500, text=CANARY)
+        if len(ranges) == 3:
+            if isinstance(terminal, int):
+                return httpx.Response(terminal, text=CANARY)
+            if terminal == "deadline":
+                await asyncio.sleep(10)
+            if terminal == "malformed":
+                raise RuntimeError(CANARY)
+        return httpx.Response(200, json=page(request, 500))
+
+    client = httpx.AsyncClient(
+        transport=httpx.MockTransport(handler), base_url="https://qradar.example/api",
+    )
+    walker = QRadarRestProvider(
+        base_url="https://qradar.example", sec_token="t", client=client,
+        max_retries=0, max_pages=3,
+    )
+    try:
+        result = await walker.walk_jdbc_configs(wall_seconds=0.2 if terminal == "deadline" else 600)
+    finally:
+        await walker.aclose()
+    assert result.state is JdbcWalkState.PARTIAL and result.failure_code is code
+    assert (result.pages_read, result.rows_read, result.pages_failed, result.failed_page) == (
+        read, rows, failed, 1,
+    )
+    assert [config.qradar_id for config in result.configs] == (
+        [*range(100), *range(200, 300)] if terminal == "ceiling" else list(range(100))
+    )
+    assert ranges == ["items=0-99", "items=100-199", "items=200-299"]
+    assert CANARY not in repr(result) + caplog.text
+
+
+@pytest.mark.asyncio
+async def test_third_consecutive_failure_is_terminal_cause() -> None:
+    calls = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            return httpx.Response(500, text=CANARY)
+        return httpx.Response(200, content=CANARY.encode())
+
+    walker = provider(handler)
+    try:
+        result = await walker.walk_jdbc_configs()
+    finally:
+        await walker.aclose()
+    assert result.state is JdbcWalkState.FAILED and result.failure_code is JdbcWalkFailure.MALFORMED
+    assert (result.pages_read, result.rows_read, result.pages_failed, result.failed_page) == (
+        0, 0, 3, 0,
+    )
+    assert calls == 3
+
+
+@pytest.mark.asyncio
+async def test_invalid_json_response_released_without_cyclic_gc(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.providers.qradar_rest import MalformedUpstreamResponse
+
+    responses: list[weakref.ReferenceType[httpx.Response]] = []
+    detached: list[bool] = []
+
+    async def request(*args: object, **kwargs: object) -> httpx.Response:
+        # Bypass HTTPX's own response/BoundAsyncStream cycle; exercise our decode lifetime.
+        assert all(ref() is None for ref in responses)
+        response = httpx.Response(200, content=CANARY.encode())
+        responses.append(weakref.ref(response))
+        return response
+
+    walker = provider(lambda request: httpx.Response(200, json=[]))
+    monkeypatch.setattr(walker._client, "request", request)
+    decode = walker._decode
+
+    def track(response: httpx.Response, outcome: dict):  # type: ignore[no-untyped-def]
+        try:
+            return decode(response, outcome)
+        except MalformedUpstreamResponse as exc:
+            detached.append(exc.__cause__ is None and exc.__context__ is None)
+            raise
+
+    monkeypatch.setattr(walker, "_decode", track)
+    was_enabled = gc.isenabled()
+    gc.disable()
+    try:
+        result = await walker.walk_jdbc_configs()
+        assert all(ref() is None for ref in responses)
+    finally:
+        if was_enabled:
+            gc.enable()
+        await walker.aclose()
+    assert len(responses) == 3
+    assert detached == [True, True, True]
+    assert result.state is JdbcWalkState.FAILED and result.failure_code is JdbcWalkFailure.MALFORMED
+    assert (result.pages_read, result.rows_read, result.pages_failed, result.failed_page) == (
+        0, 0, 3, 0,
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("stop", ["empty", "ceiling", "wall", "projection"])
+async def test_non_request_stops_do_not_invent_failed_pages(
+    stop: str, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.providers import qradar_rest
+
+    project = qradar_rest.project_jdbc_config
+
+    def slow_project(**kwargs: object):  # type: ignore[no-untyped-def]
+        time.sleep(0.02)
+        return project(**kwargs)
+
+    if stop == "projection":
+        monkeypatch.setattr(qradar_rest, "project_jdbc_config", slow_project)
+    calls = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        body = [] if stop == "empty" else [row(1)] if stop == "projection" else page(request, 100)
+        return httpx.Response(200, json=body)
+
+    walker = provider(handler, max_pages=1)
+    try:
+        result = await walker.walk_jdbc_configs(
+            wall_seconds=0 if stop == "wall" else 0.01 if stop == "projection" else 600,
+        )
+    finally:
+        await walker.aclose()
+    assert result.pages_failed == 0 and result.failed_page is None
+    assert (result.pages_read, result.rows_read, calls) == {
+        "empty": (1, 0, 1), "ceiling": (1, 100, 1), "wall": (0, 0, 0), "projection": (1, 1, 1),
+    }[stop]
+    assert result.failure_code is {
+        "empty": None, "ceiling": JdbcWalkFailure.PAGE_CEILING,
+        "wall": JdbcWalkFailure.TIMEOUT, "projection": JdbcWalkFailure.TIMEOUT,
+    }[stop]
+    assert result.state is {
+        "empty": JdbcWalkState.COMPLETE, "wall": JdbcWalkState.FAILED,
+        "ceiling": JdbcWalkState.PARTIAL, "projection": JdbcWalkState.PARTIAL,
+    }[stop]
+
+
+@pytest.mark.asyncio
+async def test_oversized_page_rejected_before_any_projection(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.providers import qradar_rest
+
+    project = qradar_rest.project_jdbc_config
+    projected: list[int] = []
+    calls = 0
+
+    def track(**kwargs: object):  # type: ignore[no-untyped-def]
+        projected.append(kwargs["qradar_id"])
+        return project(**kwargs)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        body = page(request, 100) if calls == 1 else [row(i) for i in range(100, 201)]
+        return httpx.Response(200, json=body if calls <= 2 else [])
+
+    monkeypatch.setattr(qradar_rest, "project_jdbc_config", track)
+    walker = provider(handler)
+    try:
+        result = await walker.walk_jdbc_configs()
+    finally:
+        await walker.aclose()
+    assert result.state is JdbcWalkState.PARTIAL
+    assert result.failure_code is JdbcWalkFailure.MALFORMED
+    assert result.rejected_rows == {JdbcRowRejection.MALFORMED_ROW: 101}
+    assert (result.pages_read, result.rows_read, result.pages_failed, result.failed_page) == (
+        3, 201, 1, 1,
+    )
+    assert projected == list(range(100))
+    assert [config.qradar_id for config in result.configs] == list(range(100))
+    assert calls == 3
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("status", [400, 422])
+@pytest.mark.parametrize("safe_pages", [0, 1])
+async def test_filter_rejection_ends_walk_immediately(status: int, safe_pages: int) -> None:
+    calls = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        return (httpx.Response(200, json=page(request, 100)) if calls <= safe_pages
+                else httpx.Response(status, text=CANARY))
+
+    walker = provider(handler)
+    try:
+        result = await walker.walk_jdbc_configs()
+    finally:
+        await walker.aclose()
+    assert result.failure_code is JdbcWalkFailure.FILTER_REJECTED and not result.complete
+    assert result.state is (JdbcWalkState.PARTIAL if safe_pages else JdbcWalkState.FAILED)
+    assert (result.pages_read, result.rows_read, result.pages_failed, result.failed_page) == (
+        safe_pages, safe_pages * 100, 1, safe_pages,
+    )
+    assert len(result.configs) == safe_pages * 100 and calls == safe_pages + 1
+    assert result.rejected_rows == {} and CANARY not in repr(result)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("status", [404, 405, 408, 409, 429, 499])
+@pytest.mark.parametrize("safe_pages", [0, 1])
+async def test_other_4xx_keep_ordinary_page_failure_codes(
+    status: int, safe_pages: int, caplog: pytest.LogCaptureFixture,
+) -> None:
+    caplog.set_level(logging.DEBUG)
+    ranges: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        ranges.append(request.headers["Range"])
+        return (httpx.Response(200, json=page(request, 100)) if len(ranges) <= safe_pages
+                else httpx.Response(status, text=CANARY))
+
+    walker = provider(handler)
+    try:
+        result = await walker.walk_jdbc_configs()
+    finally:
+        await walker.aclose()
+    assert result.failure_code is (
+        JdbcWalkFailure.RATE_LIMITED if status == 429 else JdbcWalkFailure.UPSTREAM
+    )
+    assert not result.complete
+    assert result.state is (JdbcWalkState.PARTIAL if safe_pages else JdbcWalkState.FAILED)
+    assert (result.pages_read, result.rows_read, result.pages_failed, result.failed_page) == (
+        safe_pages, safe_pages * 100, 3, safe_pages,
+    )
+    assert [config.qradar_id for config in result.configs] == list(range(safe_pages * 100))
+    assert ranges == [f"items={i * 100}-{i * 100 + 99}" for i in range(safe_pages + 3)]
+    assert result.rejected_rows == {} and CANARY not in repr(result) + caplog.text
+    assert all(CANARY not in repr(record.__dict__) for record in caplog.records)
+
+
+@pytest.mark.asyncio
+async def test_rate_limited_pages_keep_retry_after_behavior() -> None:
+    ranges: list[str] = []
+    sleeps: list[float] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        ranges.append(request.headers["Range"])
+        return httpx.Response(429, text=CANARY, headers={"Retry-After": "2"})
+
+    async def sleep(seconds: float) -> None:
+        sleeps.append(seconds)
+
+    client = httpx.AsyncClient(
+        transport=httpx.MockTransport(handler), base_url="https://qradar.example/api",
+    )
+    walker = QRadarRestProvider(
+        base_url="https://qradar.example", sec_token="t", client=client,
+        max_retries=2, sleep=sleep,
+    )
+    try:
+        result = await walker.walk_jdbc_configs()
+    finally:
+        await walker.aclose()
+    assert result.state is JdbcWalkState.FAILED and not result.complete
+    assert result.failure_code is JdbcWalkFailure.RATE_LIMITED
+    assert (result.pages_read, result.rows_read, result.pages_failed, result.failed_page) == (
+        0, 0, 3, 0,
+    )
+    assert ranges == [f"items={i * 100}-{i * 100 + 99}" for i in range(3) for _ in range(3)]
+    assert sleeps == [2.0] * 6
+    assert result.configs == [] and result.rejected_rows == {} and CANARY not in repr(result)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("expiry", ["failed_request", "consumed_page"])
+async def test_deadline_after_earlier_failure_has_honest_counts(
+    expiry: str, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.providers import qradar_rest
+    from app.providers.base import ProviderError
+
+    calls = 0
+    project = qradar_rest.project_jdbc_config
+
+    def slow_project(**kwargs: object):  # type: ignore[no-untyped-def]
+        if kwargs["qradar_id"] == 200:
+            time.sleep(0.1)
+        return project(**kwargs)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        if calls == 2 or (calls == 3 and expiry == "failed_request"):
+            return httpx.Response(500, text=CANARY)
+        return httpx.Response(200, json=page(request, 100) if calls == 1 else [row(200)])
+
+    walker = provider(handler)
+    original_request = walker._request
+
+    async def request(*args: object, **kwargs: object):  # type: ignore[no-untyped-def]
+        try:
+            return await original_request(*args, **kwargs)
+        except ProviderError:
+            if calls == 3:
+                time.sleep(0.1)
+            raise
+
+    monkeypatch.setattr(walker, "_request", request)
+    monkeypatch.setattr(qradar_rest, "project_jdbc_config", slow_project)
+    try:
+        result = await walker.walk_jdbc_configs(wall_seconds=0.05)
+    finally:
+        await walker.aclose()
+    assert result.state is JdbcWalkState.PARTIAL and result.failure_code is JdbcWalkFailure.TIMEOUT
+    assert result.failed_page == 1 and calls == 3
+    assert (result.pages_read, result.rows_read, result.pages_failed) == (
+        (1, 100, 2) if expiry == "failed_request" else (2, 101, 1)
+    )
+    assert [config.qradar_id for config in result.configs] == (
+        list(range(100)) if expiry == "failed_request" else [*range(100), 200]
+    )
