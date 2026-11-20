@@ -9,6 +9,7 @@
   "evaluationOff": "Rule evaluation is off; enabled rules are not judged.",
   "evaluationOffBefore": "Setting ",
   "evaluationOffAfter": " is false",
+  "evaluationOffText": "An administrator can turn rule evaluation on under <features>Administration → Features</features>.",
   "shadowNotice": "Shadow mode: breaches are recorded, nothing pages.",
   "shadowBefore": "Shadow mode: ",
   "shadowAfter": " is off",

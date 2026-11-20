@@ -10,15 +10,18 @@ describe("earlyState", () => {
     expect(earlyState(watch(), null)).toBeNull();
   });
 
-  it("collection off outranks everything and names the setting", () => {
+  it("collection off outranks everything and says where an administrator turns it on", () => {
     const s = earlyState(watch({ status: "OK" }), catalog({ collection_enabled: false }));
     expect(s?.kind).toBe("not_collected");
-    expect(s && "reason" in s && s.reason).toContain("PW_COLLECTION_ENABLED");
+    expect(s && "reason" in s && s.reason).toBe(
+      "Property-watch collection is off; no watch is collected. An administrator can turn it on under {features}.",
+    );
   });
 
-  it("NOT_ENABLED without the catalog still names the setting", () => {
+  it("NOT_ENABLED without the catalog still says where an administrator turns collection on", () => {
     const s = earlyState(watch({ status: "NOT_ENABLED" }), null);
-    expect(s && "reason" in s && s.reason).toContain("PW_COLLECTION_ENABLED");
+    expect(s && "reason" in s && s.reason).toContain("Property-watch collection is off; no watch is collected. An administrator can turn it on under {features}.");
+    expect(s && "reason" in s && String(s.reason)).not.toContain("_ENABLED");
   });
 
   it.each(["SCOPE_STALE", "SCOPE_TOO_LARGE", "SCOPE_EMPTY"] as const)("%s is not_collected", (status) => {

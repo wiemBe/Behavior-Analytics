@@ -13,6 +13,7 @@ import {
   decision,
   estimateFamily,
   estimateOf,
+  legacySwitchedOffFamily,
 } from "./fixtures";
 
 function caller(permissions: string[]): CallerInfo {
@@ -146,6 +147,19 @@ describe("the first-run dialog: what it says", () => {
     );
   });
 
+  it("ends a switched-off family's sentence once: a new reason keeps its period, a stored one gets none added", async () => {
+    vi.spyOn(api, "historyBackfillEstimate").mockResolvedValue([estimateOf()]);
+    vi.spyOn(api, "historyBackfill").mockResolvedValue([
+      consoleOf({ families: [...consoleOf().families.filter((f) => f.family === "IPS"), legacySwitchedOffFamily()] }),
+    ]);
+    mount();
+    const dialog = await screen.findByRole("dialog");
+    const text = dialog.textContent ?? "";
+    expect(text).toContain("Switched off. IPS collection is off. An administrator can turn it on under Administration → Features.");
+    expect(text).toContain("Switched off. RULE_MATCH_COLLECTION_ENABLED is off");
+    expect(text).not.toContain("..");
+  });
+
   it("lists each family with its state, and leaves Geography out with the reason", async () => {
     vi.spyOn(api, "historyBackfillEstimate").mockResolvedValue([estimateOf()]);
     mount();
@@ -158,7 +172,7 @@ describe("the first-run dialog: what it says", () => {
     expect(waf).toHaveTextContent("1 source enabled");
     expect(waf).toHaveTextContent("sources you enable later are read when you enable them");
     const ips = within(table).getByRole("rowheader", { name: "IPS" }).closest("tr")!;
-    expect(ips).toHaveTextContent("Switched off. IPS_COLLECTION_ENABLED is off.");
+    expect(ips).toHaveTextContent("Switched off. IPS collection is off. An administrator can turn it on under Administration → Features.");
     const geography = within(table).getByRole("rowheader", { name: "Geography" }).closest("tr")!;
     expect(geography).toHaveTextContent("Left out. No baseline to fill.");
   });

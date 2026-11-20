@@ -22,6 +22,10 @@ import { asTextTranslator, type TextTranslator } from "@/i18n/textTranslator";
 import { englishText } from "@/widgets/englishText";
 import type { Locale } from "@/i18n/locale";
 import { useMeasures } from "@/i18n/measures";
+import Link from "next/link";
+
+import { FEATURES_HREF, FEATURES_LINK_CLASS } from "@/components/features/featuresRich";
+import { useFeaturesLinked } from "@/components/features/useFeaturesLinked";
 import { api, type PropertyWatch, type PwBucket, type PwValueSeries } from "@/lib/api";
 import { formatPercent } from "@/lib/format";
 import { worded, type Qualifier } from "@/lib/home/qualifiers";
@@ -46,6 +50,25 @@ function withInstant<T>(state: WidgetState<T>): WidgetState<T> {
       <>
         {before}
         <UtcTime value={state.at} />
+        {after}
+      </>
+    ),
+  };
+}
+
+/** `{features}` in a string reason is the page that holds the collection switch: a link for an
+ *  account holding `read:features`, the plain words for any other. */
+function withFeatures<T>(state: WidgetState<T>, linked: boolean, label: string): WidgetState<T> {
+  if (state.kind !== "not_collected" || typeof state.reason !== "string") return state;
+  if (!state.reason.includes("{features}")) return state;
+  const [before, ...rest] = state.reason.split("{features}");
+  const after = rest.join("{features}");
+  return {
+    ...state,
+    reason: (
+      <>
+        {before}
+        {linked ? <Link className={FEATURES_LINK_CLASS} href={FEATURES_HREF}>{label}</Link> : label}
         {after}
       </>
     ),
@@ -173,6 +196,7 @@ export function PropertyWatchWidget({
   const say = asTextTranslator(useTranslations());
   const locale = useLocale() as Locale;
   const hours = HOURS;
+  const featuresLinked = useFeaturesLinked();
   const watchId =
     typeof config.watch_id === "string" && config.watch_id !== "" ? config.watch_id : null;
 
@@ -301,7 +325,7 @@ export function PropertyWatchWidget({
     return frame(failure(say, t("theWatch"), watchS.httpStatus));
   }
   if (!settled) return frame({ kind: "loading" });
-  if (early !== null) return frame(withInstant(early));
+  if (early !== null) return frame(withInstant(withFeatures(early, featuresLinked, t("featuresLabel"))));
 
   const read = failedRead(say, [
     [t("theValues"), valuesS],

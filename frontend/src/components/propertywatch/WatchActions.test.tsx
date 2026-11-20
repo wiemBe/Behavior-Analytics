@@ -1,10 +1,15 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { StaticSession } from "@/components/auth/session";
+import { sessionHolding } from "@/components/features/sessionFixture";
 import { ApiError, api } from "@/lib/api";
 
 import { catalog, watch } from "./fixtures";
 import { WatchActions } from "./WatchActions";
+
+const ENABLE_OFF =
+  "No bucket is collected while property-watch collection is off. An administrator can turn it on under Administration → Features.";
 
 const navigation = vi.hoisted(() => ({ refresh: vi.fn(), push: vi.fn() }));
 vi.mock("next/navigation", () => ({ useRouter: () => navigation }));
@@ -23,7 +28,32 @@ describe("property-watch enable, disable and delete", () => {
     expect(confirmation).toHaveTextContent("Collection switch: off");
     expect(confirmation).toHaveTextContent("2 of 10 watch slots");
     expect(confirmation).toHaveTextContent("4 of 20 searches per tick");
-    expect(within(confirmation).getByText("PW_COLLECTION_ENABLED").tagName).toBe("CODE");
+    expect(confirmation).toHaveTextContent(ENABLE_OFF);
+    expect(within(confirmation).queryByRole("link")).toBeNull();
+    expect(confirmation).not.toHaveTextContent("PW_COLLECTION_ENABLED");
+  });
+
+  it("links Administration → Features in the enable confirmation for read:features, and for no other account", () => {
+    const { unmount } = render(
+      <StaticSession value={sessionHolding(["read:features"])}>
+        <WatchActions watch={watch({ enabled: false })} catalog={catalog({ collection_enabled: false })} />
+      </StaticSession>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Enable" }));
+    const confirmation = screen.getByRole("group", { name: "Enable watch confirmation" });
+    expect(within(confirmation).getByRole("link", { name: "Administration → Features" })).toHaveAttribute(
+      "href",
+      "/admin/features",
+    );
+    expect(confirmation).toHaveTextContent(ENABLE_OFF);
+    unmount();
+    render(
+      <StaticSession value={sessionHolding(["property_watch:write"])}>
+        <WatchActions watch={watch({ enabled: false })} catalog={catalog({ collection_enabled: false })} />
+      </StaticSession>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Enable" }));
+    expect(screen.queryByRole("link", { name: "Administration → Features" })).toBeNull();
   });
 
   it("renders an enable 409 naming the cap or budget exactly", async () => {

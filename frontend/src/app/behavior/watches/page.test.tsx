@@ -63,12 +63,28 @@ describe("the list states", () => {
 });
 
 describe("the notices", () => {
-  it("names the collection setting when collection is off", async () => {
+  it("says where collection is turned on, with a link for read:features", async () => {
     vi.spyOn(api, "propertyWatches").mockResolvedValue([watch()]);
     vi.spyOn(api, "propertyWatchCatalog").mockResolvedValue(catalog({ collection_enabled: false }));
     await renderPage();
-    expect(screen.getByText("PW_COLLECTION_ENABLED").tagName).toBe("CODE");
-    expect(screen.getByText("COLLECTION OFF.")).toBeInTheDocument();
+    const banner = screen.getByText("COLLECTION OFF.").closest(".banner") as HTMLElement;
+    expect(banner).toHaveTextContent("COLLECTION OFF. Property-watch collection is off, so no watch is judged. An administrator can turn it on under Administration → Features.");
+    expect(within(banner).getByRole("link", { name: "Administration → Features" })).toHaveAttribute("href", "/admin/features");
+    expect(document.body.textContent).not.toContain("PW_COLLECTION_ENABLED");
+  });
+
+  it.each([
+    ["a role without read:features", ["read:property_watches"]],
+    ["an unreadable account", null],
+  ])("shows the same sentence without a link for %s", async (_name, permissions) => {
+    vi.spyOn(api, "propertyWatches").mockResolvedValue([watch()]);
+    vi.spyOn(api, "propertyWatchCatalog").mockResolvedValue(catalog({ collection_enabled: false }));
+    if (permissions === null) vi.spyOn(api, "caller").mockRejectedValue(new ApiError(500, "x"));
+    else vi.spyOn(api, "caller").mockResolvedValue({ subject: "a", email: null, permissions, effective_permissions: permissions });
+    await renderPage();
+    const banner = screen.getByText("COLLECTION OFF.").closest(".banner") as HTMLElement;
+    expect(banner).toHaveTextContent("COLLECTION OFF. Property-watch collection is off, so no watch is judged. An administrator can turn it on under Administration → Features.");
+    expect(within(banner).queryByRole("link")).toBeNull();
   });
 
   it("names the alerting setting in shadow mode, and only then", async () => {
@@ -83,7 +99,7 @@ describe("the notices", () => {
     vi.spyOn(api, "propertyWatchCatalog").mockRejectedValue(new ApiError(500, "x"));
     await renderPage();
     expect(screen.getByText("SWITCHES NOT READ.")).toBeInTheDocument();
-    expect(screen.queryByText("PW_COLLECTION_ENABLED")).toBeNull();
+    expect(document.body.textContent).not.toContain("PW_COLLECTION_ENABLED");
   });
 
   it("states no latency sentence (the Guide holds it) and never claims to be live", async () => {

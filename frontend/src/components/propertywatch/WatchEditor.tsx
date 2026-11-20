@@ -1,5 +1,7 @@
 "use client";
 
+import { withFeaturesLink } from "@/components/features/featuresRich";
+import { useFeaturesLinked } from "@/components/features/useFeaturesLinked";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useId, useMemo, useRef, useState } from "react";
@@ -46,7 +48,6 @@ import { ENGLISH_PW, type PwI18n } from "./pwText";
 import "./propertywatch.css";
 
 const SEVERITIES = ["CRITICAL", "HIGH", "MEDIUM", "LOW", "INFO"];
-const COLLECTION_SETTING = "PW_COLLECTION_ENABLED";
 /** When a "n/unit" limit has room again: within one unit of it, never sooner than a second. */
 function retryIn(limit: string, i18n: PwI18n): string {
   const unit = limit.split("/")[1]?.trim().replace(/s$/, "");
@@ -185,6 +186,7 @@ export function WatchEditor({
   const runtimeI18n = useBehaviorI18n();
   const i18n = providedI18n ?? runtimeI18n ?? ENGLISH_PW;
   const t = i18n.t;
+  const featuresLinked = useFeaturesLinked();
   const router = useRouter();
   const nameId = useId();
   const descriptionId = useId();
@@ -750,7 +752,7 @@ export function WatchEditor({
           <div className="banner warn" role="status">
             <span>
               <strong>{t("propertyWatch.editor.collectionOffTitle")}</strong>{" "}
-              <code>{COLLECTION_SETTING}</code>{t("propertyWatch.editor.collectionOffAfter")}
+              {withFeaturesLink(t("propertyWatch.editor.collectionOffText"), featuresLinked)}
             </span>
           </div>
         )}

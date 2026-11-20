@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { useTranslations } from "next-intl";
 
+import { featuresRich } from "@/components/features/featuresRich";
+import { useFeaturesLinked } from "@/components/features/useFeaturesLinked";
 import { api, type PropertyWatch, type PropertyWatchCatalog } from "@/lib/api";
 import { useBehaviorI18n } from "@/lib/useBehaviorI18n";
 
@@ -20,6 +22,7 @@ export function WatchActions({
   catalog: PropertyWatchCatalog | null;
 }) {
   const t = useTranslations("propertyWatch.actions");
+  const featuresLinked = useFeaturesLinked();
   const common = useTranslations("propertyWatch.common");
   const i18n = useBehaviorI18n();
   const router = useRouter();
@@ -218,7 +221,7 @@ export function WatchActions({
             )}
           </p>
           {!catalog?.collection_enabled && (
-            <p>{t.rich("enableStored", { setting: (chunks) => <code>{chunks}</code> })}</p>
+            <p>{t.rich("enableStoredOff", featuresRich(featuresLinked))}</p>
           )}
           <div className="actions">
             <button type="button" className="action" disabled={pending} onClick={() => void setEnabled(true)}>

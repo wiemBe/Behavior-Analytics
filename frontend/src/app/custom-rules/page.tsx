@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { getLocale, getTranslations } from "next-intl/server";
 
+import { canReadFeatures, featuresRich } from "@/components/features/featuresRich";
 import { RuleStatus } from "@/components/customrules/RuleStatus";
 import {
   conditionText,
@@ -19,7 +20,6 @@ import { asTextTranslator } from "@/i18n/textTranslator";
 import { enumLabel } from "@/i18n/enumLabels";
 import { withRouteMessages } from "@/i18n/RouteMessages";
 
-const EVALUATION_SETTING = "CUSTOM_RULES_ENABLED";
 const WRITE_PERMISSION = "custom_rule:write";
 
 export async function generateMetadata() {
@@ -35,6 +35,7 @@ async function CustomRulesPage() {
   let rules: CustomRule[] = [];
   let catalog: CustomRuleCatalog | null = null;
   let access: CustomRuleAccess = "unknown";
+  let featuresLinked = false;
   let limited: string | null = null;
   let failed = false;
   let forbidden = false;
@@ -46,6 +47,7 @@ async function CustomRulesPage() {
       api.caller().catch(() => null),
     ]);
     access = caller ? customRuleAccessFrom(caller) : "unknown";
+    featuresLinked = canReadFeatures(caller);
   } catch (error) {
     if (error instanceof ApiError && error.status === 429) {
       limited = rateLimitedText(error, say);
@@ -92,7 +94,7 @@ async function CustomRulesPage() {
                 <div>
                   <details>
                     <summary>{t("evaluationOff")}</summary>
-                    <p>{t("evaluationOffBefore")}<code>{EVALUATION_SETTING}</code>{t("evaluationOffAfter")}.</p>
+                    <p>{t.rich("evaluationOffText", featuresRich(featuresLinked))}</p>
                   </details>
                 </div>
               </div>

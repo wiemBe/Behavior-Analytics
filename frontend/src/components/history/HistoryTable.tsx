@@ -4,6 +4,8 @@
 // right-aligned in tabular figures, times carry their zone, and a missing measurement is an em
 // dash with the reason beside it, never a zero.
 
+import { withFeaturesLink } from "@/components/features/featuresRich";
+import { useFeaturesLinked } from "@/components/features/useFeaturesLinked";
 import { useTranslations } from "next-intl";
 
 import type { HistoryConsole, HistoryScopeSource } from "@/lib/api";
@@ -133,6 +135,7 @@ function SourceShortfall({
 function Reason({ row }: { row: HistoryRow }) {
   const t = useTranslations("history.table");
   const { locale } = useBehaviorI18n();
+  const featuresLinked = useFeaturesLinked();
   const shown = row.gaps.slice(0, MAX_GAPS_SHOWN);
   const more = row.gaps.length - shown.length;
   const hasLastError = row.lastErrorClass !== null;
@@ -149,7 +152,7 @@ function Reason({ row }: { row: HistoryRow }) {
   }
   return (
     <>
-      {row.reason}
+      {row.reason === null ? null : withFeaturesLink(row.reason, featuresLinked)}
       {shown.length > 0 && (
         <ul className="hb-gaps" aria-label={t("gaps")}>
           {shown.map((gap) => (

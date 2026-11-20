@@ -1,9 +1,14 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { StaticSession } from "@/components/auth/session";
+import { sessionHolding } from "@/components/features/sessionFixture";
 import { ApiError, api, type PwPreview } from "@/lib/api";
 
 import { catalog, scope, watch } from "./fixtures";
+
+const COLLECTION_OFF =
+  "COLLECTION OFF. Property-watch collection is off, so enabling a watch will not collect. An administrator can turn it on under Administration → Features.";
 import { WatchEditor } from "./WatchEditor";
 
 const navigation = vi.hoisted(() => ({ refresh: vi.fn() }));
@@ -406,6 +411,20 @@ describe("property-watch editor refusals", () => {
     expect(alert).toHaveTextContent("Saved disabled");
   });
 
+  it("links Administration → Features in the collection-off notice for read:features", () => {
+    render(
+      <StaticSession value={sessionHolding(["read:features"])}>
+        <WatchEditor catalog={catalog({ collection_enabled: false })} mode="edit" watch={watch()} initialScope={scope()} />
+      </StaticSession>,
+    );
+    const banner = screen.getByText("COLLECTION OFF.").closest(".banner") as HTMLElement;
+    expect(banner).toHaveTextContent(COLLECTION_OFF);
+    expect(within(banner).getByRole("link", { name: "Administration → Features" })).toHaveAttribute(
+      "href",
+      "/admin/features",
+    );
+  });
+
   it("shows collection off and inline pin reasons without inventing a preview", () => {
     render(
       <WatchEditor
@@ -415,8 +434,10 @@ describe("property-watch editor refusals", () => {
         initialScope={scope()}
       />,
     );
-    expect(screen.getByText("PW_COLLECTION_ENABLED").tagName).toBe("CODE");
-    expect(screen.getByText("COLLECTION OFF.")).toBeInTheDocument();
+    const banner = screen.getByText("COLLECTION OFF.").closest(".banner") as HTMLElement;
+    expect(banner).toHaveTextContent(COLLECTION_OFF);
+    expect(within(banner).queryByRole("link")).toBeNull();
+    expect(document.body.textContent).not.toContain("PW_COLLECTION_ENABLED");
     expect(screen.getByText(/No quotes, backslashes/)).toBeInTheDocument();
     expect(screen.getByText("No preview yet.")).toBeInTheDocument();
   });

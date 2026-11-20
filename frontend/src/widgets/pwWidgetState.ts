@@ -49,7 +49,8 @@ const NOT_COLLECTED_STATUSES: ReadonlySet<string> = new Set([
  * `empty`, `no_data` and `not_collected` carry the reason in words; none of them is a zero.
  *
  * `t` is the root translator and `locale` the language of the figures; the defaults keep the
- * English text. `{at}` stays in the reason: the widget draws the instant in its place. The words
+ * English text. `{at}` stays in the reason: the widget draws the instant in its place, and
+ * `{features}` likewise: the widget draws Administration → Features, linked for an account that may open it. The words
  * of `statusReason` are the API's and stay as they are.
  */
 export function earlyState(
@@ -59,11 +60,11 @@ export function earlyState(
   locale: FormatLocale = "en",
 ): WidgetState<never> | null {
   if (catalog && !catalog.collection_enabled) {
-    return { kind: "not_collected", reason: t("widgets.propertyWatch.collectionOff") };
+    return { kind: "not_collected", reason: t("widgets.propertyWatch.collectionOffFeatures", { features: "{features}" }) };
   }
   if (watch.status !== null && NOT_COLLECTED_STATUSES.has(watch.status)) {
     const setting =
-      watch.status === "NOT_ENABLED" ? `${t("widgets.propertyWatch.settingOff")} ` : "";
+      watch.status === "NOT_ENABLED" ? `${t("widgets.propertyWatch.collectionOffFeatures", { features: "{features}" })} ` : "";
     return {
       kind: "not_collected",
       reason: `${setting}${codedStatusReason(watch.status, watch.status_reason, { t, locale }, coded(watch))} ${t("widgets.propertyWatch.openHistory")}`,
