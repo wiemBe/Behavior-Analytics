@@ -16,6 +16,7 @@
 #   ./qradar-dash rollback [--non-interactive --yes]
 #   ./qradar-dash repair-state
 #   ./qradar-dash reset [--backup] [--include-secrets] [--non-interactive --yes] [--dry-run]
+#   ./qradar-dash config-export [--label LABEL] [--instance NAME] [--output FILE]
 #
 # Specified in docs/OPERATIONS-DESIGN.md section 3. The script needs bash and
 # Docker with Compose v2 on the host, plus openssl and curl. It never calls
@@ -63,6 +64,7 @@ Commands
                 installed again, for example against a production console (asks first).
   bundle        On a connected host: write the offline bundle (images, checkout and operator
                 documents) for an air-gapped host.
+  config-export Write a secret-free operator-configuration JSON file on the host (mode 0600).
 
 backup options
   --no-verify       Skip the scratch-database restore (not allowed for pre-upgrade).
@@ -87,6 +89,13 @@ bundle options
   The checkout part also carries the operator documents, so the air-gapped host has them:
   README.md, .env.example, docs/INSTALL.md, docs/OPERATIONS.md, docs/CONFIGURATION.md,
   docs/SEARCH-CADENCE.md, docs/OPERATIONS-DESIGN.md and docs/WEBHOOK-PAYLOAD.md.
+
+config-export options
+  --label LABEL     Source label written into the file (default: the registered console name).
+  --instance NAME   Console to export from when more than one is registered.
+  --output FILE     Host file to write (default: ./qradar-dash-config.json, relative to the
+                    directory the command was run from). An existing file is replaced; the file
+                    is always created with mode 0600. Nothing else is written.
 
 rollback options
   --non-interactive Refuse unless --yes is also present.
@@ -4927,6 +4936,87 @@ cmd_reset() {
   say "  3. In the UI: register the console, sync, validate the profiles, run the history backfill."
 }
 
+cmd_config_export() {
+  local label="" instance="" output="" flag actor output_abs outdir rc
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      -h | --help) usage; return 0 ;;
+      --label | --instance | --output)
+        flag=$1
+        if [ $# -lt 2 ]; then
+          fail "config-export: $flag needs a value; nothing was written."
+          return 2
+        fi
+        case "$flag" in
+          --label) label=$2 ;;
+          --instance) instance=$2 ;;
+          --output) output=$2 ;;
+        esac
+        shift 2
+        ;;
+      *)
+        fail "unknown config-export argument: $1; usage: ./qradar-dash config-export [--label LABEL] [--instance NAME] [--output FILE]. Nothing was written."
+        return 2
+        ;;
+    esac
+  done
+
+  need_installed
+  need_docker || return 1
+
+  [ -n "$output" ] || output=qradar-dash-config.json
+  output_abs=$(user_path "$output")
+  outdir=$(dirname "$output_abs")
+  if [ ! -d "$outdir" ] || [ -d "$output_abs" ]; then
+    fail "config-export: output directory does not exist or path is a directory: $output_abs; nothing was written."
+    return 1
+  fi
+
+  actor=$(id -un)
+  local -a args=(exec -T backend python -m app.cli.config export --actor "$actor")
+  [ -z "$label" ] || args+=(--label "$label")
+  [ -z "$instance" ] || args+=(--instance "$instance")
+
+  # The destination is born from a 0600 temp file under a restrictive umask. mv replaces an
+  # existing file without a chmod after the write, so an old world-readable file cannot survive
+  # as the export and no container byte reaches the destination until the export has succeeded.
+  # Container stderr is captured for refusals; both temp files are removed on every exit path.
+  umask 077
+  CFG_EXPORT_TMP=$(mktemp "$outdir/.qradar-dash-config.XXXXXX" 2>/dev/null) || {
+    fail "config-export: cannot create a temporary file in $outdir; nothing was written."
+    return 1
+  }
+  CFG_EXPORT_ERR=$(mktemp "$outdir/.qradar-dash-config-err.XXXXXX" 2>/dev/null) || {
+    rm -f -- "$CFG_EXPORT_TMP"
+    fail "config-export: cannot create a temporary file in $outdir; nothing was written."
+    return 1
+  }
+  trap 'rm -f -- "$CFG_EXPORT_TMP" "$CFG_EXPORT_ERR"' EXIT
+  install_signal_traps
+  set +e
+  dc "${args[@]}" >"$CFG_EXPORT_TMP" 2>"$CFG_EXPORT_ERR"
+  rc=$?
+  set -e
+  if [ "$rc" -ne 0 ]; then
+    fail "config-export failed in the backend container (exit $rc). No file was written."
+    if [ -s "$CFG_EXPORT_ERR" ]; then
+      tail -n 5 -- "$CFG_EXPORT_ERR" | sed 's/^/  | /' >&2
+    fi
+    trap - EXIT HUP INT TERM
+    rm -f -- "$CFG_EXPORT_TMP" "$CFG_EXPORT_ERR"
+    [ "$rc" -eq 2 ] && return 2 || return 1
+  fi
+  if ! mv -f -- "$CFG_EXPORT_TMP" "$output_abs" 2>/dev/null; then
+    fail "config-export: could not move the export into place at $output_abs; nothing was written."
+    trap - EXIT HUP INT TERM
+    rm -f -- "$CFG_EXPORT_TMP" "$CFG_EXPORT_ERR"
+    return 1
+  fi
+  trap - EXIT HUP INT TERM
+  rm -f -- "$CFG_EXPORT_ERR"
+  say "$output_abs"
+}
+
 main() {
   local cmd=${1:-}
   [ $# -eq 0 ] || shift
@@ -4943,6 +5033,7 @@ main() {
     repair-state) cmd_repair_state "$@" ;;
     reset) cmd_reset "$@" ;;
     bundle) cmd_bundle "$@" ;;
+    config-export) cmd_config_export "$@" ;;
     -h | --help | help | "") usage; [ -n "$cmd" ] || exit 2 ;;
     *) fail "unknown command: $cmd"; usage >&2; exit 2 ;;
   esac
