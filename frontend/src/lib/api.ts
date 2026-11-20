@@ -2555,6 +2555,9 @@ export interface PwPropertyOptions {
   properties: PwPropertyOption[];
   normalized_fields: string[];
   detail: string | null;
+  catalog_status?: "NEVER" | "REFRESHING" | "COMPLETE" | "STALE" | "PARTIAL" | "FAILED";
+  applicability_complete?: boolean;
+  limit_reached?: boolean;
 }
 
 export interface PwScopeGroup {
@@ -3456,12 +3459,14 @@ export const api = {
     scopeId: string,
     query = "",
     signal?: AbortSignal,
+    limit = 200,
   ) =>
     request<PwPropertyOptions>(
       `/property-watches/property-options${qs({
         scope_kind: kind,
         scope_id: scopeId,
-        q: query || undefined,
+        q: query,
+        limit,
       })}`,
       { signal },
     ),

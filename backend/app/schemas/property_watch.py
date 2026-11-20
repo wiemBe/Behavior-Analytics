@@ -434,6 +434,11 @@ class PropertyOptionsOut(BaseModel):
     properties: list[PropertyOptionOut]
     normalized_fields: list[str]
     detail: str | None = None
+    catalog_status: Literal[
+        "NEVER", "REFRESHING", "COMPLETE", "STALE", "PARTIAL", "FAILED"
+    ] = "NEVER"
+    applicability_complete: bool = False
+    limit_reached: bool = False
 
 
 # --------------------------------------------------------------------- history reads

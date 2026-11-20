@@ -75,7 +75,6 @@ from app.schemas.property_watch import (
     PinsIn,
     PinsOut,
     PreviewOut,
-    PropertyOptionOut,
     PropertyOptionsOut,
     PropertyWatchCreate,
     PropertyWatchOut,
@@ -97,7 +96,7 @@ from app.security.rbac import (
 )
 from app.services import ariel_search_log as ariel_log
 from app.services import property_watches as svc
-from app.services.property_catalog import PropertyCatalogService, get_property_catalog_service
+from app.services.property_catalog import stored_watch_options
 
 router = APIRouter(prefix="/property-watches", tags=["property-watches"])
 
@@ -492,11 +491,10 @@ async def property_options(
     settings: SettingsDep,
     scope_kind: PwScopeKind,
     scope_id: Annotated[str, Query(min_length=1, max_length=64)],
-    service: Annotated[PropertyCatalogService, Depends(get_property_catalog_service)],
-    factory: ProviderFactoryDep,
     q: Annotated[str | None, Query(max_length=100)] = None,
     instance_id: uuid.UUID | None = None,
     refresh: bool = False,
+    limit: Annotated[int, Query(ge=1, le=200)] = 200,
 ) -> PropertyOptionsOut:
     """The custom-property catalog filtered by the scope's types (a suggestion, never a gate)."""
     instance_key: uuid.UUID | None
@@ -557,32 +555,9 @@ async def property_options(
     instance = await session.get(QRadarInstance, instance_key)
     if instance is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "QRadar instance not found")
-    catalog = await service.catalog_for_types(
-        instance_id=instance.id,
-        provider_factory=lambda: factory(instance),
-        source_type_ids=type_ids,
-        refresh=refresh,
-    )
-    needle = (q or "").casefold()
-    wanted = set(type_ids)
-    options = [
-        PropertyOptionOut(
-            name=item.name,
-            property_type=item.property_type,
-            name_allowed=item.name_allowed,
-            defined_on_type_ids=list(item.defined_on_type_ids),
-            covers_scope=bool(wanted) and wanted <= set(item.defined_on_type_ids),
-        )
-        for item in catalog.properties
-        if not needle or needle in item.name.casefold()
-    ]
-    return PropertyOptionsOut(
-        status=catalog.status,
-        fetched_at=catalog.fetched_at,
-        scope_type_ids=sorted(wanted),
-        properties=options,
-        normalized_fields=list(PW_NORMALIZED_FIELD_ALLOWLIST),
-        detail=catalog.detail,
+    return await stored_watch_options(
+        session, instance_id=instance.id, source_type_ids=type_ids,
+        q=q or "", limit=limit, refresh=refresh,
     )
 
 

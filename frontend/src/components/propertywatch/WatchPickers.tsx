@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useMemo, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { useTranslations } from "next-intl";
 
 import {
@@ -186,10 +186,14 @@ export function WatchPropertyPicker({
   disabled,
   onChange,
   inputRef,
+  scopeKind,
+  scopeId,
 }: {
   index: number;
   value: PwPropertyRef;
   options: PwPropertyOptions | null;
+  scopeKind?: PwScopeKind;
+  scopeId?: string;
   disabled?: boolean;
   onChange: (property: PwPropertyRef) => void;
   /** Receives the picker's input, so a caller can focus a property it just added in place. */
@@ -200,15 +204,43 @@ export function WatchPropertyPicker({
   const inputId = useId();
   const listId = useId();
   const [open, setOpen] = useState(false);
-  const normalized = options?.normalized_fields ?? ["username"];
-  const query = value.name.trim().toLocaleLowerCase();
-  const rows = useMemo(
-    () =>
-      (options?.properties ?? []).filter(
-        (property) => query === "" || property.name.toLocaleLowerCase().includes(query),
-      ),
-    [options, query],
-  );
+  const query = value.name.trim();
+  const [result, setResult] = useState<PwPropertyOptions | null>(null);
+  const [state, setState] = useState<LoadState>("ready");
+  useEffect(() => {
+    setResult(null);
+    if (!scopeId || !scopeKind || !query) {
+      setState("ready");
+      return;
+    }
+    const controller = new AbortController();
+    setState("loading");
+    const timer = window.setTimeout(() => {
+      api.propertyWatchPropertyOptions(scopeKind, scopeId, query, controller.signal, 200)
+        .then((next) => {
+          if (controller.signal.aborted) return;
+          setResult(next);
+          setState("ready");
+        })
+        .catch(() => {
+          if (!controller.signal.aborted) setState("error");
+        });
+    }, 200);
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+    };
+  }, [scopeId, scopeKind, query]);
+  const catalog = result ?? options;
+  const normalized = catalog?.normalized_fields ?? ["username"];
+  const rows = state === "ready" ? (catalog?.properties ?? []).filter(
+    (property) => Boolean(scopeId) || !query || property.name.toLocaleLowerCase().includes(query.toLocaleLowerCase()),
+  ) : [];
+  const snapshotState = catalog?.catalog_status;
+  const statusText = state === "loading" ? t("propertyLoading")
+    : state === "error" ? t("propertyFailed")
+    : snapshotState ? t(`snapshot${snapshotState}`)
+    : catalog ? propertyApplicability(value, catalog, i18n) : t("applicabilityUnknown");
 
   return (
     <div className="pw-field pw-property-picker">
@@ -237,7 +269,7 @@ export function WatchPropertyPicker({
         }}
         onBlur={() => window.setTimeout(() => setOpen(false), 0)}
       />
-      <p className="field-hint">{propertyApplicability(value, options, i18n)}</p>
+      <p className="field-hint" role="status">{statusText}</p>
       {open && (
         <div
           id={listId}
@@ -279,16 +311,19 @@ export function WatchPropertyPicker({
             >
               <span className="pw-option-name">{property.name}</span>
               <span className="pw-option-hint">
-                {property.name_allowed
-                  ? i18n.t("propertyWatch.authoring.definedTypes", {
+                {!property.name_allowed ? t("notSelectable")
+                  : catalog?.applicability_complete === false ? t("applicabilityUnknown")
+                  : i18n.t("propertyWatch.authoring.definedTypes", {
                       defined: formatCount(property.defined_on_type_ids.length, i18n.locale),
-                      total: formatCount(options?.scope_type_ids.length ?? 0, i18n.locale),
-                    })
-                  : t("notSelectable")}
+                      total: formatCount(catalog?.scope_type_ids.length ?? 0, i18n.locale),
+                    })}
               </span>
             </button>
           ))}
-          {rows.length === 0 && !normalized.includes(value.name) && (
+          {catalog?.limit_reached && state === "ready" && (
+            <p className="pw-option-empty">{t("limitReached", { count: rows.length })}</p>
+          )}
+          {rows.length === 0 && state === "ready" && (!snapshotState || snapshotState === "COMPLETE" || snapshotState === "STALE") && !normalized.includes(value.name) && (
             <p className="pw-option-empty">
               {t("noCatalogMatch")}
             </p>
