@@ -160,6 +160,24 @@ HISTORY_TABLES = (
             "app.api.routes.training_exclusions.create_training_exclusion": Reader(
                 "bucket width for a training exclusion (SOC-13b)", ReaderKind.LIVE_ONLY, 1
             ),
+            # JDBC-1 J1m2a: the stored-query projection over log_source_metric.
+            # The target-bucket join's liveness comes through is_live_clause in
+            # `_flow_columns` (indirect via the `tm` alias, so the scanner sees 0
+            # direct calls); the measurement is live-only, the row set is not
+            # origin-filtered at the join (target_present still reports a history
+            # row), hence the live-only classification of the projection.
+            "app.jdbc.queries.count_query": Reader(
+                "JDBC list count (flow filter)", ReaderKind.LIVE_ONLY
+            ),
+            "app.jdbc.queries.page_query": Reader(
+                "JDBC list page (target bucket)", ReaderKind.LIVE_ONLY
+            ),
+            # The last-observation read is bounded by `since` and does not filter
+            # origin: it reports origin via to_last_observation, so both origins
+            # are read (DISPLAY), never a live-only measurement.
+            "app.jdbc.queries.last_observation_query": Reader(
+                "JDBC last observation (bounded, origin reported)", ReaderKind.DISPLAY
+            ),
         },
     ),
     HistoryTable(
