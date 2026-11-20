@@ -1450,21 +1450,55 @@ async def dispatch_waf_collection(enqueue: Callable[[str], object] | None = None
     if claimed_slot is None:
         return {"status": "not_due", "family": family.value}
 
-    async with maker() as session:
-        profile_ids, skipped = await eligible_profile_ids(session, settings)
-    send = enqueue or collect_waf_source_task.delay
-    for profile_id in profile_ids:
-        send(str(profile_id))
-    async with maker() as cadence_session:
-        await SearchCadenceService(cadence_session, settings).record_run(
-            family,
-            outcome="dispatched" if profile_ids else "no-sources",
-            searches=None,
-            buckets=None,
-            splits=None,
+    # Everything after the slot claim is guarded. A failure here must replace the
+    # previous outcome with `failed` rather than leave a stale success, and must
+    # keep the claimed slot so a partly published fan-out is not resent this slot.
+    expected: int | None = None
+    sent = 0
+    try:
+        async with maker() as session:
+            profile_ids, skipped = await eligible_profile_ids(session, settings)
+        expected = len(profile_ids)
+        send = enqueue or collect_waf_source_task.delay
+        for profile_id in profile_ids:
+            send(str(profile_id))
+            sent += 1
+        outcome = "dispatched" if profile_ids else "no-sources"
+        async with maker() as cadence_session:
+            await SearchCadenceService(cadence_session, settings).record_run(
+                family,
+                outcome=outcome,
+                searches=None,
+                buckets=None,
+                splits=None,
+            )
+            await cadence_session.commit()
+    except Exception:
+        # Counts stay unknown: a send loop that raised proves no total. The broker
+        # error itself must never reach a log, a cadence row or a task result.
+        logger.warning(
+            "waf dispatch failed",
+            extra={"family": family.value, "expected": expected, "sent": sent},
         )
-        await cadence_session.commit()
-    return {"status": "ok", "dispatched": len(profile_ids), "skipped": skipped}
+        try:
+            async with maker() as cadence_session:
+                await SearchCadenceService(cadence_session, settings).record_run(
+                    family,
+                    outcome="failed",
+                    searches=None,
+                    buckets=None,
+                    splits=None,
+                )
+                await cadence_session.commit()
+        except Exception:
+            # The outcome row could not be written either. The original failure
+            # still surfaces below; only its class is in the log above.
+            logger.warning(
+                "waf dispatch failure outcome could not be recorded",
+                extra={"family": family.value},
+            )
+        raise
+    return {"status": "ok", "dispatched": sent, "skipped": skipped}
 
 
 async def collect_waf_source(profile_id: str) -> dict:

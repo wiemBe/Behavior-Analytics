@@ -3143,8 +3143,8 @@ class QRadarRestProvider(QRadarProvider):
                 log,
                 handle,
                 max_rows=max_rows,
-                timeout_message="Ariel explanation search timed out",
-                incomplete_message="Ariel explanation search did not complete",
+                timeout_message="Ariel aggregate search timed out",
+                incomplete_message="Ariel aggregate search did not complete",
             )
             return list(results.rows)
 
