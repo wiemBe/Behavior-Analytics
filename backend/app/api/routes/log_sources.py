@@ -11,6 +11,7 @@ from sqlalchemy import select
 
 from app.anomaly.thresholds import ThresholdResolver, direction_excluded
 from app.api.deps import SessionDep, SettingsDep
+from app.api.routes import jdbc as jdbc_routes
 from app.fleet.review import review_classification
 from app.fleet.service import reclassify_instance
 from app.fleet.sources import load_rows
@@ -50,6 +51,9 @@ from app.security.rbac import (
 from app.services.source_incident_closure import close_source_incidents
 
 router = APIRouter(prefix="/log-sources", tags=["log-sources"])
+# Included before any `/{log_source_id}` route is declared, so `/log-sources/jdbc` is a path of
+# its own and never read as an id.
+router.include_router(jdbc_routes.router)
 
 PrincipalDep = Annotated[Principal, Depends(get_principal)]
 
