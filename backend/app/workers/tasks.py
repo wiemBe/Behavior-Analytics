@@ -249,7 +249,9 @@ async def collect_metrics(instance_name: str | None = None) -> dict:
     from app.models.enums import SearchFamily
     from app.services.search_cadence import SearchCadenceService
 
-    settings = get_settings()
+    # Resolved once per run so the D-52 switch row reaches the collector. An unreadable
+    # table turns the switch off (legacy targets); collection itself never stops for it.
+    settings, _reason = await _effective_settings("collect_metrics")
     family = SearchFamily.PHASE_A_VOLUME
     maker = get_sessionmaker()
     async with maker() as cadence_session:

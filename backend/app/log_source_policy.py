@@ -12,6 +12,7 @@ from __future__ import annotations
 from datetime import datetime
 
 from sqlalchemy import ColumnElement, DateTime, cast, func, literal
+from sqlalchemy.orm import QueryableAttribute
 
 from app.core.config import Settings
 
@@ -27,6 +28,21 @@ def source_pause_enabled(settings: Settings) -> bool:
 def active_source(enabled: ColumnElement[bool]) -> ColumnElement[bool]:
     """The stored QRadar flag guard, placed beside a caller's monitoring filter."""
     return enabled.is_(True)
+
+
+def target_filters(
+    settings: Settings | None,
+    monitoring_enabled: QueryableAttribute[bool],
+    enabled: QueryableAttribute[bool],
+) -> list[ColumnElement[bool]]:
+    """The shared collection-target WHERE terms: monitored, and (switch on) not QRadar-disabled.
+
+    Off (or no settings) is exactly the legacy single `monitoring_enabled` term.
+    """
+    terms: list[ColumnElement[bool]] = [monitoring_enabled.is_(True)]
+    if settings is not None and source_pause_enabled(settings):
+        terms.append(active_source(enabled.expression))
+    return terms
 
 
 def pause_overlaps_bucket(
