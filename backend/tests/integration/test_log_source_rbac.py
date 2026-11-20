@@ -65,9 +65,34 @@ def _audit_rows(action: str) -> list[AuditLog]:
 
 
 def _seeded_source_id(db_schema) -> str:
-    resp = _client(ADMIN).post("/api/v1/log-sources/sync")
-    assert resp.status_code == 200
-    return _client(ADMIN).get("/api/v1/log-sources").json()[0]["id"]
+    import asyncio
+
+    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+
+    from app.providers.mock import MockQRadarProvider
+    from app.services.inventory_sync import InventorySyncService
+
+    engine = create_async_engine(db_schema, future=True)
+    maker = async_sessionmaker(engine, expire_on_commit=False)
+
+    async def _go() -> str:
+        async with maker() as session:
+            svc = InventorySyncService(session, MockQRadarProvider())
+            instance = await svc.ensure_default_instance()
+            await svc.sync(instance)
+            await session.commit()
+            from sqlalchemy import select
+
+            from app.models.log_source import LogSource
+
+            ls = (await session.scalars(select(LogSource).limit(1))).first()
+            assert ls is not None
+            return str(ls.id)
+
+    try:
+        return asyncio.run(_go())
+    finally:
+        asyncio.run(engine.dispose())
 
 
 def test_patch_without_write_permission_is_403(db_schema) -> None:
@@ -113,8 +138,15 @@ def test_sync_is_forbidden_for_readonly_and_editor(db_schema) -> None:
     assert _client(EDITOR).post("/api/v1/log-sources/sync").status_code == 403
 
 
-def test_sync_allowed_for_admin(db_schema) -> None:
-    assert _client(ADMIN).post("/api/v1/log-sources/sync").status_code == 200
+def test_sync_allowed_for_admin(db_schema, monkeypatch) -> None:
+    from types import SimpleNamespace
+
+    from app.workers import tasks
+
+    monkeypatch.setattr(
+        tasks.sync_log_sources_task, "delay", lambda *a, **k: SimpleNamespace(id="task-123")
+    )
+    assert _client(ADMIN).post("/api/v1/log-sources/sync").status_code == 202
 
 
 def test_reads_need_a_read_permission(db_schema) -> None:

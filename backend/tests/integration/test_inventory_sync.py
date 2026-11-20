@@ -5,12 +5,21 @@ from __future__ import annotations
 from datetime import UTC, datetime
 
 import pytest
+from sqlalchemy import select
 
-from app.models.enums import AnomalyState, AnomalyType, EvidenceStatus, Severity
-from app.models.log_source import LogSourceAnomaly
+from app.models.enums import (
+    AnomalyState,
+    AnomalyType,
+    EvidenceStatus,
+    Severity,
+    SourceClass,
+)
+from app.models.fleet import LogSourceClassification
+from app.models.log_source import LogSource, LogSourceAnomaly
+from app.providers.base import ProviderUnavailableError
 from app.providers.mock import MockQRadarProvider
 from app.repositories.log_source import LogSourceRepository
-from app.services.inventory_sync import InventorySyncService
+from app.services.inventory_sync import FAILURE_TYPES_UNAVAILABLE, InventorySyncService
 
 from .factories import make_instance, make_log_source
 
@@ -69,6 +78,131 @@ async def test_sync_sanitizes_source_names(db_session) -> None:
     repo = LogSourceRepository(db_session)
     names = [s.name for s in await repo.list()]
     assert all("<script>" not in n for n in names)
+
+
+class _SlimTypesDownProvider(MockQRadarProvider):
+    """The slim walk carries no type name; the type catalog can be made to fail.
+
+    The internal source's identifier is not the loopback address, so its class comes
+    from the stored type fact alone — the fact a types outage must not drop.
+    """
+
+    def __init__(self, *, seed: int = 1337) -> None:
+        super().__init__(seed=seed)
+        self.types_down = False
+
+    async def list_log_sources(self):
+        out = []
+        for source in await super().list_log_sources():
+            update = {"type_name": None}
+            if source.internal:
+                update["identifier"] = "health-console"
+            out.append(source.model_copy(update=update))
+        return out
+
+    async def list_log_source_types(self):
+        if self.types_down:
+            raise ProviderUnavailableError("type catalog unavailable")
+        return await super().list_log_source_types()
+
+
+async def test_types_failure_keeps_stored_types_and_is_partial(db_session) -> None:
+    provider = _SlimTypesDownProvider()
+    svc = InventorySyncService(db_session, provider)
+    instance = await svc.ensure_default_instance()
+
+    first = await svc.sync(instance)
+    assert first.complete is True
+    await db_session.flush()
+
+    internal = (
+        await db_session.scalars(
+            select(LogSource).where(
+                LogSource.instance_id == instance.id, LogSource.type_id == 368
+            )
+        )
+    ).one()
+    internal_id = internal.id
+    assert internal.type_name == "Health Metrics"
+
+    provider.types_down = True
+    result = await svc.sync(instance)
+    await db_session.flush()
+
+    assert result.complete is False
+    assert result.failure_kind == FAILURE_TYPES_UNAVAILABLE
+    assert result.log_sources_seen > 0
+
+    rows = list(
+        (
+            await db_session.scalars(
+                select(LogSource).where(LogSource.instance_id == instance.id)
+            )
+        ).all()
+    )
+    assert len(rows) == result.log_sources_seen
+
+    # The walk carried no type name and the catalog failed: the stored one survives.
+    await db_session.refresh(internal)
+    assert internal.type_name == "Health Metrics"
+    # Classified from the stored catalog, not from an empty one.
+    classification = await db_session.get(LogSourceClassification, internal_id)
+    assert classification is not None
+    assert classification.source_class == SourceClass.QRADAR_INTERNAL
+
+
+async def test_collector_reports_partial_on_types_failure(db_session) -> None:
+    from app.collectors.log_source_collector import RUN_PARTIAL, LogSourceCollector
+
+    provider = _SlimTypesDownProvider()
+    svc = InventorySyncService(db_session, provider)
+    instance = await svc.ensure_default_instance()
+    await svc.sync(instance)
+    await db_session.flush()
+
+    provider.types_down = True
+    report = await LogSourceCollector(db_session, provider).sync(instance)
+
+    assert report.status == RUN_PARTIAL
+    assert report.failure_kind == FAILURE_TYPES_UNAVAILABLE
+    assert report.log_sources_seen > 0
+
+
+class _GroupsDownProvider(MockQRadarProvider):
+    async def list_log_source_groups(self):
+        raise ProviderUnavailableError("group catalog unavailable")
+
+
+async def test_groups_failure_stays_complete_and_upserts(db_session) -> None:
+    svc = InventorySyncService(db_session, _GroupsDownProvider(seed=1337))
+    instance = await svc.ensure_default_instance()
+
+    result = await svc.sync(instance)
+    await db_session.flush()
+
+    # A groups failure is not part of the pass's completeness (unchanged behaviour).
+    assert result.complete is True
+    assert result.failure_kind is None
+    assert result.log_sources_seen > 0
+    rows = list(
+        (
+            await db_session.scalars(
+                select(LogSource).where(LogSource.instance_id == instance.id)
+            )
+        ).all()
+    )
+    assert len(rows) == result.log_sources_seen
+
+
+async def test_types_and_walk_succeed_is_not_partial(db_session) -> None:
+    svc = InventorySyncService(db_session, MockQRadarProvider(seed=1337))
+    instance = await svc.ensure_default_instance()
+
+    result = await svc.sync(instance)
+
+    assert result.complete is True
+    assert result.failure_kind is None
+    assert result.log_sources_seen > 0
 
 
 class TestActiveAnomalyPredicate:

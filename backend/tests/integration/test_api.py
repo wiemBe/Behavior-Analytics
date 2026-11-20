@@ -28,21 +28,47 @@ def test_security_headers_present() -> None:
 
 
 @pytest.mark.integration
-def test_inventory_and_overview_flow(db_session) -> None:
-    """Full flow: sync inventory, list it, read the overview.
+def test_inventory_and_overview_flow(db_session, monkeypatch) -> None:
+    """Full flow: seed the inventory, list it, queue a sync, read the overview.
 
     Uses the same engine as db_session by overriding get_session to bind to the
     test database.
     """
+    import asyncio
     import os
+    from types import SimpleNamespace
 
     from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+    from sqlalchemy.pool import NullPool
 
     from app.core.database import get_session
+    from app.providers.mock import MockQRadarProvider
+    from app.services.inventory_sync import InventorySyncService
+    from app.workers import tasks
 
     url = os.environ["TEST_DATABASE_URL"]
     engine = create_async_engine(url, future=True)
     maker = async_sessionmaker(engine, expire_on_commit=False)
+
+    async def _seed() -> None:
+        # The sync now queues a worker task, so seed through the service the worker
+        # calls. NullPool: this seed runs on its own loop.
+        seed_engine = create_async_engine(url, future=True, poolclass=NullPool)
+        try:
+            async with async_sessionmaker(
+                seed_engine, expire_on_commit=False
+            )() as session:
+                svc = InventorySyncService(session, MockQRadarProvider())
+                instance = await svc.ensure_default_instance()
+                await svc.sync(instance)
+                await session.commit()
+        finally:
+            await seed_engine.dispose()
+
+    asyncio.run(_seed())
+    monkeypatch.setattr(
+        tasks.sync_log_sources_task, "delay", lambda *a, **k: SimpleNamespace(id="task-123")
+    )
 
     async def _override():
         async with maker() as session:
@@ -58,12 +84,16 @@ def test_inventory_and_overview_flow(db_session) -> None:
 
     with TestClient(app) as client:
         synced = client.post("/api/v1/log-sources/sync")
-        assert synced.status_code == 200
-        assert synced.json()["created"] > 0
+        assert synced.status_code == 202
+        assert synced.json() == {
+            "queued": True,
+            "already_running": False,
+            "task_id": "task-123",
+        }
 
         listing = client.get("/api/v1/log-sources")
         assert listing.status_code == 200
-        assert len(listing.json()) == synced.json()["log_sources_seen"]
+        assert len(listing.json()) > 0
 
         overview = client.get("/api/v1/overview")
         assert overview.status_code == 200
