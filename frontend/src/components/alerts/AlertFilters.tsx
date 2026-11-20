@@ -6,7 +6,7 @@
 // value (the facet's own filter is excluded server-side), so a click is a navigation: the URL is
 // the state, Back and Forward walk the filter history, and a link opened in a new tab shows the
 // same view. The search, the family, the log
-// source picker and the Custom range live in one form; a change of family or source applies at
+// source search and the Custom range live in one form; a change of family or source applies at
 // once and carries whatever is typed in the search and the Custom inputs with it.
 //
 // A count is a measurement, so 0 is printed as 0. When the count read failed there are no counts
@@ -17,6 +17,7 @@ import { useLocale, useTranslations } from "next-intl";
 import type { FormEvent } from "react";
 
 import { useNavigate } from "@/hooks/useNavigate";
+import { LogSourcePicker } from "@/components/alerts/LogSourcePicker";
 import { RangeChips } from "@/components/listview/RangeChips";
 import { useEnumLabels } from "@/i18n/enumLabels";
 import type { AlertFacets, AlertFacetValue } from "@/lib/api";
@@ -121,7 +122,7 @@ export function AlertFilters({
 
   const filtered = isAlertFiltered(query);
   const sourceName = (id: string) => sources.find((s) => s.id === id)?.name;
-  const chips: Array<{ key: string; label: string; href: string }> = [];
+  const chips: Array<{ key: string; label: string; href: string; note?: string }> = [];
   if (query.status) {
     chips.push({
       key: "status",
@@ -148,6 +149,8 @@ export function AlertFilters({
     chips.push({
       key: `source-${id}`,
       label: name ? l("sourceChip", { name }) : l("sourceChipUnknown", { id: id.slice(0, 8) }),
+      // A source the inventory does not know (or whose name could not be read) keeps its id.
+      note: name ? undefined : l("unknownSource"),
       href: alertHref(query, { logSourceIds: query.logSourceIds.filter((v) => v !== id) }),
     });
   }
@@ -158,8 +161,6 @@ export function AlertFilters({
       href: alertHref(query, { q: "" }),
     });
   }
-
-  const pickable = sources.filter((s) => !query.logSourceIds.includes(s.id));
 
   return (
     <section className="alert-filters" aria-label={l("barLabel")}>
@@ -236,34 +237,19 @@ export function AlertFilters({
           })}
         </select>
 
-        {!sourcesFailed && (
-          <>
-            <label className="sr-only" htmlFor="alert-source">
-              {l("sourceLabel")}
-            </label>
-            <select
-              id="alert-source"
-              value=""
-              onChange={(event) => {
-                const id = event.currentTarget.value;
-                if (!id) return;
-                navigate(
-                  alertHref(query, {
-                    ...formPatch(event.currentTarget.form!),
-                    logSourceIds: [...query.logSourceIds, id],
-                  }),
-                );
-              }}
-            >
-              <option value="">{l("addSource")}</option>
-              {pickable.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.name}
-                </option>
-              ))}
-            </select>
-          </>
-        )}
+        <LogSourcePicker
+          chosen={query.logSourceIds}
+          locale={locale}
+          onChoose={(id) => {
+            const form = document.getElementById(formId) as HTMLFormElement | null;
+            navigate(
+              alertHref(query, {
+                ...(form ? formPatch(form) : {}),
+                logSourceIds: [...query.logSourceIds, id],
+              }),
+            );
+          }}
+        />
 
         <button type="submit">{l("apply")}</button>
       </form>
@@ -322,9 +308,12 @@ export function AlertFilters({
               key={chip.key}
               href={chip.href}
               className="filter-chip"
-              aria-label={l("removeFilter", { chip: chip.label })}
+              aria-label={l("removeFilter", {
+                chip: chip.note ? `${chip.label} (${chip.note})` : chip.label,
+              })}
             >
               {chip.label}
+              {chip.note && <span className="muted"> ({chip.note})</span>}
               <span aria-hidden="true">{CLOSE_MARK}</span>
             </Link>
           ))}

@@ -85,7 +85,7 @@ describe("the list pages' read-failure sentence", () => {
 
   it("names the log sources in Turkish", async () => {
     vi.spyOn(api, "logSources").mockRejectedValue(new Error("down"));
-    render(await LogSourcesPage());
+    render(await LogSourcesPage({ searchParams: Promise.resolve({}) }));
     expect(screen.getByText(/^Yüklenemedi: Log source'lar\./)).toBeInTheDocument();
   });
 });

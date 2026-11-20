@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import AlertsPage from "@/app/alerts/page";
 import AnomaliesPage from "@/app/anomalies/page";
 import { TriagePanel } from "@/components/triage/TriagePanel";
-import { ApiError, api, type Alert, type AnomalySummary, type Triage } from "@/lib/api";
+import { ApiError, api, type Alert, type AnomalySummary, type LogSourceSummary, type Page, type Triage } from "@/lib/api";
 
 const router = { push: vi.fn(), refresh: vi.fn() };
 const withRouter = (ui: React.ReactNode) => (
@@ -22,6 +22,11 @@ const flush = () => act(async () => {});
 const marked = () =>
   Array.from(document.querySelectorAll("tbody tr[data-kbd-row]")).map((r) => r.textContent?.trim());
 const result = () => document.querySelector(".list-keys-result")!;
+
+
+function pageOf(items: LogSourceSummary[], total = items.length): Page<LogSourceSummary> {
+  return { items, total, limit: 100, offset: 0 };
+}
 
 function alert(id: string, title: string, status = "OPEN"): Alert {
   return {
@@ -76,7 +81,7 @@ beforeEach(() => {
   vi.restoreAllMocks();
   router.push.mockReset();
   router.refresh.mockReset();
-  vi.spyOn(api, "logSources").mockResolvedValue([]);
+  vi.spyOn(api, "logSources").mockResolvedValue(pageOf([]));
 });
 afterEach(() => {
   document.body.innerHTML = "";

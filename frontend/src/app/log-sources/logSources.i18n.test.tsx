@@ -6,7 +6,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { setTestLocale } from "../../../vitest.setup";
 import { createTextTranslator } from "@/i18n/textTranslator";
-import { ApiError, api, type LogSourceDetail, type LogSourceSummary } from "@/lib/api";
+import { ApiError, api, type LogSourceDetail, type LogSourceSummary, type Page } from "@/lib/api";
 
 import tr from "../../../messages/tr";
 import DetailError from "./[id]/error";
@@ -36,6 +36,11 @@ function source(over: Partial<LogSourceSummary> = {}): LogSourceSummary {
     open_anomaly_count: 0,
     ...over,
   };
+}
+
+
+function pageOf(items: LogSourceSummary[], total = items.length): Page<LogSourceSummary> {
+  return { items, total, limit: 100, offset: 0 };
 }
 
 function detail(over: Partial<LogSourceDetail> = {}): LogSourceDetail {
@@ -73,8 +78,8 @@ describe("/log-sources in Turkish", () => {
     many[2] = source({ id: "d", name: "off-src", qradar_status: "DISABLED", type_name: null });
     many[3] = source({ id: "n", name: "none-src", qradar_status: null });
     many[4] = source({ id: "x", name: "odd-src", qradar_status: "QUARANTINED" });
-    vi.spyOn(api, "logSources").mockResolvedValue(many);
-    render(await LogSourcesPage());
+    vi.spyOn(api, "logSources").mockResolvedValue(pageOf(many, many.length));
+    render(await LogSourcesPage({ searchParams: Promise.resolve({}) }));
     expect(screen.getByRole("heading", { level: 1, name: "Log source'lar" })).toBeInTheDocument();
     expect(screen.getByText(/^1\.204 kaynak\.$/)).toBeInTheDocument();
     const table = screen.getByRole("table", { name: "Log source'lar" });
@@ -96,12 +101,12 @@ describe("/log-sources in Turkish", () => {
   });
 
   it("says what is empty, and gives no count when the read failed", async () => {
-    vi.spyOn(api, "logSources").mockResolvedValueOnce([]);
-    const a = render(await LogSourcesPage());
+    vi.spyOn(api, "logSources").mockResolvedValueOnce(pageOf([]));
+    const a = render(await LogSourcesPage({ searchParams: Promise.resolve({}) }));
     expect(screen.getByText("Henüz log source yok. Yapılandırılmış sağlayıcıdan almak için bir envanter eşitlemesi başlatın.")).toBeInTheDocument();
     a.unmount();
     vi.spyOn(api, "logSources").mockRejectedValueOnce(new ApiError(500, "x"));
-    render(await LogSourcesPage());
+    render(await LogSourcesPage({ searchParams: Promise.resolve({}) }));
     expect(screen.getByRole("alert")).toBeInTheDocument();
     expect(screen.queryByText(/^QRadar'a ait alanlar eşitlemede yenilenir/)).toBeNull();
     expect(screen.queryByText(/kaynak\. QRadar/)).toBeNull();

@@ -8,7 +8,7 @@ import { fireEvent, render, screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import AlertsPage from "./page";
-import { ApiError, api, type Alert, type AlertFacets, type AlertPage } from "@/lib/api";
+import { ApiError, api, type Alert, type AlertFacets, type AlertPage, type LogSourceSummary, type Page } from "@/lib/api";
 
 const navigate = vi.fn();
 vi.mock("@/hooks/useNavigate", () => ({ useNavigate: () => navigate }));
@@ -72,6 +72,11 @@ function facets(over: Partial<AlertFacets> = {}): AlertFacets {
   };
 }
 
+
+function pageOf(items: LogSourceSummary[], total = items.length): Page<LogSourceSummary> {
+  return { items, total, limit: 100, offset: 0 };
+}
+
 let list: ReturnType<typeof vi.spyOn>;
 let counts: ReturnType<typeof vi.spyOn>;
 
@@ -81,10 +86,10 @@ beforeEach(() => {
   vi.spyOn(Date, "now").mockReturnValue(NOW);
   list = vi.spyOn(api, "alerts").mockResolvedValue(listPage([alert()]));
   counts = vi.spyOn(api, "alertFacets").mockResolvedValue(facets());
-  vi.spyOn(api, "logSources").mockResolvedValue([
+  vi.spyOn(api, "logSources").mockResolvedValue(pageOf([
     { id: SRC, name: "Perimeter firewalls" } as never,
     { id: "00000000-0000-4000-8000-000000000002", name: "Public portal WAF" } as never,
-  ]);
+  ]));
 });
 
 async function renderAt(params: Record<string, string | string[] | undefined> = {}) {
@@ -234,11 +239,12 @@ describe("facet counts", () => {
     expect(screen.getByRole("link", { name: "Remove filter Kind: Log-source anomalies" })).toBeInTheDocument();
   });
 
-  it("keeps the list when the log source read failed and drops the picker", async () => {
+  it("keeps the list when the log source names could not be read and shows the ids", async () => {
     vi.spyOn(api, "logSources").mockRejectedValue(new ApiError(500, "boom"));
-    await renderAt();
-    expect(screen.getByText(/source list could not be loaded/)).toBeInTheDocument();
-    expect(screen.queryByLabelText("Log source")).toBeNull();
+    await renderAt({ log_source_id: SRC });
+    expect(screen.getByText(/source names could not be loaded/)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /Log source: 00000000… \(unknown source\)/ }))
+      .toBeInTheDocument();
     expect(screen.getByRole("link", { name: /Event volume spike/ })).toBeInTheDocument();
   });
 });
@@ -321,14 +327,31 @@ describe("the controls navigate to the address of the view they make", () => {
     expect(navigate).toHaveBeenCalledWith("/alerts?status=RESOLVED&family=waf");
   });
 
-  it("the log source picker adds a source and offers only the ones not yet chosen", async () => {
+  it("asks for the names of the selected sources by id and never for the inventory", async () => {
+    const other = "00000000-0000-4000-8000-000000000002";
+    await renderAt({ log_source_id: [SRC, other] });
+    const sources = vi.mocked(api.logSources);
+    expect(sources).toHaveBeenCalledTimes(1);
+    expect(sources).toHaveBeenCalledWith({ ids: [SRC, other], limit: 2 });
+    expect(screen.getByRole("link", { name: "Remove filter Log source: Perimeter firewalls" }))
+      .toBeInTheDocument();
+    // The old picker listed the whole inventory; there is none now.
+    expect(screen.queryByLabelText("Log source")).toBeNull();
+  });
+
+  it("makes no source read at all when no source is selected", async () => {
+    await renderAt({ severity: "HIGH" });
+    expect(api.logSources).not.toHaveBeenCalled();
+  });
+
+  it("shows the id and says 'unknown source' for an id the inventory does not return", async () => {
+    vi.spyOn(api, "logSources").mockResolvedValue(pageOf([]));
     await renderAt({ log_source_id: SRC });
-    const picker = screen.getByLabelText("Log source");
-    expect(within(picker).queryByRole("option", { name: "Perimeter firewalls" })).toBeNull();
-    fireEvent.change(picker, { target: { value: "00000000-0000-4000-8000-000000000002" } });
-    expect(navigate).toHaveBeenCalledWith(
-      `/alerts?log_source_id=${SRC}&log_source_id=00000000-0000-4000-8000-000000000002`,
-    );
+    const chip = screen.getByRole("link", {
+      name: "Remove filter Log source: 00000000… (unknown source)",
+    });
+    expect(chip).toHaveTextContent("Log source: 00000000… (unknown source)");
+    expect(within(chip).getByText("(unknown source)")).toHaveClass("muted");
   });
 
   it("names each active filter in a chip that removes just that filter", async () => {
@@ -416,5 +439,92 @@ describe("Copy link", () => {
     fireEvent.click(screen.getByRole("button", { name: "Copy a link to this view" }));
     await screen.findByText("Link copied");
     expect(writeText).toHaveBeenCalledWith(`${window.location.origin}/alerts?severity=HIGH&range=24h`);
+  });
+});
+
+describe("the log source search picker", () => {
+  const OTHER = "00000000-0000-4000-8000-000000000002";
+  const box = () => screen.getByRole("combobox", { name: "Add a log source" });
+  const type = (value: string) => fireEvent.change(box(), { target: { value } });
+
+  it("reads nothing before two characters and never asks for the unfiltered list", async () => {
+    await renderAt();
+    type("p");
+    await new Promise((r) => setTimeout(r, 400));
+    expect(api.logSources).not.toHaveBeenCalled();
+    expect(screen.getByText("Type at least 2 characters to search log sources.")).toBeInTheDocument();
+  });
+
+  it("asks the server for the first 20 matches of the typed text, once after the pause", async () => {
+    await renderAt();
+    type("pe");
+    type("per");
+    expect(api.logSources).not.toHaveBeenCalled();
+    expect(await screen.findByRole("option", { name: "Perimeter firewalls" })).toBeInTheDocument();
+    expect(api.logSources).toHaveBeenCalledTimes(1);
+    expect(api.logSources).toHaveBeenCalledWith(
+      { q: "per", limit: 20 },
+      expect.any(AbortSignal),
+    );
+    expect(screen.getByText("2 matches")).toBeInTheDocument();
+  });
+
+  it("adds the chosen source as a filter, keeping what is typed in the search", async () => {
+    await renderAt({ severity: "HIGH" });
+    fireEvent.change(screen.getByLabelText("Search alert titles"), { target: { value: "edge" } });
+    type("per");
+    fireEvent.click(await screen.findByRole("option", { name: "Perimeter firewalls" }));
+    expect(navigate).toHaveBeenCalledWith(`/alerts?severity=HIGH&log_source_id=${SRC}&q=edge`);
+  });
+
+  it("is operable from the keyboard and does not offer a source twice", async () => {
+    await renderAt({ log_source_id: SRC });
+    vi.mocked(api.logSources).mockClear();
+    type("po");
+    const option = await screen.findByRole("option", { name: "Public portal WAF" });
+    expect(screen.queryByRole("option", { name: "Perimeter firewalls" })).toBeNull();
+    fireEvent.keyDown(box(), { key: "ArrowDown" });
+    expect(box()).toHaveAttribute("aria-activedescendant", option.id);
+    fireEvent.keyDown(box(), { key: "Enter" });
+    expect(navigate).toHaveBeenCalledWith(`/alerts?log_source_id=${SRC}&log_source_id=${OTHER}`);
+  });
+
+  it("says how many of how many are listed when the search is broader than 20", async () => {
+    vi.spyOn(api, "logSources").mockResolvedValue(pageOf([{ id: SRC, name: "Edge 1" } as never], 1234));
+    await renderAt();
+    type("edge");
+    expect(await screen.findByText("1 of 1,234 — refine the search")).toBeInTheDocument();
+  });
+
+  it("says no source matches", async () => {
+    vi.spyOn(api, "logSources").mockResolvedValue(pageOf([]));
+    await renderAt();
+    type("zzz");
+    expect(await screen.findByText("No log source matches “zzz”.")).toBeInTheDocument();
+    expect(within(screen.getByRole("listbox", { name: "Matching log sources" })).queryAllByRole("option")).toHaveLength(0);
+  });
+
+  it("says the search failed and what to do, and keeps the rest of the page", async () => {
+    vi.spyOn(api, "logSources").mockRejectedValue(new ApiError(500, "boom"));
+    await renderAt();
+    type("per");
+    expect(await screen.findByText(/could not be searched\. Check the connection, then retry\./)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /Event volume spike/ })).toBeInTheDocument();
+  });
+
+  it("retries the same search from the Retry button", async () => {
+    const read = vi.spyOn(api, "logSources").mockRejectedValueOnce(new ApiError(500, "boom"));
+    await renderAt();
+    type("per");
+    fireEvent.click(await screen.findByRole("button", { name: "Retry" }));
+    expect(await screen.findByRole("option", { name: "Perimeter firewalls" })).toBeInTheDocument();
+    expect(read).toHaveBeenCalledTimes(2);
+  });
+
+  it("names the permission when the search is forbidden", async () => {
+    vi.spyOn(api, "logSources").mockRejectedValue(new ApiError(403, "no"));
+    await renderAt();
+    type("per");
+    expect(await screen.findByText(/needs the read:log_sources permission/)).toBeInTheDocument();
   });
 });

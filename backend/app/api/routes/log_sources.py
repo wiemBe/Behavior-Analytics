@@ -47,6 +47,7 @@ from app.schemas.fleet import (
 from app.schemas.log_source import (
     AnomalySummary,
     LogSourceDetail,
+    LogSourcePage,
     LogSourceSummary,
     LogSourceUpdate,
     business_days_usable,
@@ -219,15 +220,38 @@ async def _close_disabled_incidents(
     return closed
 
 
-@router.get("", response_model=list[LogSourceSummary])
+#: The most ids one `GET /log-sources?ids=` accepts (a repeated query parameter).
+MAX_LIST_IDS = 200
+
+
+@router.get("", response_model=LogSourcePage)
 async def list_log_sources(
     session: SessionDep,
+    settings: SettingsDep,
     monitored_only: bool = Query(default=False),
-) -> list[LogSourceSummary]:
+    q: str | None = Query(default=None, max_length=200),
+    ids: Annotated[list[uuid.UUID] | None, Query(max_length=MAX_LIST_IDS)] = None,
+    limit: int = Query(default=200, ge=1),
+    offset: int = Query(default=0, ge=0),
+) -> LogSourcePage:
+    """One page of the inventory by name, with the exact total of what matches.
+
+    Three statements however many sources exist: the page, its count and the open-anomaly
+    counts of the page's sources only. A `limit` above `api_max_page_size` is clamped to it
+    and the envelope says the limit used.
+    """
+    bounded = max(1, min(limit, settings.api_max_page_size))
     repo = LogSourceRepository(session)
-    sources = await repo.list(monitored_only=monitored_only)
-    counts = await repo.open_anomaly_counts()
-    return [_to_summary(ls, counts) for ls in sources]
+    sources, total = await repo.list_page(
+        limit=bounded, offset=offset, q=q, ids=ids, monitored_only=monitored_only
+    )
+    counts = await repo.open_anomaly_counts([ls.id for ls in sources])
+    return LogSourcePage(
+        items=[_to_summary(ls, counts) for ls in sources],
+        total=total,
+        limit=bounded,
+        offset=offset,
+    )
 
 
 @router.get("/{log_source_id}", response_model=LogSourceDetail)

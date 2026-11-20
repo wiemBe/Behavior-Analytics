@@ -125,6 +125,15 @@ class LogSourceSummary(BaseModel):
     open_anomaly_count: int = 0
 
 
+class LogSourcePage(BaseModel):
+    """`GET /log-sources`: one page and the exact count of what matched (the fleet envelope)."""
+
+    items: list[LogSourceSummary]
+    total: int
+    limit: int
+    offset: int
+
+
 class LogSourceDetail(LogSourceSummary):
     description: str | None
     type_id: int | None

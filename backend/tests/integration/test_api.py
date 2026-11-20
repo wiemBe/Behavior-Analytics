@@ -93,7 +93,7 @@ def test_inventory_and_overview_flow(db_session, monkeypatch) -> None:
 
         listing = client.get("/api/v1/log-sources")
         assert listing.status_code == 200
-        assert len(listing.json()) > 0
+        assert len(listing.json()["items"]) > 0
 
         overview = client.get("/api/v1/overview")
         assert overview.status_code == 200

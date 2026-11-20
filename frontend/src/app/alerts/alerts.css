@@ -30,3 +30,47 @@ td.alert-title {
   gap: var(--sp-2) var(--sp-6);
   align-items: center;
 }
+
+/* The log source search: the input sits in the filter form, its matches open below it. */
+.source-picker {
+  position: relative;
+  min-width: 0;
+}
+.source-picker-panel {
+  position: absolute;
+  top: calc(100% + var(--sp-1));
+  left: 0;
+  z-index: 2;
+  width: max-content;
+  min-width: 100%;
+  max-width: min(32ch, calc(100vw - var(--sp-6)));
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow);
+}
+.source-picker-panel ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  max-height: 60vh;
+  overflow-y: auto;
+}
+.source-picker-option {
+  padding: var(--sp-2) var(--sp-3);
+  font-size: var(--fs-sm);
+  color: var(--text);
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+.source-picker-option:hover,
+.source-picker-option.is-active {
+  background: var(--surface-3);
+}
+.source-picker-status {
+  margin: 0;
+  padding: var(--sp-2) var(--sp-3);
+  font-size: var(--fs-xs);
+  line-height: var(--lh-base);
+  color: var(--text-2);
+}

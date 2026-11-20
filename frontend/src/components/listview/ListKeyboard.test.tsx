@@ -326,7 +326,7 @@ describe("on /alerts", () => {
       limit: 100,
       offset: 0,
     });
-    vi.spyOn(api, "logSources").mockResolvedValue([]);
+    vi.spyOn(api, "logSources").mockResolvedValue({ items: [], total: 0, limit: 200, offset: 0 });
   });
 
   it("moves with j / k, opens with Enter and o, clears with Escape, and shows the hint", async () => {
