@@ -529,6 +529,12 @@ All paths below are under `/property-watches`.
 Preview history is limited to 1–168 hours and defaults to 24 hours. Audit records store counts and
 digests of pinned values, never the values themselves.
 
+`GET /scope-options`, `GET /` and `GET /{id}/values` accept `limit` from 1 to 1,000
+and clamp it to `api_max_page_size` (default 200, configurable up to 1,000), as
+`GET /fleet/sources` does. Requests above 1,000 return the standard query-validation 422.
+Their default limits are 50, 200 and 50 respectively. The values envelope reports the
+clamped limit; the other two routes return plain lists.
+
 ### The history block of a watch
 
 Every watch read carries a `history` object:

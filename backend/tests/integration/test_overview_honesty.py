@@ -10,6 +10,7 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 
 import pytest
+from sqlalchemy import event
 
 from app.models.enums import AnomalyState, AnomalyType, Severity
 from app.models.log_source import LogSourceAnomaly
@@ -274,3 +275,49 @@ def test_all_open_ages_null_yields_none_oldest(db_schema) -> None:
     run(setup)
     offenses = Client(VIEWER).get("/api/v1/overview").json()["offenses"]
     assert offenses["oldest_age_seconds"] is None
+
+
+def test_overview_offense_cost_is_constant_at_one_and_500_open_rows(db_schema) -> None:
+    async def setup(session):  # type: ignore[no-untyped-def]
+        instance = await make_instance(session)
+        session.add(_snapshot(
+            instance.id, qradar_id=1, status="OPEN", magnitude=7,
+            is_assigned=False, age_seconds=100,
+        ))
+        return instance.id
+
+    instance_id = run(setup)
+    client = Client(VIEWER)
+    loaded: list[OffenseSnapshot] = []
+
+    def record_load(snapshot, context):  # type: ignore[no-untyped-def]
+        loaded.append(snapshot)
+
+    event.listen(OffenseSnapshot, "load", record_load)
+    try:
+        counts = []
+        orm_counts = []
+        for size in (1, 500):
+            if size == 500:
+                async def grow(session):  # type: ignore[no-untyped-def]
+                    session.add_all([
+                        _snapshot(instance_id, qradar_id=n, status="OPEN", magnitude=7,
+                                  is_assigned=False, age_seconds=100)
+                        for n in range(2, 501)
+                    ])
+
+                run(grow)
+            loaded.clear()
+            response = client.get("/api/v1/overview")
+            assert response.status_code == 200, response.text
+            assert response.json()["offenses"] == {
+                "active": size, "critical": size, "critical_unknown": 0,
+                "unassigned": size, "oldest_age_seconds": 100,
+            }
+            counts.append(client.statements)
+            orm_counts.append(len(loaded))
+        print(f"overview SQL statements (1, 500): {counts}; offense ORM loads: {orm_counts}")
+        assert counts[0] == counts[1]
+        assert orm_counts == [0, 0]
+    finally:
+        event.remove(OffenseSnapshot, "load", record_load)

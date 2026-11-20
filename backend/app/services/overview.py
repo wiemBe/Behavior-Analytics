@@ -123,20 +123,21 @@ class OverviewService:
                 oldest_age_seconds=None,
             )
 
-        base = select(OffenseSnapshot).where(
+        stmt = select(
+            func.count(),
+            func.count().filter(
+                OffenseSnapshot.magnitude >= self.settings.offense_critical_magnitude
+            ),
+            func.count().filter(OffenseSnapshot.magnitude.is_(None)),
+            func.count().filter(OffenseSnapshot.is_assigned.is_not(True)),
+            func.max(OffenseSnapshot.age_seconds),
+        ).where(
             OffenseSnapshot.captured_at == latest_captured,
             OffenseSnapshot.status == "OPEN",
         )
-        rows = list((await self.session.scalars(base)).all())
-        critical_magnitude = self.settings.offense_critical_magnitude
-        active = len(rows)
-        critical = sum(
-            1 for r in rows if r.magnitude is not None and r.magnitude >= critical_magnitude
-        )
-        critical_unknown = sum(1 for r in rows if r.magnitude is None)
-        unassigned = sum(1 for r in rows if not r.is_assigned)
-        known_ages = [r.age_seconds for r in rows if r.age_seconds is not None]
-        oldest = max(known_ages) if known_ages else None
+        active, critical, critical_unknown, unassigned, oldest = (
+            await self.session.execute(stmt)
+        ).one()
         return OverviewOffenses(
             active=active,
             critical=critical,
