@@ -400,6 +400,7 @@ async def refresh_catalog_snapshot(
     """
     import time
 
+    from billiard.exceptions import SoftTimeLimitExceeded
     from sqlalchemy import delete, insert
     from sqlalchemy.dialects.postgresql import insert as pg_insert
 
@@ -428,6 +429,8 @@ async def refresh_catalog_snapshot(
             async with asyncio.timeout(settings.qradar_property_catalog_walk_timeout_seconds + 5):
                 provider = provider_factory()
                 result = await provider.read_property_catalog()
+        except SoftTimeLimitExceeded:
+            raise
         except Exception as exc:
             result.failure = CatalogFailureDTO(
                 kind="timeout" if isinstance(exc, TimeoutError) else "upstream",
@@ -439,6 +442,8 @@ async def refresh_catalog_snapshot(
                 try:
                     async with asyncio.timeout(5):
                         await provider.aclose()
+                except SoftTimeLimitExceeded:
+                    raise
                 except Exception:
                     # Close is cleanup, not a failed data walk. Retain the safe diagnostic.
                     logger.warning("property catalog provider close failed")

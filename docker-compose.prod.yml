@@ -36,6 +36,10 @@ services:
     <<: *backend-build-args
     image: ${QRADAR_DASH_IMAGE_PREFIX:-ghcr.io/wiembe/behavior-analytics}/backend:${QRADAR_DASH_VERSION:?QRADAR_DASH_VERSION is not set in .env; run ./qradar-dash install}
 
+  celery-walker:
+    <<: *backend-build-args
+    image: ${QRADAR_DASH_IMAGE_PREFIX:-ghcr.io/wiembe/behavior-analytics}/backend:${QRADAR_DASH_VERSION:?QRADAR_DASH_VERSION is not set in .env; run ./qradar-dash install}
+
   celery-beat:
     <<: *backend-build-args
     image: ${QRADAR_DASH_IMAGE_PREFIX:-ghcr.io/wiembe/behavior-analytics}/backend:${QRADAR_DASH_VERSION:?QRADAR_DASH_VERSION is not set in .env; run ./qradar-dash install}

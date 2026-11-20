@@ -3374,3 +3374,29 @@ applicability is unknown. A later complete refresh replaces names and applicabil
 atomically. A failure retains the safe cause without upstream bodies, hostnames,
 credentials or extraction logic. Names remain freely editable and validation
 still checks the chosen mapping.
+
+## Dedicated QRadar walk worker (REL-17)
+
+The service list now also includes `celery-walker`, using the backend release image.
+It consumes `qradar_walks` with two processes by default. Full log-source inventory
+(including types and groups), property-catalog refresh, rule/building-block inventory,
+offense collection and the one-shot instance inventory kick run there. Health and geo
+read the stored property snapshot and remain on the default worker, alongside periodic
+evaluation, collection dispatchers and notification delivery.
+
+`./qradar-dash upgrade` starts the new service, including on offline installations;
+`status`, `logs`, `doctor` and `support-bundle` include it. Inspect its logs with
+`./qradar-dash logs --tail=200 celery-walker`. Doctor's `celery_walker` check fails
+with a message naming the service if no worker advertises the `qradar_walks` queue.
+A pong from the default worker alone is insufficient.
+
+Set `WALKER_CONCURRENCY` in `.env` to change the default of `2`, then recreate
+`celery-walker` using the same Compose files and overrides as the installation.
+Keep one Beat service. A higher walker concurrency increases QRadar load; it does
+not add slots to the default worker. Soft-limit failures are recorded as `FAILED`
+with `time_limit`, without advancing the affected collector watermark or replacing
+an existing property snapshot. Earlier committed data remains available.
+
+For custom network overrides, attach `celery-walker` to every QRadar egress network
+used by `celery-worker`, including `qradar_vm` on libvirt installations. Existing
+operator-owned overrides are not rewritten by upgrade.

@@ -51,8 +51,8 @@ Put both generated values in `.env` and leave `QRADAR_PROVIDER=mock`, then start
 docker compose up -d postgres redis
 docker compose run --rm migrate
 docker compose run --rm backend python -m app.services.seed
-docker compose up -d backend frontend celery-worker celery-beat
-# backend, celery-worker and celery-beat depend on migrate with
+docker compose up -d backend frontend celery-worker celery-walker celery-beat
+# backend, celery-worker, celery-walker and celery-beat depend on migrate with
 # condition service_completed_successfully. The installer also runs
 # migrate explicitly (`docker compose run --rm migrate`).
 ```
@@ -452,9 +452,9 @@ curl --fail http://127.0.0.1:8000/api/v1/providers/capabilities
 curl --fail http://127.0.0.1:3000/
 ```
 
-The long-running services are `postgres`, `redis`, `backend`, `celery-worker`, `celery-beat` and
+The long-running services are `postgres`, `redis`, `backend`, `celery-worker`, `celery-walker`, `celery-beat` and
 `frontend`; each should be healthy. `migrate` is a one-shot and should exit 0. `backend`,
-`celery-worker` and `celery-beat` wait for that exit (`depends_on` condition
+`celery-worker`, `celery-walker` and `celery-beat` wait for that exit (`depends_on` condition
 `service_completed_successfully`) before they start, so `docker compose up` does not serve or
 collect against a schema that is still migrating or that failed to migrate. The installer's
 explicit `docker compose run --rm migrate` stays. The optional `qradar-mcp` service starts only
@@ -670,3 +670,19 @@ release notes:
 ```bash
 docker buildx build --build-context repo=. --build-arg APP_VERSION=<version> backend
 ```
+
+
+### REL-17 upgrade from 0.1.16: QRadar walk isolation
+
+This upgrade adds `celery-walker`, using the existing backend image. The updated
+`qradar-dash upgrade` starts and checks it automatically on online and offline hosts.
+The default worker consumes `celery` only; collection walks use `qradar_walks`.
+Confirm both services in `./qradar-dash status` and the `celery_walker` check in
+`./qradar-dash doctor`. See the configuration reference for
+`WALKER_CONCURRENCY` (default `2`).
+
+An operator-owned Compose override must give `celery-walker` the same QRadar egress
+networks as `celery-worker`. For the libvirt example, add a `celery-walker` service
+with `networks: [qradar_vm]` to that override before upgrading. An older custom stack
+without a walk-queue consumer now fails doctor explicitly; queued walks cannot run
+until a consumer starts.

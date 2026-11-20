@@ -811,3 +811,14 @@ budget. Authentication and malformed responses are not retried. The total budget
 covers both collections and retry waits; cleanup is bounded separately at five
 seconds. The older `QRADAR_PROPERTY_CATALOG_TTL_SECONDS` setting applies only to
 the legacy property-watch discovery cache, not to either profile editor.
+
+### QRadar walk worker
+
+`WALKER_CONCURRENCY` is a Compose value (default `2`), set in the host `.env`.
+It controls `celery-walker`, which consumes only `qradar_walks`; `celery-worker`
+consumes only `celery`. Recreate the walker after changing it. It is not an application
+`Settings` field. Increasing it increases simultaneous QRadar collection walks.
+
+The source, offense, rule and property-catalog tasks use their configured walk wall
+clocks plus 60 seconds as Celery soft limits, with a further 60 seconds before a hard
+kill. The one-shot instance inventory task uses the sum of source and rule wall clocks.

@@ -151,7 +151,8 @@ def test_upgrade_with_mcp_recreates_it_in_the_same_up_call(upgrade: UpgradeFixtu
     ups = _up_lines(upgrade)
     assert len(ups) == 1
     assert ups[0].split(UP)[1].split() == [
-        "qradar-mcp", "backend", "celery-worker", "celery-beat", "frontend", "proxy",
+        "qradar-mcp", "backend", "celery-worker", "celery-walker", "celery-beat",
+        "frontend", "proxy",
     ]
 
 
@@ -159,7 +160,7 @@ def test_upgrade_without_mcp_does_not_name_it(upgrade: UpgradeFixture) -> None:
     result = upgrade.run("upgrade", TARGET_VERSION)
     assert result.returncode == 0, output(result)
     assert [x.split(UP)[1].split() for x in _up_lines(upgrade)] == [
-        ["backend", "celery-worker", "celery-beat", "frontend", "proxy"]
+        ["backend", "celery-worker", "celery-walker", "celery-beat", "frontend", "proxy"]
     ]
 
 
@@ -170,7 +171,7 @@ def test_upgrade_with_mcp_and_an_external_proxy_names_mcp_but_not_proxy(
     result = upgrade.run("upgrade", TARGET_VERSION)
     assert result.returncode == 0, output(result)
     assert [x.split(UP)[1].split() for x in _up_lines(upgrade)] == [
-        ["qradar-mcp", "backend", "celery-worker", "celery-beat", "frontend"]
+        ["qradar-mcp", "backend", "celery-worker", "celery-walker", "celery-beat", "frontend"]
     ]
 
 
