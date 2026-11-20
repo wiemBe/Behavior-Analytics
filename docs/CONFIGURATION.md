@@ -166,6 +166,9 @@ reference heading for them.
 | `OFFENSE_STALE_CHECK_INTERVAL_SECONDS` | `300` | How often that staleness check runs |
 | `OFFENSE_AGGREGATE_INTERVAL_SECONDS` | `300` | Offense aggregate calculation interval |
 | `RULE_COLLECTION_INTERVAL_SECONDS` | `3600` | Rule and building-block inventory interval |
+| `RULE_PAGE_TIMEOUT_SECONDS` | `60` | Timeout per REST rule/building-block page attempt; range `(0, 300]` seconds |
+| `RULE_PAGE_ATTEMPTS` | `4` | Maximum attempts per page, also bounded by provider retries; range `1–6` |
+| `RULE_WALK_MAX_SECONDS` | `600` | Shared wall-clock cap for both rule inventory endpoints, including retries and backoff; range `(0, 3600]` seconds. Earlier pages are stored on failure; only a complete pass advances the watermark |
 | `RULE_MAX_PAGES` | `20` | Accepted. Rule collection does not read it |
 | `RULE_METRIC_COLLECTION_INTERVAL_SECONDS` | `3600` | Rule-metric collection interval |
 | `RULE_METRIC_LOOKBACK_DAYS` | `30` | How far rule-metric collection looks back |

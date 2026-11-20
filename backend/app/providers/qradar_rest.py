@@ -59,6 +59,7 @@ from app.models.enums import IpsDimension, PwScopeKind
 from app.providers.base import (
     FAILURE_AUTH,
     FAILURE_TIMEOUT,
+    FAILURE_UPSTREAM,
     IPS_NORMALIZED_FIELD_ALLOWLIST,
     IPS_PROBE_MAX_WINDOW_SECONDS,
     PROPERTY_NAME_PATTERN,
@@ -107,6 +108,7 @@ from app.providers.dto import (
     PropertyCatalogWalkDTO,
     PwKeyedResult,
     PwSearchKind,
+    RuleInventoryWalk,
     RuleMatchBatch,
     RuleMatchRow,
     WafBreakdownBatch,
@@ -181,6 +183,13 @@ LOG_SOURCE_LIST_FIELDS = (
 #: between two pages shifts the rows and one is read twice or never. QRadar's `sort=+id` is
 #: the ascending sort every list endpoint accepts (the offense walk uses `+last_persisted_time`).
 LOG_SOURCE_LIST_SORT = "+id"
+
+#: Exactly the keys read by `_to_rule`, shared by rules and building blocks.
+RULE_LIST_FIELDS = (
+    "id,name,type,rule_responses,description,enabled,origin,owner,average_capacity,"
+    "base_capacity,base_host_id,capacity_timestamp,categories,creation_date,modification_date,"
+    "building_block_ids,log_source_type_ids,last_triggered_time,event_count,offense_count"
+)
 
 #: Version of the stored rule-match AQL. Bump it with any change to the query
 #: text, so a stored window can always be tied to the query that produced it.
@@ -662,8 +671,12 @@ class QRadarRestProvider(QRadarProvider):
         params: dict[str, Any] | None = None,
         page_size: int | None = None,
         max_pages: int | None = None,
+        inventory_walk: RuleInventoryWalk | None = None,
+        row_validator: Callable[[dict], object] | None = None,
     ) -> _PageWalk:
         """`_paginate`, plus whether the walk stopped on a full page at the ceiling."""
+        if inventory_walk and inventory_walk.failure_kind == FAILURE_AUTH:
+            return _PageWalk([], True)
         size = page_size or self._page_size
         pages = max_pages or self._max_pages
         collected: list[dict] = []
@@ -671,19 +684,41 @@ class QRadarRestProvider(QRadarProvider):
         for page in range(pages):
             start = page * size
             end = start + size - 1
-            body = await self._request(
-                "GET",
-                path,
-                category=category,
-                params=params,
-                headers={"Range": f"items={start}-{end}"},
-            )
-            if body is None:
-                break
-            if not isinstance(body, list):
-                raise MalformedUpstreamResponse(
-                    f"QRadar returned a non-list body for a collection endpoint ({category})"
-                )
+            try:
+                # The outer deadline includes retries and Retry-After/backoff sleeps.
+                deadline = inventory_walk.deadline if inventory_walk else None
+                async with asyncio.timeout_at(deadline):
+                    if deadline is not None and asyncio.get_running_loop().time() >= deadline:
+                        raise TimeoutError
+                    body = await self._request(
+                        "GET", path, category=category, params=params,
+                        headers={"Range": f"items={start}-{end}"},
+                        timeout=inventory_walk.page_timeout_seconds if inventory_walk else None,
+                        max_attempts=inventory_walk.page_attempts if inventory_walk else None,
+                    )
+                if body is None:
+                    if inventory_walk:
+                        raise MalformedUpstreamResponse("QRadar returned no inventory body")
+                    break
+                if not isinstance(body, list):
+                    raise MalformedUpstreamResponse(
+                        f"QRadar returned a non-list body for a collection endpoint ({category})"
+                    )
+                if inventory_walk and any(not isinstance(item, dict) for item in body):
+                    raise MalformedUpstreamResponse("QRadar returned a non-object inventory row")
+                if inventory_walk and row_validator:
+                    try:
+                        if any(row_validator(item) is None for item in body):
+                            raise ValueError
+                    except ValueError as exc:
+                        raise MalformedUpstreamResponse("QRadar returned a malformed rule") from exc
+            except (ProviderError, TimeoutError) as exc:
+                if inventory_walk is None:
+                    raise
+                inventory_walk.fail(failure_kind(exc))
+                return _PageWalk(collected, True)
+            if inventory_walk:
+                inventory_walk.pages_done += 1
             # Drop non-object entries rather than failing the whole page.
             collected.extend(item for item in body if isinstance(item, dict))
             if len(body) < size:
@@ -693,6 +728,8 @@ class QRadarRestProvider(QRadarProvider):
                 "pagination stopped at the page ceiling; results may be incomplete",
                 extra={"endpoint_category": str(category), "max_pages": pages},
             )
+            if inventory_walk:
+                inventory_walk.fail(FAILURE_UPSTREAM)
             return _PageWalk(collected, True)
         return _PageWalk(collected, False)
 
@@ -3149,24 +3186,35 @@ class QRadarRestProvider(QRadarProvider):
             return list(results.rows)
 
     # ------------------------------------------------------------- rules
-    async def list_rules(self) -> list[AnalyticsRuleDTO]:
-        """Every analytics rule, building blocks included.
+    async def list_rules(
+        self, *, inventory_walk: RuleInventoryWalk | None = None
+    ) -> list[AnalyticsRuleDTO]:
+        """Every analytics rule, building blocks included; optionally keep a partial walk."""
+        return await self._rule_inventory(
+            "/analytics/rules", EndpointCategory.RULE_LIST, inventory_walk
+        )
 
-        QRadar models building blocks as rules with `type == "BUILDINGBLOCK"`,
-        so one call returns both and the DTO carries the distinction.
-        """
-        rows = await self._paginate("/analytics/rules", category=EndpointCategory.RULE_LIST)
-        return [dto for dto in (self._to_rule(r) for r in rows) if dto is not None]
+    async def list_building_blocks(
+        self, *, inventory_walk: RuleInventoryWalk | None = None
+    ) -> list[AnalyticsRuleDTO]:
+        rules = await self._rule_inventory(
+            "/analytics/building_blocks", EndpointCategory.BUILDING_BLOCK_LIST, inventory_walk
+        )
+        return [dto.model_copy(update={"is_building_block": True}) for dto in rules]
 
-    async def list_building_blocks(self) -> list[AnalyticsRuleDTO]:
-        rows = await self._paginate(
-            "/analytics/building_blocks", category=EndpointCategory.BUILDING_BLOCK_LIST
+    async def _rule_inventory(
+        self, path: str, category: EndpointCategory, inventory_walk: RuleInventoryWalk | None
+    ) -> list[AnalyticsRuleDTO]:
+        walk = await self._walk_pages(
+            path, category=category,
+            params={"fields": RULE_LIST_FIELDS},
+            inventory_walk=inventory_walk, row_validator=self._to_rule,
         )
         out: list[AnalyticsRuleDTO] = []
-        for row in rows:
+        for row in walk.rows:
             dto = self._to_rule(row)
             if dto is not None:
-                out.append(dto.model_copy(update={"is_building_block": True}))
+                out.append(dto)
         return out
 
     # ---------------------------------------------------------- offenses

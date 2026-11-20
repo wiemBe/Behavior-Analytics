@@ -17,6 +17,7 @@ building blocks are not modified. The provider interface exposes no such call.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import uuid
 from collections.abc import Callable
@@ -27,6 +28,12 @@ from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.collectors.log_source_collector import (
+    INVENTORY_RUN_KEY,
+    RUN_COMPLETE,
+    RUN_FAILED,
+    RUN_PARTIAL,
+)
 from app.core.config import Settings, get_settings
 from app.models.enums import MappingSource, RuleDependencyKind
 from app.models.instance import QRadarInstance
@@ -37,8 +44,9 @@ from app.models.rule import (
     RuleDependency,
     RuleStateTransition,
 )
-from app.providers.base import ProviderError, QRadarProvider
-from app.providers.dto import AnalyticsRuleDTO
+from app.providers.base import ProviderError, QRadarProvider, failure_kind
+from app.providers.dto import AnalyticsRuleDTO, RuleInventoryWalk
+from app.providers.qradar_rest import QRadarRestProvider
 from app.security.sanitizer import sanitize_text
 from app.services.locks import CollectorAdvisoryLock
 
@@ -65,6 +73,11 @@ class RuleSyncReport:
     partial_failure: bool = False
     error: str | None = None
     duration_ms: int = 0
+    status: str | None = None
+    pages_done: int = 0
+    pages_failed: int = 0
+    failed_page: int | None = None
+    failure_kind: str | None = None
     enabled_to_disabled: list[int] = field(default_factory=list)
     disabled_to_enabled: list[int] = field(default_factory=list)
 
@@ -96,21 +109,22 @@ class RuleCollector:
 
             watermark = await self._get_or_create_watermark(instance)
 
+            walk = RuleInventoryWalk(
+                deadline=asyncio.get_running_loop().time() + self.settings.rule_walk_max_seconds,
+                page_timeout_seconds=self.settings.rule_page_timeout_seconds,
+                page_attempts=self.settings.rule_page_attempts,
+            )
+            rules: list[AnalyticsRuleDTO] = []
+            building_blocks: list[AnalyticsRuleDTO] = []
             try:
-                rules = await self.provider.list_rules()
-                building_blocks = await self.provider.list_building_blocks()
+                if isinstance(self.provider, QRadarRestProvider):
+                    rules = await self.provider.list_rules(inventory_walk=walk)
+                    building_blocks = await self.provider.list_building_blocks(inventory_walk=walk)
+                else:
+                    rules = await self.provider.list_rules()
+                    building_blocks = await self.provider.list_building_blocks()
             except ProviderError as exc:
-                watermark.consecutive_failures += 1
-                watermark.last_run_at = started
-                watermark.last_error = str(exc)[:512]
-                await self.session.flush()
-                report.partial_failure = True
-                report.error = str(exc)[:512]
-                logger.warning(
-                    "rule inventory sync failed",
-                    extra={"instance_id": str(instance.id), "error_class": type(exc).__name__},
-                )
-                return report
+                walk.fail(failure_kind(exc))
 
             # A building block returned by both endpoints must not be stored
             # twice; the dedicated endpoint wins because it sets the flag.
@@ -122,13 +136,20 @@ class RuleCollector:
 
             existing = await self._existing_by_qradar_id(instance.id)
             capacity_samples: list[dict] = []
+            dependencies: dict[uuid.UUID, list[RuleDependency]] = {}
+            for dependency in await self.session.scalars(
+                select(RuleDependency).join(AnalyticsRule).where(
+                    AnalyticsRule.instance_id == instance.id,
+                    RuleDependency.source == MappingSource.EXPLICIT,
+                )
+            ):
+                dependencies.setdefault(dependency.rule_id, []).append(dependency)
 
             for dto in merged.values():
                 row = existing.get(dto.qradar_id)
                 if row is None:
                     row = self._create(instance, dto, now=started)
                     self.session.add(row)
-                    await self.session.flush()
                     report.created += 1
                 else:
                     changed, transition = self._update(row, dto, now=started)
@@ -144,7 +165,9 @@ class RuleCollector:
                     else:
                         report.unchanged += 1
 
-                report.dependencies_written += await self._sync_dependencies(row, dto)
+                report.dependencies_written += await self._sync_dependencies(
+                    row, dto, dependencies.get(row.id, [])
+                )
                 if dto.capacity_timestamp is not None:
                     capacity_samples.append(
                         {
@@ -157,14 +180,44 @@ class RuleCollector:
                         }
                     )
 
+            await self.session.flush()
             report.capacity_samples_offered = await self._record_capacity(capacity_samples)
 
+            report.pages_done = walk.pages_done
+            report.pages_failed = walk.pages_failed
+            report.failed_page = walk.failed_page
+            report.failure_kind = walk.failure_kind
+            report.status = RUN_COMPLETE if walk.complete else (
+                RUN_PARTIAL if merged else RUN_FAILED
+            )
+            report.partial_failure = not walk.complete
+            report.error = walk.failure_kind
+            report.duration_ms = int((self._clock() - started).total_seconds() * 1000)
             watermark.last_run_at = started
-            watermark.watermark_at = started
-            watermark.intervals_collected += 1
-            watermark.consecutive_failures = 0
-            watermark.last_error = None
-            watermark.lag_seconds = 0
+            if walk.complete:
+                watermark.watermark_at = started
+                watermark.intervals_collected += 1
+                watermark.consecutive_failures = 0
+                watermark.last_error = None
+                watermark.lag_seconds = 0
+            else:
+                watermark.consecutive_failures += 1
+                watermark.last_error = f"{report.status.lower()}: {report.error}"
+            watermark.collection_metadata = {
+                **(watermark.collection_metadata or {}),
+                INVENTORY_RUN_KEY: {
+                    "status": report.status,
+                    "finished_at": self._clock().isoformat(),
+                    "elapsed_ms": report.duration_ms,
+                    "seen": report.rules_seen,
+                    "created": report.created,
+                    "updated": report.updated,
+                    "pages_done": report.pages_done,
+                    "pages_failed": report.pages_failed,
+                    "failed_page": report.failed_page,
+                    "failure_kind": report.failure_kind,
+                },
+            }
             await self.session.flush()
 
         report.duration_ms = int((self._clock() - started).total_seconds() * 1000)
@@ -189,6 +242,7 @@ class RuleCollector:
         self, instance: QRadarInstance, dto: AnalyticsRuleDTO, *, now: datetime
     ) -> AnalyticsRule:
         row = AnalyticsRule(
+            id=uuid.uuid4(),
             instance_id=instance.id,
             qradar_id=dto.qradar_id,
             # first_seen_at anchors the grace period. Without it a rule created
@@ -289,22 +343,14 @@ class RuleCollector:
         return len(samples)
 
     # --------------------------------------------------------- dependencies
-    async def _sync_dependencies(self, row: AnalyticsRule, dto: AnalyticsRuleDTO) -> int:
+    async def _sync_dependencies(
+        self, row: AnalyticsRule, dto: AnalyticsRuleDTO, existing: list[RuleDependency]
+    ) -> int:
         """Replace the EXPLICIT dependencies QRadar reported for this rule.
 
         INFERRED rows are left alone: they are the platform's own analysis (or a
         SOC correction of it) and are not QRadar's to overwrite.
         """
-        existing = list(
-            (
-                await self.session.scalars(
-                    select(RuleDependency).where(
-                        RuleDependency.rule_id == row.id,
-                        RuleDependency.source == MappingSource.EXPLICIT,
-                    )
-                )
-            ).all()
-        )
         by_key = {(d.kind, d.target_ref): d for d in existing}
 
         desired: list[tuple[RuleDependencyKind, str]] = [
@@ -337,7 +383,6 @@ class RuleCollector:
         for stale in by_key.values():
             await self.session.delete(stale)
 
-        await self.session.flush()
         return written
 
     async def _existing_by_qradar_id(

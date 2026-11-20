@@ -12,6 +12,7 @@ separate is what stops QRadar's field naming from leaking end to end.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import datetime
 from enum import StrEnum
 
@@ -694,6 +695,31 @@ class OffenseListResult(ProviderDTO):
 
     rows: list[OffenseDTO] = Field(default_factory=list)
     truncated: bool = False
+
+
+@dataclass
+class RuleInventoryWalk:
+    """Shared budget and evidence for the two REST rule-inventory endpoints.
+
+    The deadline uses the event loop's monotonic clock. A failed endpoint cannot
+    be made complete by a successful second endpoint. Page numbers span both.
+    """
+
+    deadline: float
+    page_timeout_seconds: float
+    page_attempts: int
+    complete: bool = True
+    pages_done: int = 0
+    pages_failed: int = 0
+    failed_page: int | None = None
+    failure_kind: str | None = None
+
+    def fail(self, kind: str) -> None:
+        self.complete = False
+        self.pages_failed += 1
+        if self.failure_kind is None:
+            self.failure_kind = kind
+            self.failed_page = self.pages_done + self.pages_failed
 
 
 class AnalyticsRuleDTO(ProviderDTO):
