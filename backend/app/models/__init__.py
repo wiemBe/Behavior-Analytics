@@ -55,6 +55,7 @@ from app.models.ips import (
     IpsSourceBucket,
     IpsSourceProfile,
 )
+from app.models.jdbc import JdbcSourceConfig, JdbcSyncState
 from app.models.log_source import (
     AnomalyStateTransition,
     LogSource,
@@ -218,6 +219,8 @@ __all__ = [
     "IpsSourceBaseline",
     "IpsSourceBucket",
     "IpsSourceProfile",
+    "JdbcSourceConfig",
+    "JdbcSyncState",
     "LdapConfig",
     "LogSource",
     "LogSourceAnomaly",
