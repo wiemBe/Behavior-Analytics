@@ -245,9 +245,7 @@ describe("the executions table in Turkish", () => {
     expect(within(rows[4]).getByText("STRANGE")).toBeInTheDocument();
     expect(within(rows[4]).getByText("kırpıldı, sayı kaydedilmedi")).toBeInTheDocument();
     expect(within(rows[5]).getByText("aşıldı")).toHaveClass("pill", "crit");
-    const notes = screen.getByRole("list", { name: "Kırpılmış çalıştırmalar" });
-    expect(notes).toHaveTextContent("“≥” kırpılmış bir çalıştırmayı gösterir");
-    expect(notes).toHaveTextContent("“Karar yok”");
+    expect(screen.queryByRole("list", { name: "Kırpılmış çalıştırmalar" })).toBeNull();
     expect(table).not.toHaveTextContent(/Started|Threshold|truncated|no verdict/);
   });
 

@@ -204,7 +204,7 @@ describe("the read", () => {
     res.state = ok(answer());
     render(<GeographyMap config={{ direction: "SIDEWAYS" as never }} />);
     expect(res.keys.at(-1)).toBe("/geo/countries?window=24h&direction=SOURCE");
-    expect(screen.getByText(/The saved direction is not one this version knows/)).toBeInTheDocument();
+    expect(screen.getByText(/Unknown saved direction/)).toBeInTheDocument();
   });
 
   it("says nothing about the direction when none is stored", () => {
@@ -326,7 +326,7 @@ describe("the empty states fill the frame (GEO-6)", () => {
     expect(block).not.toBeNull();
     expect(within(block as HTMLElement).getByText("Not collected.")).toBeInTheDocument();
     expect(
-      within(block as HTMLElement).getByText(/Nothing has been collected for source addresses/),
+      within(block as HTMLElement).getByText(/Nothing collected for source addresses/),
     ).toBeInTheDocument();
     expect(block?.querySelector("strong")?.nextElementSibling).toHaveProperty("tagName", "BR");
     expect(block?.querySelector(".geo-hollow-body")).toHaveClass("geo-plot-state");

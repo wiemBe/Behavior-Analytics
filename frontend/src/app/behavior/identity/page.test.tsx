@@ -36,7 +36,7 @@ describe("Identity overview", () => {
     expect(container.querySelectorAll("h1")).toHaveLength(1);
     expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Identity");
     const lead = container.querySelector(".identity-lead") as HTMLElement;
-    expect(lead).toHaveTextContent("1 of 2 sources are collected");
+    expect(lead).toHaveTextContent("1 of 2 sources collected");
     expect(lead).toHaveTextContent("1 need attention");
     expect(document.body.textContent).not.toMatch(/real-time|\blive\b|!/i);
   });
@@ -68,7 +68,7 @@ describe("Identity overview", () => {
     );
     const cell = within(table).getByText(/≥ 12/);
     expect(cell.closest("td")).toHaveClass("num");
-    expect(within(table).getByText(/of 288 buckets not measured/)).toBeInTheDocument();
+    expect(within(table).getByText(/of 288 buckets not whole/)).toBeInTheDocument();
   });
 
   it("draws a dash, not zero, for an event nothing was measured for", async () => {
@@ -134,7 +134,7 @@ describe("Identity overview: what could not be read", () => {
     vi.spyOn(identityApi, "source").mockResolvedValue({ profile: profile(), series: [] });
     vi.spyOn(api, "anomalies").mockRejectedValue(new ApiError(500, "boom"));
     render(await IdentityOverviewPage({ searchParams: Promise.resolve({}) }));
-    expect(screen.getByText(/open incidents could not be read/)).toBeInTheDocument();
+    expect(screen.getByText(/Open incidents could not be read/)).toBeInTheDocument();
     expect(screen.queryByText("None")).toBeNull();
   });
 
@@ -143,7 +143,7 @@ describe("Identity overview: what could not be read", () => {
     vi.spyOn(identityApi, "source").mockRejectedValue(new ApiError(500, "boom"));
     vi.spyOn(api, "anomalies").mockResolvedValue({ items: [], total: 0, limit: 200, offset: 0 });
     render(await IdentityOverviewPage({ searchParams: Promise.resolve({}) }));
-    expect(screen.getByText("The counts of this source could not be read.")).toBeInTheDocument();
+    expect(screen.getByText("Counts not read.")).toBeInTheDocument();
   });
 
   it("reads the counts of the first 25 sources only and says so", async () => {
@@ -161,7 +161,7 @@ describe("Identity overview: what could not be read", () => {
     vi.spyOn(identityApi, "source").mockResolvedValue({ profile: profile(), series: [] });
     vi.spyOn(api, "anomalies").mockResolvedValue({ items: [summary()], total: 450, limit: 200, offset: 0 });
     render(await IdentityOverviewPage({ searchParams: Promise.resolve({}) }));
-    expect(screen.getByText(/Only 1 of 450 open incidents were read/)).toBeInTheDocument();
+    expect(screen.getByText(/1 of 450 open incidents read/)).toBeInTheDocument();
   });
 });
 

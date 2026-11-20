@@ -237,9 +237,7 @@ export function TrafficTable({
             <SortHeader query={query} column="rate" label={t("table.rate")} numeric />
             <th scope="col" className="traffic-trend-cell">
               {t("table.trend")}
-              <span className="cell-sub">
-                {data.series_points <= 1 ? t("table.trendOne") : t("table.trendScale")}
-              </span>
+              {data.series_points <= 1 && <span className="cell-sub">{t("table.trendOne")}</span>}
             </th>
             <SortHeader query={query} column="peak" label={t("table.peak")} numeric />
           </tr>

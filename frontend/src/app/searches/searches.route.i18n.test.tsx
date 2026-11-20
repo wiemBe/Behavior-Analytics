@@ -121,7 +121,7 @@ describe("the search catalog in Turkish", () => {
     render(await SearchCatalogPage());
     expect(await listMetadata()).toEqual({ title: "Arama kataloğu" });
     expect(screen.getByRole("heading", { level: 1, name: "Arama kataloğu" })).toBeInTheDocument();
-    expect(screen.getByText(/kaydedilmemiş, anlık yazılmış AQL çalıştırmaz/)).toBeInTheDocument();
+    expect(screen.queryByText(/kaydedilmemiş, anlık yazılmış AQL çalıştırmaz/)).not.toBeInTheDocument();
     expect(screen.queryByText(/ad hoc/)).not.toBeInTheDocument();
     expect(screen.queryByText(/gelişigüzel/)).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Yeni arama" })).toHaveAttribute("href", "/searches/new");
@@ -273,7 +273,7 @@ describe("the new search page in Turkish", () => {
     render(await NewSearchPage());
     expect(await newMetadata()).toEqual({ title: "Yeni arama" });
     expect(screen.getByRole("heading", { level: 1, name: "Yeni arama" })).toBeInTheDocument();
-    expect(screen.getByText(tr.searches.new.description)).toBeInTheDocument();
+    expect(screen.queryByText(tr.searches.new.description)).not.toBeInTheDocument();
     expect(screen.getByRole("textbox", { name: "AQL" })).toBeInTheDocument();
   });
 

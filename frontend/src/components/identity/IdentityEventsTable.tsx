@@ -12,7 +12,6 @@ import {
   MISSING,
   eventKey,
   identityHref,
-  isVolumeEvent,
   type EventTotal,
   type IdentityRange,
 } from "./identityFormat";
@@ -43,7 +42,6 @@ export function IdentityEventsTable({
             <th scope="col">{t("event")}</th>
             <th scope="col" className="num">
               {t("count")}
-              <span className="cell-sub">{t("countSub")}</span>
             </th>
             <th scope="col">{t("measured")}</th>
           </tr>
@@ -58,7 +56,6 @@ export function IdentityEventsTable({
                 >
                   <span className="num">{x.eventId}</span> {events(eventKey(x.eventId))}
                 </Link>
-                <span className="cell-sub">{isVolumeEvent(x.eventId) ? t("volume") : t("rare")}</span>
               </td>
               <td className="num">
                 {x.total === null ? (

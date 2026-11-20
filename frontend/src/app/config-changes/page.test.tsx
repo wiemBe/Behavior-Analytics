@@ -17,7 +17,7 @@ describe("configuration changes scaffold", () => {
     ).toBeInTheDocument();
     expect(screen.getByText("Configuration changes are not collected.")).toBeInTheDocument();
     expect(
-      screen.getByText(/no collector or API fills it, so this page has nothing to show\./),
+      screen.getByText(/No collector or API fills the data model, so there is nothing to show\./),
     ).toBeInTheDocument();
   });
 

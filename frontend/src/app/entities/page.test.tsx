@@ -94,7 +94,7 @@ describe("the form", () => {
     expect(screen.getByRole("radio", { name: "Host" })).not.toBeChecked();
     expect(screen.getByRole("radio", { name: "User" })).not.toBeChecked();
     expect(screen.getByRole("button", { name: "Show timeline" })).toBeInTheDocument();
-    expect(screen.getByText(/not a search of raw events and not a QRadar search/)).toBeInTheDocument();
+    expect(screen.queryByText(/not a search of raw events/)).toBeNull();
   });
 
   it("keeps the typed value and refuses to read when it is longer than the API accepts", async () => {
@@ -307,7 +307,7 @@ describe("the lane table", () => {
     await renderPage({ value: "192.0.2.44" });
     const forbidden = laneRow("QRadar offenses");
     expect(forbidden).toHaveTextContent("Forbidden");
-    expect(forbidden).toHaveTextContent("Not shown: this lane requires read:offenses.");
+    expect(forbidden).toHaveTextContent("Not shown: needs read:offenses.");
     expect(forbidden).not.toHaveTextContent("Not collected");
     const off = laneRow("WAF top clients");
     expect(off).toHaveTextContent("Not collected");
@@ -370,7 +370,7 @@ describe("the lane table", () => {
       }),
     );
     await renderPage({ value: "192.0.2.44" });
-    expect(laneRow("QRadar offenses")).toHaveTextContent("No reason was recorded.");
+    expect(laneRow("QRadar offenses")).toHaveTextContent("No reason recorded.");
     expect(document.body.textContent).not.toMatch(/entity_timeline\./);
   });
 });
@@ -380,7 +380,7 @@ describe("page states", () => {
     read.mockResolvedValue(timeline({ state: "PARTIAL", reason_code: "entity_timeline.reason.partial" }));
     await renderPage({ value: "192.0.2.44" });
     expect(screen.getByRole("status")).toHaveTextContent(
-      "Partial. Some lanes below are bounded, stale, switched off or not collected.",
+      "Partial. Some lanes are bounded, stale, off or not collected.",
     );
   });
 
@@ -421,7 +421,7 @@ describe("empty", () => {
     );
     await renderPage({ value: "192.0.2.44" });
     expect(screen.getByText("No stored mention of 192.0.2.44 in this window.")).toBeInTheDocument();
-    expect(screen.getByText(/not a finding that it was absent/)).toBeInTheDocument();
+    expect(screen.getByText(/Not a finding of absence/)).toBeInTheDocument();
     expect(screen.queryByRole("table", { name: "Stored mentions of the entity, newest first" })).toBeNull();
     const lanesTable = screen.getByRole("table", { name: "Entity timeline lanes" });
     expect(lanesTable).toBeInTheDocument();
@@ -454,11 +454,11 @@ describe("paging", () => {
   it("says the list is a page and that counts describe the page, not the window", async () => {
     read.mockResolvedValue(truncated());
     await renderPage({ value: "192.0.2.44" });
-    expect(screen.getByRole("status")).toHaveTextContent("Truncated. This list is one page.");
+    expect(screen.getByRole("status")).toHaveTextContent("Truncated. One page of stored mentions");
     const table = screen.getByRole("table", { name: "Entity timeline lanes" });
     expect(within(table).getByRole("columnheader", { name: "On this page" })).toBeInTheDocument();
-    expect(screen.getByText(/counts above are for this page only/)).toBeInTheDocument();
-    expect(within(table).getByRole("row", { name: /QRadar offenses/ })).toHaveTextContent("Not counted on a paged list.");
+    expect(screen.getByText(/counts are for this page only/)).toBeInTheDocument();
+    expect(within(table).getByRole("row", { name: /QRadar offenses/ })).toHaveTextContent("Not counted on a page.");
   });
 
   it("does not claim a window-wide absence on a later page", async () => {
@@ -560,7 +560,7 @@ describe("a refused input", () => {
   it("words a 422 that carries no sentence", async () => {
     read.mockRejectedValue(new ApiError(422, "Unprocessable Content", [{ loc: ["query", "value"] }]));
     await renderPage({ value: "192.0.2.44" });
-    expect(screen.getByRole("alert")).toHaveTextContent("could not be accepted as typed");
+    expect(screen.getByRole("alert")).toHaveTextContent("was not accepted");
   });
 });
 

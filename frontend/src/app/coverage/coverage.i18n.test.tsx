@@ -98,7 +98,7 @@ describe("/coverage in Turkish", () => {
   it("titles the page and counts every status in the Turkish number form", async () => {
     await renderPage();
     expect(screen.getByRole("heading", { level: 1, name: "Algılama coverage'ı" })).toBeInTheDocument();
-    expect(screen.getByText(/Eşlenen kurallardan ve gözlenen sağlıklarından türetilen MITRE ATT&CK teknik coverage'ı\./)).toBeInTheDocument();
+    expect(screen.queryByText(/Eşlenen kurallardan ve gözlenen sağlıklarından türetilen MITRE ATT&CK teknik coverage'ı\./)).not.toBeInTheDocument();
     for (const [label, value] of [
       ["KAPSANDI", "602"],
       ["KISMİ", "2"],

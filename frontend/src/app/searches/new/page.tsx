@@ -26,7 +26,7 @@ async function NewSearchPage() {
 
   return (
     <>
-      <PageHeader guide={guideFor("/searches/new")} title={t("title")} description={t("description")} />
+      <PageHeader guide={guideFor("/searches/new")} title={t("title")} />
       {access === "writer" ? (
         <SearchEditor mode="create" />
       ) : (

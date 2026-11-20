@@ -1,7 +1,6 @@
 {
   "title": "Reports",
   "meta": "Reports",
-  "description": "How did the period go?",
   "boundary": {
     "title": "Reports",
     "loading": "the report",
@@ -11,15 +10,15 @@
   "retry": "Retry",
   "loadFailed": {
     "title": "The report could not be loaded.",
-    "network": "The backend did not answer. Retry; if it keeps failing, check that the backend is reachable.",
-    "expired": "Your session has expired. Sign in again to continue.",
-    "server": "The backend failed while building the report. Retry; if it keeps failing, check the backend log.",
-    "refused": "The backend refused the period: {reason} Choose another period."
+    "network": "The backend did not answer. Retry; if it persists, check it is reachable.",
+    "expired": "Your session has expired. Sign in again.",
+    "server": "The backend failed while building the report. Retry; if it persists, check the backend log.",
+    "refused": "The backend refused the period: {reason} Choose another."
   },
   "ignored": {
-    "unknownPeriod": "Ignored an unknown period; showing the last 7 days.",
-    "badStart": "Ignored a start that is not the first instant of its period; showing the current period.",
-    "futureStart": "Ignored a start in the future; showing the current period."
+    "unknownPeriod": "Unknown period ignored; showing the last 7 days.",
+    "badStart": "Start that is not a period start ignored; showing the current period.",
+    "futureStart": "Start in the future ignored; showing the current period."
   },
   "period": {
     "label": "Report period",
@@ -59,10 +58,10 @@
     "forbidden": "Forbidden",
     "ok": "Measured"
   },
-  "forbidden": "You need the <code>{permission}</code> permission to see this block. The other blocks are not affected.",
-  "blockFailed": "This block could not be read: its query failed, so nothing is shown rather than a zero. Retry the report; the other blocks are not affected.",
-  "blockUnknown": "This block could not be measured (reason {code}). Nothing is shown rather than a zero.",
-  "blockNoReason": "This block could not be measured. Nothing is shown rather than a zero.",
+  "forbidden": "You need the <code>{permission}</code> permission for this block.",
+  "blockFailed": "This block's query failed, so nothing is shown rather than a zero. Retry the report.",
+  "blockUnknown": "This block could not be measured (reason {code}); no figure is shown.",
+  "blockNoReason": "This block could not be measured; no figure is shown.",
   "family": {
     "log_source": "Log sources",
     "waf": "WAF",
@@ -76,7 +75,7 @@
     "qradar_instance": "QRadar instances",
     "other": "Other source types"
   },
-  "otherHint": "No alert family claims these source types, so the list cannot be filtered to them.",
+  "otherHint": "No alert family claims these types, so the list cannot be filtered.",
   "alertsBlock": {
     "title": "Alerts opened",
     "caption": "Alerts opened in the period, by family and severity (alerts)",
@@ -96,9 +95,9 @@
     "lowerBound": "At least {count}"
   },
   "retention": {
-    "partial": "{family}: anomaly rows are kept for {days} days, so this period is counted only from {from} UTC. Counts marked ≥ are lower bounds.",
-    "partialNoDate": "{family}: anomaly rows are kept for {days} days, so this period is only partly covered. Counts marked ≥ are lower bounds.",
-    "insufficient": "{family}: nothing in this period is still within the {days}-day retention, so no figure is shown.",
+    "partial": "{family}: anomaly rows are kept {days} days, so counts start from {from} UTC. Counts marked ≥ are lower bounds.",
+    "partialNoDate": "{family}: anomaly rows are kept {days} days; this period is partly covered. Counts marked ≥ are lower bounds.",
+    "insufficient": "{family}: nothing in this period is within the {days}-day retention.",
     "heading": "Coverage"
   },
   "clock": {
@@ -112,7 +111,7 @@
     "mttaAnomaly": "Time to first owner or status change (MTTA)",
     "mttrAnomaly": "Time to close (MTTR)",
     "insufficient": "Insufficient data: a median needs at least {min} closed items.",
-    "partial": "Partial: older rows are no longer kept.",
+    "partial": "Partial: older rows are not kept.",
     "measured": "Measured"
   },
   "anomalyClocks": {
@@ -139,8 +138,8 @@
   "links": {
     "title": "Related views",
     "noise": "Noisy sources",
-    "noiseHint": "the sources with the most noise judgements, last 7 days",
+    "noiseHint": "last 7 days",
     "coverage": "Coverage",
-    "coverageHint": "as of now, not as of this period"
+    "coverageHint": "as of now"
   }
 }

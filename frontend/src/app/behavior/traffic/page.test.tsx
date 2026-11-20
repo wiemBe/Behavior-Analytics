@@ -180,12 +180,12 @@ describe("Traffic by destination: the ranked table", () => {
     const text = document.body.textContent ?? "";
     expect(text).toContain("2026-11-05 18:00:00 UTC");
     expect(text).toContain("2026-11-05 19:00:00 UTC");
-    expect(text).toContain("Average events/s over 5-minute buckets");
+    expect(text).not.toContain("divided by measured time only");
     expect(text).toContain("11 of 12 buckets measured");
     expect(text).not.toMatch(/real-time|\blive\b/i);
   });
 
-  it("draws a trend per row with a gap, scaled to the row, and a text alternative", async () => {
+  it("draws a trend per row with a gap and a text alternative", async () => {
     setup(page([wafItem(), wafItem({ id: "b", series: [1000, 2000, 1500, 1200, 900, 1100, 1300, 1000, 1000, 1000, 1000, 1000] })]));
     const { container } = await renderPage();
     const sparks = container.querySelectorAll("svg.traffic-spark");
@@ -196,7 +196,7 @@ describe("Traffic by destination: the ranked table", () => {
     );
     // the null splits the line in two; it is not drawn as a zero
     expect(sparks[0].querySelectorAll("polyline")).toHaveLength(2);
-    expect(screen.getByRole("columnheader", { name: /Trend/ })).toHaveTextContent("scaled per row");
+    expect(screen.getByRole("columnheader", { name: /Trend/ })).not.toHaveTextContent("scaled per row");
   });
 
   it("says a row with no measured point has no measured data", async () => {
@@ -237,7 +237,7 @@ describe("Traffic by destination: the ranked table", () => {
   ] as const)("reason code %s is shown as its backend sentence", async (code, sentence) => {
     setup(page([], { state: "INSUFFICIENT_DATA", reason_code: code }));
     await renderPage();
-    expect(document.body.textContent).toContain(`Reason: ${sentence}`);
+    expect(document.body.textContent).toContain(`Details${sentence}`);
     expect(document.body.textContent).not.toContain(code);
   });
 
@@ -423,13 +423,12 @@ describe("Traffic by destination: honesty states", () => {
     );
     await renderPage();
     const banner = screen.getByText("Partial data.").closest(".banner")!;
-    expect(banner).toHaveTextContent("Only 11 of 12 buckets");
-    expect(banner).toHaveTextContent("not counted as zero");
+    expect(banner).toHaveTextContent("Missing buckets are not counted as zero");
     expect(banner.compareDocumentPosition(screen.getByRole("table"))).toBe(
       Node.DOCUMENT_POSITION_FOLLOWING,
     );
     expect(document.body.textContent).toMatch(
-      /22,344 of 812,345 events \(2\.8\s%\) are not attributed to a listed endpoint/,
+      /22,344 of 812,345 events \(2\.8\s%\) unattributed; row totals are lower bounds/,
     );
     expect(document.body.textContent).toContain("lower bound");
   });
@@ -451,7 +450,7 @@ describe("Traffic by destination: honesty states", () => {
   it("an unknown unattributed share is said to be unknown, not drawn as 0", async () => {
     setup(page([wafItem()], { unattributed_events: null }));
     await renderPage();
-    expect(document.body.textContent).toContain("is not known for this window");
+    expect(document.body.textContent).toContain("is unknown; row totals are lower bounds");
     expect(document.body.textContent).not.toContain("0 of");
   });
 
@@ -469,7 +468,7 @@ describe("Traffic by destination: honesty states", () => {
     );
     await renderPage();
     expect(screen.getByText("No complete bucket in this window.")).toBeInTheDocument();
-    expect(screen.getByText(/not a statement that no traffic arrived/)).toBeInTheDocument();
+    expect(screen.getByText(/absence of data, not zero traffic/)).toBeInTheDocument();
     expect(screen.queryByRole("table")).toBeNull();
   });
 
@@ -491,7 +490,7 @@ describe("Traffic by destination: honesty states", () => {
     setup(page([], { total: 0, max_rate_per_second: null }));
     await renderPage();
     expect(screen.getByText("No endpoint has data in this window.")).toBeInTheDocument();
-    expect(screen.getByText(/not zero requests/)).toBeInTheDocument();
+    expect(screen.getByText(/absence of data, not zero/)).toBeInTheDocument();
     expect(screen.queryByRole("table")).toBeNull();
   });
 
@@ -517,21 +516,21 @@ describe("Traffic by destination: honesty states", () => {
     await renderPage();
     const alert = screen.getByRole("alert");
     expect(alert).toHaveTextContent("Traffic could not be shown.");
-    expect(alert).toHaveTextContent("Nothing was changed");
+    expect(alert).toHaveTextContent("Reload the page");
     expect(screen.queryByRole("table")).toBeNull();
   });
 
   it("an unknown source (404) says the source is not known", async () => {
     setup(new ApiError(404, "not found"));
     await renderPage({ source: "nope" });
-    expect(screen.getByRole("alert")).toHaveTextContent("not known");
+    expect(screen.getByRole("alert")).toHaveTextContent("Unknown log source");
   });
 
   it("a source list that cannot be read, with no source in the URL, is an error", async () => {
     setup(page([wafItem()]));
     vi.spyOn(api, "wafBehaviorSources").mockRejectedValue(new ApiError(500, "boom"));
     await renderPage();
-    expect(screen.getByRole("alert")).toHaveTextContent("list of sources could not be loaded");
+    expect(screen.getByRole("alert")).toHaveTextContent("source list could not be loaded");
   });
 
   it("no source at all says nothing is collected and links the admin page", async () => {
@@ -610,7 +609,7 @@ describe("Traffic by destination: All rows", () => {
     setup(page([wafItem()], { total: 1500, limit: 1000 }));
     await renderPage({ limit: "all" });
     expect(document.body.textContent).toContain(
-      "Showing the first 1,000 of 1,500 (sorted). Export CSV has the full list.",
+      "First 1,000 of 1,500 shown. Export CSV has the full list.",
     );
   });
 

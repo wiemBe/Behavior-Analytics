@@ -79,11 +79,7 @@ async function CoveragePage({
 
   return (
     <>
-      <PageHeader
-        guide={guideFor("/coverage")}
-        title={t("title")}
-        description={t("description")}
-      />
+      <PageHeader guide={guideFor("/coverage")} title={t("title")} />
 
       {nothingMapped ? (
         // The honest empty state. Showing 0% covered here would be a claim we

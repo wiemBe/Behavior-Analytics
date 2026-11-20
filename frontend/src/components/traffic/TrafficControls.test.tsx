@@ -36,7 +36,7 @@ describe("Export CSV", () => {
 
   it("says large exports are cut and marked, without naming a number", () => {
     view({}, data("TRUNCATED", 250000));
-    expect(document.body.textContent).toContain("cut at the server's limit and marked in the file");
+    expect(document.body.textContent).not.toContain("cut at the server's limit");
     expect(screen.getByRole("link", { name: /all 250,000 endpoints/ })).toBeInTheDocument();
   });
 

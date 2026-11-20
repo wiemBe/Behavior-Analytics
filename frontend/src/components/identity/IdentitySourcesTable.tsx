@@ -59,7 +59,6 @@ function ProfileCell({ s }: { s: IdentitySource }) {
       <span className={`pill pill-quiet ${why === null ? "ok" : "warn"}`}>
         {why === null ? t("profile.collected") : t(`profile.${why}`)}
       </span>
-      <span className="cell-sub">{t("profileVersion", { version: s.profile.profile_version })}</span>
     </>
   );
 }
@@ -132,10 +131,7 @@ export function IdentitySourcesTable({
           <tr>
             <th scope="col">{t("source")}</th>
             <th scope="col">{t("profileHead")}</th>
-            <th scope="col">
-              {t("latest")}
-              <span className="cell-sub">{t("latestSub")}</span>
-            </th>
+            <th scope="col">{t("latest")}</th>
             <th scope="col">{t("incidents")}</th>
           </tr>
         </thead>

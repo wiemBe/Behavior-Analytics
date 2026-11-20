@@ -142,14 +142,14 @@ describe("search detail states", () => {
     expect(screen.getByRole("heading", { name: "Search detail", level: 1 })).toBeInTheDocument();
     const alert = screen.getByRole("alert");
     expect(alert).toHaveTextContent("Search s-9 could not be loaded.");
-    expect(alert).toHaveTextContent(/Reload the page to try again\./);
+    expect(alert).toHaveTextContent(/backend is unreachable/);
     expect(alert).not.toHaveTextContent("secret");
   });
 
   it("says the search has not run yet", async () => {
     await renderPage();
     expect(
-      screen.getByText(/No executions yet\. The first appears after this search runs/),
+      screen.getByText(/No executions yet\./),
     ).toBeInTheDocument();
   });
 });
@@ -207,7 +207,7 @@ describe("search execution history", () => {
     await renderPage();
     const table = screen.getAllByRole("table")[0];
     expect(within(table).getByRole("columnheader", { name: "Started (UTC)" })).toBeInTheDocument();
-    expect(within(table).getByText(/Times are UTC/)).toBeInTheDocument();
+    expect(within(table).queryByText(/Times are UTC/)).toBeNull();
     const row = within(table).getAllByRole("row")[1];
     expect(row).toHaveTextContent("10-15 04:00");
     expect(row).not.toHaveTextContent("UTC");
@@ -215,10 +215,9 @@ describe("search execution history", () => {
     expect(within(row).getByText(/at least/)).toBeInTheDocument();
     expect(row).toHaveTextContent("500");
     expect(within(row).getByText("no verdict")).toBeInTheDocument();
-    // The lower-bound provenance is stated, not left to the reader.
-    const notes = screen.getByRole("list", { name: "Truncated runs" });
-    expect(notes).toHaveTextContent(/lower bound/);
-    expect(notes).toHaveTextContent(/may still be above it/);
+    // The lower-bound provenance rides on the cell, not on a footnote.
+    expect(screen.queryByRole("list", { name: "Truncated runs" })).toBeNull();
+    expect(within(row).getAllByTitle(/lower bound/).length).toBeGreaterThan(0);
   });
 });
 

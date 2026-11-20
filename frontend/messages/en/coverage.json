@@ -3,7 +3,7 @@
   "loadingWhat": "detection coverage",
   "errorWhat": "Detection coverage",
   "loadNoun": "detection coverage",
-  "description": "MITRE ATT&CK technique coverage, derived from mapped rules and their observed health. Coverage is never inferred from a rule merely existing.",
+  "description": "See Guide.",
   "status": {
     "COVERED": "COVERED",
     "PARTIAL": "PARTIAL",
@@ -30,7 +30,7 @@
     "inferred": "inferred"
   },
   "notEvaluatedHeading": "Coverage has not been evaluated.",
-  "notEvaluatedBody": "No ATT&CK technique mappings are configured, so coverage cannot be measured. An administrator adds them. This is not a finding of zero coverage.",
+  "notEvaluatedBody": "No ATT&CK technique mappings are configured, so coverage is not measured. This is not a finding of zero coverage.",
   "summary": "{total} techniques evaluated · {covered} covered · {explicit} explicit / {inferred} inferred mappings · generated <time></time>",
   "noTechniques": "No techniques on this page.",
   "techniques": {

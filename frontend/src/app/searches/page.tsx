@@ -46,7 +46,6 @@ async function SearchCatalogPage() {
       <PageHeader
         guide={guideFor("/searches")}
         title={t("title")}
-        description={t("description")}
         actions={
           access === "writer" ? (
             <Link className="action secondary" href="/searches/new">

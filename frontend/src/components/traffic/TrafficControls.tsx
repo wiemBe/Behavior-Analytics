@@ -107,8 +107,7 @@ function ExportCsv({
           noun,
           window: t(`windows.${query.window}`),
         })}
-      </a>{" "}
-      <span className="muted">{t("note")}</span>
+      </a>
     </span>
   );
 }

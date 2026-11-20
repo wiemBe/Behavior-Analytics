@@ -150,7 +150,7 @@ describe("coverage states", () => {
     await renderPage();
     const notice = screen.getByText("Coverage has not been evaluated.").closest(".notice")!;
     expect(notice).toHaveTextContent(
-      "No ATT&CK technique mappings are configured, so coverage cannot be measured. An administrator adds them. This is not a finding of zero coverage.",
+      "No ATT&CK technique mappings are configured, so coverage is not measured. This is not a finding of zero coverage.",
     );
     expect(notice).not.toHaveTextContent("operations guide");
     expect(notice).not.toHaveTextContent("README");

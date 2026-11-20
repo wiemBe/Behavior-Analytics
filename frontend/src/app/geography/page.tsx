@@ -55,7 +55,6 @@ async function GeographyPage({
       <PageHeader
         guide={guideFor("/geography")}
         title={t("title")}
-        description={t("description")}
         actions={<GeoSwitches window={window} direction={direction} />}
       />
       {error || !data ? (

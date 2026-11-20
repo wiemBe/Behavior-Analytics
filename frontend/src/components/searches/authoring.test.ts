@@ -22,7 +22,7 @@ import {
 } from "@/components/searches/authoring";
 
 const LATENCY =
-  "This search runs in QRadar on its schedule; its result and any threshold breach appear after each run completes, not in real time. For alerting within seconds, use QRadar's own rules.";
+  "This search runs in QRadar on its schedule; results and any threshold breach appear after each run completes.";
 
 function search(over: Partial<ScheduledSearch> = {}): ScheduledSearch {
   return {

@@ -59,7 +59,7 @@ describe("IdentityProfilePanel: write", () => {
   it("will not offer Enable while the current version is not validated", () => {
     panel(profile({ enabled: false, validated_profile_version: null, validation_status: "UNVALIDATED" }));
     expect(screen.getByRole("button", { name: "Enable" })).toBeDisabled();
-    expect(screen.getByText("Enable is available once the current version is validated.")).toBeInTheDocument();
+    expect(screen.getByText("Validate the current version to enable.")).toBeInTheDocument();
   });
 
   it("enables a validated source", async () => {

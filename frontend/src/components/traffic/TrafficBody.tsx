@@ -24,7 +24,6 @@ type Page = TrafficPage<WafTrafficItem> | TrafficPage<IpsTrafficItem>;
 function Span({ data }: { data: Page }) {
   const t = useTranslations("traffic.span");
   const locale: FormatLocale = useLocale() === "tr" ? "tr" : "en";
-  const width = formatCount(Math.round((data.bucket_seconds ?? 0) / 60), locale);
   const times = {
     start: () => <UtcTime value={data.range_start} />,
     end: () => <UtcTime value={data.range_end} />,
@@ -33,9 +32,8 @@ function Span({ data }: { data: Page }) {
     <div className="traffic-span">
       <p>
         {data.window === "5m"
-          ? t.rich("newest", { width, ...times })
+          ? t.rich("newest", times)
           : t.rich("range", times)}{" "}
-        {t("basis", { width })}{" "}
         <span className="num">
           {t("measured", {
             measured: formatCount(data.buckets_measured, locale),
@@ -83,7 +81,12 @@ export function TrafficBody({
   const nounPlural = view === "waf" ? t("share.nounWaf") + "s" : t("share.nounIps") + "s";
 
   const sentence = useTrafficReason(data.reason_code);
-  const reason = sentence ? t("banner.reason", { sentence }) : null;
+  const reason = sentence ? (
+    <details className="traffic-reason">
+      <summary>{t("banner.details")}</summary>
+      {sentence}
+    </details>
+  ) : null;
 
   if (data.state === "NOT_COLLECTED") {
     return (
@@ -96,13 +99,8 @@ export function TrafficBody({
           <Link href={view === "waf" ? "/admin/waf-sources" : "/admin/ips-sources"}>
             {view === "waf" ? t("notCollected.linkWaf") : t("notCollected.linkIps")}
           </Link>
-          {data.reason_code && (
-            <>
-              {" "}
-              <span className="muted">{reason}</span>
-            </>
-          )}
         </p>
+        {data.reason_code && reason}
       </div>
     );
   }
@@ -114,16 +112,12 @@ export function TrafficBody({
           <strong>{t("insufficient.title")}</strong>
         </p>
         <p>{t("insufficient.text")}</p>
-        {data.reason_code && (
-          <p className="muted">{reason}</p>
-        )}
+        {data.reason_code && reason}
       </div>
     );
   }
 
-  const bannerReason = data.reason_code ? (
-    <> <span className="muted">{reason}</span></>
-  ) : null;
+  const bannerReason = data.reason_code ? reason : null;
 
   const body =
     data.items.length > 0 ? (
@@ -193,16 +187,16 @@ export function TrafficBody({
                     expected: formatCount(data.buckets_expected, locale),
                   })
                 : t("banner.partialIncompleteText")}
-              {bannerReason}
             </p>
+            {bannerReason}
           </div>
         )}
         {data.state === "TRUNCATED" && (
           <div className="banner warn" role="status">
             <p>
               <strong>{t("banner.truncatedTitle")}</strong> {t("banner.truncatedText")}
-              {bannerReason}
             </p>
+            {bannerReason}
           </div>
         )}
         <Share data={data} view={view} />
