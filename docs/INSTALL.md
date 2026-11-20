@@ -492,10 +492,10 @@ the gitignored `docker-compose.override.yml`. The example references that networ
 `--ip-range`, a container can be given an address a VM already holds.
 
 Attach the network only to services that open a connection to QRadar: `backend` (manual searches
-and the other API provider calls), `celery-worker` (collectors and scheduled searches) and
-`qradar-mcp` (the optional profile's console client). `celery-beat` only publishes task names to
-the broker. `migrate` only talks to Postgres. Neither is attached. Do not weaken the host firewall,
-and do not set `:z` or `label=disable`.
+and the other API provider calls), `celery-worker` (collectors and scheduled searches),
+`celery-walker` (QRadar collection walks) and `qradar-mcp` (the optional profile's console
+client). `celery-beat` only publishes task names to the broker. `migrate` only talks to Postgres.
+Neither is attached. Do not weaken the host firewall, and do not set `:z` or `label=disable`.
 
 When `docker-compose.override.yml` exists in the checkout, `./qradar-dash install` and `upgrade`
 load it after the production overlay, and the installer writes the same file list to `COMPOSE_FILE`

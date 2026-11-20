@@ -2809,7 +2809,7 @@ docker compose exec -T backend python -m app.cli.ariel_load --hours 24
 docker compose exec -T backend python -m app.cli.ariel_load --current
 ```
 
-- Switch the family off, as the check "family off" below says, only if the site allows a recreate of the application containers (**lab only**; in production write `Not run`): set `QRADAR_HEALTH_COLLECTION_ENABLED=false` in `.env`, run `docker compose up -d --force-recreate backend celery-worker celery-beat`, read the page and `./qradar-dash doctor`, then set the line back to `true` and recreate again.
+- Switch the family off, as the check "family off" below says, only if the site allows a recreate of the application containers (**lab only**; in production write `Not run`): set `QRADAR_HEALTH_COLLECTION_ENABLED=false` in `.env`, run `docker compose up -d --force-recreate backend celery-worker celery-walker celery-beat`, read the page and `./qradar-dash doctor`, then set the line back to `true` and recreate again.
 
 **Expected:**
 
@@ -3023,7 +3023,7 @@ SMTP_USERNAME=mt142-user
 ```
 
 ```bash
-docker compose up -d --force-recreate backend celery-worker celery-beat
+docker compose up -d --force-recreate backend celery-worker celery-walker celery-beat
 ./qradar-dash doctor | grep -E '^(PASS|WARN|FAIL|SKIP) +email'
 echo "exit: ${PIPESTATUS[0]}"
 ```
@@ -3040,7 +3040,7 @@ echo "exit: ${PIPESTATUS[0]}"
 
 **Record:** The `doctor` line and exit code, and the banner's heading.
 
-**Cleanup:** Restore the `.env` (`mv .env.mt142.bak .env`), recreate the containers again with the same `docker compose up -d --force-recreate backend celery-worker celery-beat`, and run `./qradar-dash doctor | grep -E '^(PASS|WARN|FAIL|SKIP) +email'`: the line must be what it was before the check (MT-138). Confirm that `.env` no longer holds `smtp.invalid` or `mt142-user`: `grep -cE 'smtp.invalid|mt142-user' .env` prints 0. The refusal wrote nothing to QRadar and nothing to the database.
+**Cleanup:** Restore the `.env` (`mv .env.mt142.bak .env`), recreate the containers again with the same `docker compose up -d --force-recreate backend celery-worker celery-walker celery-beat`, and run `./qradar-dash doctor | grep -E '^(PASS|WARN|FAIL|SKIP) +email'`: the line must be what it was before the check (MT-138). Confirm that `.env` no longer holds `smtp.invalid` or `mt142-user`: `grep -cE 'smtp.invalid|mt142-user' .env` prints 0. The refusal wrote nothing to QRadar and nothing to the database.
 
 
 ### 13. Guide
