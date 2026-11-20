@@ -52,5 +52,98 @@
     "lastEventNever": "Last event: never",
     "qradarStatus": "QRadar status:",
     "note": "<link>Source behavior</link>"
+  },
+  "jdbc": {
+    "state": {
+      "unavailable": "Unavailable"
+    },
+    "flow": {
+      "DISABLED_IN_QRADAR": "Disabled in QRadar",
+      "RECEIVING": "Receiving",
+      "NO_ATTRIBUTED_EVENTS": "No attributed events",
+      "NOT_MEASURED": "Not measured"
+    },
+    "measurement": {
+      "EXACT": "Exact",
+      "PARTIAL": "Partial",
+      "TRUNCATED": "Truncated",
+      "NOT_COLLECTED": "Not collected"
+    },
+    "connection": {
+      "CONNECTED": "Connected",
+      "WARNING": "Warning",
+      "CONNECTION_ERROR": "Connection error",
+      "DISABLED_STATUS": "Disabled status",
+      "unreported": "Not reported"
+    },
+    "fieldState": {
+      "SET": "Set",
+      "UNSET": "Unset",
+      "REMOVED": "Removed",
+      "UNAVAILABLE": "Field unavailable"
+    },
+    "inconsistency": {
+      "enabled_with_disabled_status": "Enabled with disabled QRadar status"
+    },
+    "completeness": {
+      "COMPLETE": "Complete",
+      "PARTIAL": "Partial",
+      "MISSING": "Missing"
+    },
+    "origin": {
+      "live": "Current window",
+      "history": "Historical"
+    },
+    "support": {
+      "VERIFIED": "Verified protocol",
+      "UNVERIFIED_PROTOCOL": "Unverified protocol"
+    },
+    "attempt": {
+      "IDLE": "Idle",
+      "QUEUED": "Queued",
+      "RUNNING": "Running",
+      "COMPLETE": "Complete",
+      "PARTIAL": "Partial",
+      "FAILED": "Failed",
+      "NOT_COLLECTED": "Not collected",
+      "UNSUPPORTED": "Unsupported"
+    },
+    "config": {
+      "COMPLETE": "Complete",
+      "PARTIAL": "Partial",
+      "NOT_COLLECTED": "Not collected",
+      "UNVERIFIED_PROTOCOL": "Unverified protocol",
+      "NOT_JDBC": "Not a JDBC source"
+    },
+    "reason": {
+      "disabled_in_qradar": "Disabled in QRadar",
+      "measured": "Measured",
+      "partial": "Partial",
+      "truncated": "Truncated",
+      "not_collected": "Not collected",
+      "unmonitored": "Not monitored",
+      "inventory_stale": "Inventory stale",
+      "inventory_not_collected": "Inventory not collected"
+    },
+    "failure": {
+      "auth": "Authentication failed",
+      "timeout": "Timed out",
+      "rate_limited": "Rate limited",
+      "upstream": "Upstream error",
+      "network": "Network error",
+      "malformed": "Malformed response",
+      "page_ceiling": "Page ceiling reached",
+      "filter_rejected": "Filter rejected",
+      "disabled": "Collection disabled",
+      "unsupported": "Unsupported",
+      "worker_lost": "Worker lost"
+    },
+    "fieldReason": {
+      "unsupported_value": "Unsupported value",
+      "id_name_mismatch": "Identifier and name do not match",
+      "duplicate_name": "Duplicate name",
+      "wrong_type": "Wrong type",
+      "missing": "Missing"
+    }
   }
 }

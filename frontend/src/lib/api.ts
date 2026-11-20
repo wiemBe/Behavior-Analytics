@@ -3331,6 +3331,205 @@ export interface CustomRuleCatalog {
   preview_hours_max: number;
 }
 
+// --- JDBC metadata and attributed flow (J1o1) --------------------------------
+// Mirrors `app/schemas/jdbc.py` field for field: nullable stays `| null`, and each enum is one
+// `as const` array whose union type is derived from it. `query.ts`, `states.ts` and their tests
+// import the arrays, so a backend value added here forces a label through the catalog coverage
+// check in `states.ts`. No raw parameter bag or free-text status message is defined here.
+
+export const JDBC_FLOW_STATES = [
+  "DISABLED_IN_QRADAR", "RECEIVING", "NO_ATTRIBUTED_EVENTS", "NOT_MEASURED",
+] as const;
+export type JdbcFlowState = (typeof JDBC_FLOW_STATES)[number];
+
+export const JDBC_MEASUREMENTS = ["EXACT", "PARTIAL", "TRUNCATED", "NOT_COLLECTED"] as const;
+export type JdbcMeasurement = (typeof JDBC_MEASUREMENTS)[number];
+
+export const JDBC_CONNECTION_CODES = [
+  "CONNECTED", "WARNING", "CONNECTION_ERROR", "DISABLED_STATUS",
+] as const;
+export type JdbcConnection = (typeof JDBC_CONNECTION_CODES)[number];
+
+export const JDBC_INCONSISTENCIES = ["enabled_with_disabled_status"] as const;
+export type JdbcInconsistency = (typeof JDBC_INCONSISTENCIES)[number];
+
+export const JDBC_ATTEMPT_STATES = [
+  "IDLE", "QUEUED", "RUNNING", "COMPLETE", "PARTIAL", "FAILED", "NOT_COLLECTED", "UNSUPPORTED",
+] as const;
+export type JdbcAttemptState = (typeof JDBC_ATTEMPT_STATES)[number];
+
+export const JDBC_REASON_CODES = [
+  "disabled_in_qradar", "measured", "partial", "truncated", "not_collected", "unmonitored",
+  "inventory_stale", "inventory_not_collected",
+] as const;
+export type JdbcReasonCode = (typeof JDBC_REASON_CODES)[number];
+
+export const JDBC_CONFIG_STATES = [
+  "COMPLETE", "PARTIAL", "NOT_COLLECTED", "UNVERIFIED_PROTOCOL", "NOT_JDBC",
+] as const;
+export type JdbcConfigState = (typeof JDBC_CONFIG_STATES)[number];
+
+export const JDBC_FIELD_STATE_CODES = ["SET", "UNSET", "REMOVED", "UNAVAILABLE"] as const;
+export type JdbcFieldStateCode = (typeof JDBC_FIELD_STATE_CODES)[number];
+
+export const JDBC_FIELD_STATE_REASONS = [
+  "unsupported_value", "id_name_mismatch", "duplicate_name", "wrong_type", "missing",
+] as const;
+export type JdbcFieldStateReason = (typeof JDBC_FIELD_STATE_REASONS)[number];
+
+export const JDBC_FAILURE_CODES = [
+  "auth", "timeout", "rate_limited", "upstream", "network", "malformed", "page_ceiling",
+  "filter_rejected", "disabled", "unsupported", "worker_lost",
+] as const;
+export type JdbcFailureCode = (typeof JDBC_FAILURE_CODES)[number];
+
+export const JDBC_PROTOCOL_IDS = [8, 20, 21, 37, 42, 49, 55, 67] as const;
+export type JdbcProtocolId = (typeof JDBC_PROTOCOL_IDS)[number];
+
+export const JDBC_SAFE_FIELDS = [
+  "database_type", "database_host", "tls_hostname", "database_port", "database_name",
+  "schema_name", "table_name", "select_list", "compare_field", "polling_interval_seconds",
+  "start_time_local", "prepared_statements", "predefined_query", "eps_throttle", "source_label",
+  "use_ssl", "allow_untrusted", "advanced_options",
+] as const;
+export type JdbcSafeFieldName = (typeof JDBC_SAFE_FIELDS)[number];
+
+export const JDBC_COMPLETENESS = ["COMPLETE", "PARTIAL", "MISSING"] as const;
+export type JdbcCompleteness = (typeof JDBC_COMPLETENESS)[number];
+
+export const JDBC_ORIGINS = ["live", "history"] as const;
+export type JdbcOrigin = (typeof JDBC_ORIGINS)[number];
+
+export const JDBC_SUPPORT = ["VERIFIED", "UNVERIFIED_PROTOCOL"] as const;
+export type JdbcSupport = (typeof JDBC_SUPPORT)[number];
+
+/** The `GET /log-sources/jdbc` filters. Invalid values are dropped by the query parser, not sent. */
+export interface JdbcSourceListParams {
+  limit?: number;
+  offset?: number;
+  q?: string;
+  instance_id?: string;
+  protocol?: JdbcProtocolId;
+  enabled?: boolean;
+  flow_state?: JdbcFlowState;
+}
+
+/** The 18 allow-listed safe configuration values; every member is nullable. */
+export interface JdbcSafeFields {
+  database_type: string | null;
+  database_host: string | null;
+  tls_hostname: string | null;
+  database_port: number | null;
+  database_name: string | null;
+  schema_name: string | null;
+  table_name: string | null;
+  select_list: string | null;
+  compare_field: string | null;
+  polling_interval_seconds: number | null;
+  start_time_local: string | null;
+  prepared_statements: boolean | null;
+  predefined_query: string | null;
+  eps_throttle: number | null;
+  source_label: string | null;
+  use_ssl: boolean | null;
+  allow_untrusted: boolean | null;
+  advanced_options: boolean | null;
+}
+
+export interface JdbcFieldState {
+  code: JdbcFieldStateCode;
+  reason: JdbcFieldStateReason | null;
+}
+
+export interface JdbcConfigOut {
+  support: JdbcSupport;
+  state: JdbcConfigState;
+  failure_code: JdbcFailureCode | null;
+  observed_at: string | null;
+  last_success_at: string | null;
+  stale: boolean;
+  safe_fields: JdbcSafeFields | null;
+  field_states: Partial<Record<JdbcSafeFieldName, JdbcFieldState>>;
+}
+
+export interface JdbcQradarOut {
+  enabled: boolean;
+  status: JdbcConnection | null;
+  inconsistency: JdbcInconsistency | null;
+  inventory_last_complete_at: string | null;
+  inventory_last_attempt_at: string | null;
+  inventory_state: JdbcAttemptState;
+  inventory_stale: boolean;
+  reason_code: JdbcReasonCode | null;
+}
+
+export interface JdbcObservationOut {
+  start: string;
+  end: string;
+  observed_at: string;
+  event_count: number | null;
+  completeness: JdbcCompleteness;
+  origin: JdbcOrigin;
+}
+
+export interface JdbcVolumeOut {
+  measurement: JdbcMeasurement;
+  target_start: string;
+  target_end: string;
+  bucket_seconds: number;
+  event_count: number | null;
+  average_eps: number | null;
+  collected_at: string | null;
+  stale: boolean;
+  reason_code: JdbcReasonCode | null;
+  last_observation: JdbcObservationOut | null;
+}
+
+export interface JdbcFlowOut {
+  state: JdbcFlowState;
+  reason_code: JdbcReasonCode | null;
+}
+
+export interface JdbcMonitoringOut {
+  enabled: boolean;
+}
+
+export interface JdbcSourceRow {
+  id: string;
+  qradar_id: number;
+  name: string;
+  protocol_type_id: JdbcProtocolId;
+  protocol_name: string;
+  qradar: JdbcQradarOut;
+  config: JdbcConfigOut;
+  volume: JdbcVolumeOut;
+  flow: JdbcFlowOut;
+  monitoring: JdbcMonitoringOut;
+}
+export type JdbcSourceDetail = JdbcSourceRow;
+
+export interface JdbcSnapshotOut {
+  complete: boolean;
+  state: JdbcAttemptState;
+  stale: boolean;
+  last_complete_at: string | null;
+  consoles: number;
+}
+
+export interface JdbcSourcePage {
+  items: JdbcSourceRow[];
+  total: number;
+  limit: number;
+  offset: number;
+  snapshot: JdbcSnapshotOut;
+}
+
+export interface JdbcSyncQueued {
+  queued: boolean;
+  already_running: boolean;
+  task_ids: string[];
+}
+
 type QueryValue = string | number | boolean;
 
 function qs(params: Record<string, QueryValue | QueryValue[] | undefined>): string {
@@ -3369,6 +3568,28 @@ export const api = {
     ),
   logSource: (id: string) => request<LogSourceDetail>(`/log-sources/${id}`),
   logSourcePivot: (id: string) => request<Pivot>(`/log-sources/${id}/pivot`),
+
+  // JDBC metadata/flow: stored data only. The query order is fixed, whatever order the
+  // caller wrote the params in, so pagination links have a stable address.
+  jdbcSources: (params: JdbcSourceListParams = {}, signal?: AbortSignal) =>
+    request<JdbcSourcePage>(
+      `/log-sources/jdbc${qs({
+        limit: params.limit,
+        offset: params.offset,
+        q: params.q,
+        instance_id: params.instance_id,
+        protocol: params.protocol,
+        enabled: params.enabled,
+        flow_state: params.flow_state,
+      })}`,
+      { signal },
+    ),
+  jdbcSource: (id: string, signal?: AbortSignal) =>
+    request<JdbcSourceDetail>(`/log-sources/${id}/jdbc`, { signal }),
+  refreshJdbc: (instanceId?: string) =>
+    request<JdbcSyncQueued>(`/log-sources/jdbc/sync${qs({ instance_id: instanceId })}`, {
+      method: "POST",
+    }),
 
   searches: (signal?: AbortSignal) => request<ScheduledSearch[]>("/searches", { signal }),
   search: (id: string, signal?: AbortSignal) =>
