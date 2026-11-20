@@ -691,18 +691,26 @@ class OffenseListResult(ProviderDTO):
     cannot know whether its read was cut must say true whenever its last page
     came back full — never a silent false — so no caller can mistake a cut
     read for a complete one.
+
+    Failed pages keep the earlier prefix and fixed failure evidence. Only a
+    verified persisted timestamp may move a failed walk's resume point.
     """
 
     rows: list[OffenseDTO] = Field(default_factory=list)
     truncated: bool = False
+    pages_done: int = 0
+    pages_failed: int = 0
+    failed_page: int | None = None
+    failure_kind: str | None = None
+    last_persisted_time: datetime | None = None
 
 
 @dataclass
-class RuleInventoryWalk:
-    """Shared budget and evidence for the two REST rule-inventory endpoints.
+class PageWalkBudget:
+    """Shared budget and evidence for bounded REST collection walks.
 
     The deadline uses the event loop's monotonic clock. A failed endpoint cannot
-    be made complete by a successful second endpoint. Page numbers span both.
+    be made complete by a successful second endpoint sharing this budget.
     """
 
     deadline: float
@@ -720,6 +728,10 @@ class RuleInventoryWalk:
         if self.failure_kind is None:
             self.failure_kind = kind
             self.failed_page = self.pages_done + self.pages_failed
+
+
+# Existing rule callers share the same generic deadline and page accounting.
+RuleInventoryWalk = PageWalkBudget
 
 
 class AnalyticsRuleDTO(ProviderDTO):

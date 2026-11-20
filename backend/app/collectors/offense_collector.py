@@ -26,6 +26,9 @@ Guarantees, and why each one is needed:
     the snapshot key and double-count the watermark.
   * **Idempotent** — snapshots are upserted on their natural key, so replaying an
     interval overwrites rather than duplicates.
+  * **Page failures preserve progress** — completed pages are stored; the
+    watermark stops 1 ms before their final persisted timestamp, replaying that
+    boundary next run. No stored page means no watermark movement.
   * **Change-driven** — a snapshot row is written only when the meaningful fields
     change, detected via a content hash. Polling a stable offense every five
     minutes would otherwise write 288 identical rows a day and make the history
@@ -123,6 +126,10 @@ class OffenseCollectionReport:
     watermark_at: datetime | None = None
     lag_seconds: int | None = None
     duration_ms: int = 0
+    pages_done: int = 0
+    pages_failed: int = 0
+    failed_page: int | None = None
+    failure_kind: str | None = None
     dropped: list[int] = field(default_factory=list)
 
 
@@ -257,6 +264,10 @@ class OffenseCollector:
 
             offenses = listed.rows
             truncated = listed.truncated
+            report.pages_done = listed.pages_done
+            report.pages_failed = listed.pages_failed
+            report.failed_page = listed.failed_page
+            report.failure_kind = listed.failure_kind
             report.offenses_seen = len(offenses)
             report.truncated = truncated
             # A complete empty result proves that collection reached this run's
@@ -313,8 +324,22 @@ class OffenseCollector:
             # not incremented, and not cleared the way a clean run clears it.
             dropped = report.partial_failure
             watermark.last_run_at = started
-            watermark.intervals_collected += 1
-            if not dropped and truncated:
+            if offenses or listed.failure_kind is None:
+                watermark.intervals_collected += 1
+            if listed.failure_kind is not None:
+                report.partial_failure = True
+                report.error = listed.failure_kind
+                watermark.consecutive_failures += 1
+                watermark.last_error = listed.failure_kind
+                _record_watermark_stall(watermark, stalled=False)
+                # Replay every row on the last page's timestamp. Missing filter
+                # timestamps cannot justify advancing, even if the DTO has a fallback.
+                if not dropped and offenses and listed.last_persisted_time is not None:
+                    resume_at = listed.last_persisted_time - timedelta(milliseconds=1)
+                    if watermark.watermark_at is None or resume_at > watermark.watermark_at:
+                        watermark.watermark_at = resume_at
+                        watermark.lag_seconds = max(0, int((started - resume_at).total_seconds()))
+            elif not dropped and truncated:
                 report.partial_failure = True
                 advanced = boundary_watermark(offenses)
                 if advanced is None:
@@ -337,6 +362,16 @@ class OffenseCollector:
                 watermark.consecutive_failures = 0
                 watermark.last_error = None
                 _record_watermark_stall(watermark, stalled=False)
+            metadata = dict(watermark.collection_metadata or {})
+            metadata["offense_pass"] = {
+                "status": (
+                    "FAILED" if listed.failure_kind and not offenses
+                    else "PARTIAL" if report.partial_failure else "COMPLETE"
+                ),
+                "pages_done": report.pages_done, "pages_failed": report.pages_failed,
+                "failed_page": report.failed_page, "failure_kind": report.failure_kind,
+            }
+            watermark.collection_metadata = metadata
             await self.session.flush()
 
             report.watermark_at = watermark.watermark_at

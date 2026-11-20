@@ -105,6 +105,7 @@ from app.providers.dto import (
     ManagedServerDTO,
     OffenseDTO,
     OffenseListResult,
+    PageWalkBudget,
     PropertyCatalogWalkDTO,
     PwKeyedResult,
     PwSearchKind,
@@ -143,6 +144,15 @@ from app.waf.bucketed import (
 )
 
 logger = logging.getLogger("app.providers.qradar_rest")
+
+
+OFFENSE_LIST_FIELDS = (
+    "id,offense_type,closing_reason,closing_reason_id,description,status,magnitude,"
+    "severity,credibility,relevance,assigned_to,offense_source,source_network,event_count,"
+    "flow_count,device_count,source_count,local_destination_count,start_time,"
+    "last_persisted_time,last_updated_time,close_time,categories,source_address_ids,"
+    "local_destination_address_ids,usernames,log_sources,rules"
+)
 
 
 class _PageWalk(NamedTuple):
@@ -671,7 +681,7 @@ class QRadarRestProvider(QRadarProvider):
         params: dict[str, Any] | None = None,
         page_size: int | None = None,
         max_pages: int | None = None,
-        inventory_walk: RuleInventoryWalk | None = None,
+        inventory_walk: PageWalkBudget | None = None,
         row_validator: Callable[[dict], object] | None = None,
     ) -> _PageWalk:
         """`_paginate`, plus whether the walk stopped on a full page at the ceiling."""
@@ -3243,18 +3253,45 @@ class QRadarRestProvider(QRadarProvider):
 
         # `+field` is QRadar's ascending sort. The filter and the sort name the
         # same field, so the last row is the newest persisted time on the page.
-        params: dict[str, Any] = {"sort": "+last_persisted_time"}
+        params: dict[str, Any] = {
+            "sort": "+last_persisted_time", "fields": OFFENSE_LIST_FIELDS,
+        }
         if filters:
             params["filter"] = " and ".join(filters)
 
+        from app.core.config import get_settings
+
+        settings = get_settings()
+        budget = PageWalkBudget(
+            deadline=asyncio.get_running_loop().time() + settings.offense_walk_max_seconds,
+            page_timeout_seconds=settings.offense_page_timeout_seconds,
+            page_attempts=settings.offense_page_attempts,
+        )
         walk = await self._walk_pages(
             "/siem/offenses",
             category=EndpointCategory.OFFENSE_LIST,
             params=params,
             max_pages=max_pages,
+            inventory_walk=budget,
+            # Keep the existing no-id drops, but reject unparseable DTOs per page.
+            row_validator=lambda row: (
+                self._to_offense(row) if as_int(row.get("id")) is not None else True
+            ),
         )
         rows = [dto for dto in (self._to_offense(r) for r in walk.rows) if dto is not None]
-        return OffenseListResult(rows=rows, truncated=walk.truncated)
+        ceiling = walk.truncated and budget.pages_done == (max_pages or self._max_pages)
+        persisted = [parse_qradar_time(row.get("last_persisted_time")) for row in walk.rows]
+        boundary = (
+            persisted[-1] if persisted and all(t is not None for t in persisted)
+            and len(rows) == len(walk.rows) else None
+        )
+        return OffenseListResult(
+            rows=rows, truncated=ceiling, pages_done=budget.pages_done,
+            pages_failed=0 if ceiling else budget.pages_failed,
+            failed_page=None if ceiling else budget.failed_page,
+            failure_kind=None if ceiling else budget.failure_kind,
+            last_persisted_time=boundary,
+        )
 
     # ------------------------------------------------------ Ariel lifecycle
     async def create_ariel_search(self, aql: str) -> ArielSearchHandleDTO:

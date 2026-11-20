@@ -387,11 +387,18 @@ async def collect_offenses(instance_name: str | None = None) -> dict:
             "status": (
                 "skipped_locked"
                 if report.skipped_locked
-                else "failed" if report.partial_failure else "ok"
+                else (
+                    ("partial" if report.offenses_seen else "failed")
+                    if report.partial_failure else "ok"
+                )
             ),
             "seen": report.offenses_seen,
             "written": report.snapshots_written,
             "unchanged": report.unchanged,
+            "pages_done": report.pages_done,
+            "pages_failed": report.pages_failed,
+            "failed_page": report.failed_page,
+            "failure_kind": report.failure_kind,
             "duration_ms": report.duration_ms,
             "error": report.error,
         }
