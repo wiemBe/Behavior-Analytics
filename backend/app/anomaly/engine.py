@@ -18,12 +18,14 @@ from __future__ import annotations
 
 import logging
 import uuid
-from collections.abc import Callable
+from collections.abc import AsyncIterator, Callable
+from contextlib import asynccontextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.alerts.fingerprint import anomaly_fingerprint, fleet_empty_fingerprint
@@ -83,6 +85,7 @@ from app.models.monitoring import AnomalyEvaluationWatermark
 from app.models.outage import OutageAlertPolicy
 from app.providers.base import LogSourceTelemetry
 from app.repositories.anomaly_faults import AnomalyFaultRepository
+from app.services.source_pause_spans import PauseSpan, overlapping_spans
 
 if TYPE_CHECKING:
     # Annotations only: the engine depends on delivery structurally, never on
@@ -103,6 +106,34 @@ EXPLAINABLE_TYPES = frozenset({AnomalyType.VOLUME_SPIKE, AnomalyType.VOLUME_DROP
 #: Fixed skip reason when the stored QRadar flag disables a source under the
 #: D-52 pause policy. Stale inventory is irrelevant: the stored flag is the input.
 SKIPPED_DISABLED_IN_QRADAR = "disabled in QRadar"
+
+#: Fixed skip reason for a bucket whose half-open interval overlaps a QRadar
+#: pause. The bucket is not judged and nothing is written for it (D-52 P6).
+SKIPPED_OVERLAPS_PAUSE = "overlaps a QRadar pause"
+
+#: Rows the preceding-empty walk examines; the replay uses the same bound
+#: (`app.noise.backtest.PRECEDING_BUCKETS`). The walk needs contiguous rows only,
+#: so a span earlier than this many whole buckets cannot affect it.
+PRECEDING_EMPTY_BUCKETS = 12
+
+
+def _span_lookback(bucket_seconds: int) -> timedelta:
+    """How far back the span read must reach for the preceding-empty walk.
+
+    Derived from the walk's own bound, not a fixed day: `bucket_seconds` may be
+    wider than two hours, in which case twelve buckets span more than 24 h and a
+    literal one-day lookback would miss a pause the walk still crosses (cf.
+    `app.noise.backtest._metrics`: `interval_seconds * PRECEDING_BUCKETS`).
+    """
+    return timedelta(seconds=bucket_seconds * PRECEDING_EMPTY_BUCKETS)
+
+
+#: Pre-read spans for the current `evaluate_interval` call. A ContextVar is task-local
+#: and reset on exit, so two sources evaluated on one engine — concurrently or nested —
+#: can never read each other's spans (it is not engine instance state).
+_evaluated_spans: ContextVar[list[PauseSpan] | None] = ContextVar(
+    "evaluated_spans", default=None
+)
 
 
 @dataclass
@@ -133,6 +164,30 @@ def _as_float(value: object) -> float | None:
 
 def _as_int(value: object) -> int | None:
     return int(value) if isinstance(value, int | float) else None
+
+
+def _span_reaches(span: PauseSpan, when: datetime) -> bool:
+    """Whether a span covers `when`; an open span (`ends_at` NULL) reaches infinity."""
+    return span.ends_at is None or span.ends_at > when
+
+
+def _span_overlaps_bucket(
+    spans: list[PauseSpan], bucket_start: datetime, bucket_end: datetime
+) -> bool:
+    """Half-open overlap of any span with `[bucket_start, bucket_end)` (D-52 §5).
+
+    Exact boundary touches do not overlap; the caller has filtered on source.
+    """
+    return any(
+        span.starts_at < bucket_end and _span_reaches(span, bucket_start) for span in spans
+    )
+
+
+def _span_between(spans: list[PauseSpan], after: datetime, before: datetime) -> bool:
+    """Whether a span touches `(after, before)` — a pause in a missing-row gap (D-52 §5)."""
+    return any(
+        span.starts_at < before and _span_reaches(span, after) for span in spans
+    )
 
 
 def _is_worse(anomaly: LogSourceAnomaly, observed: float) -> bool:
@@ -291,6 +346,61 @@ class AnomalyEngine:
         # judged, so N sources judging one empty bucket count it once.
         self._fleet_alerts: dict[uuid.UUID, Alert] | None = None
 
+    async def _pause_spans(
+        self,
+        log_source_id: uuid.UUID,
+        first_bucket_start: datetime,
+        window_end: datetime,
+        *,
+        bucket_seconds: int,
+    ) -> list[PauseSpan]:
+        """One bulk read of the source's spans over the evaluation window (rule 9).
+
+        The window starts at the oldest detector `last_interval_start` (a pause in a
+        missing-row gap can be far older than the first pending bucket), or at the
+        first bucket minus the preceding-empty lookback, whichever is earlier. With
+        the switch off no statement is issued (D-95 N2).
+        """
+        if not source_pause_enabled(self.settings):
+            return []
+        earliest = await self.session.scalar(
+            select(func.min(LogSourceDetectorState.last_interval_start)).where(
+                LogSourceDetectorState.log_source_id == log_source_id
+            )
+        )
+        base = first_bucket_start if earliest is None else min(first_bucket_start, earliest)
+        found = await overlapping_spans(
+            self.session, [log_source_id], base - _span_lookback(bucket_seconds), window_end
+        )
+        return found.get(log_source_id, [])
+
+    @asynccontextmanager
+    async def _scoped_spans(self, spans: list[PauseSpan]) -> AsyncIterator[None]:
+        """Scope pre-read spans to one `evaluate_interval` call (signature unchanged)."""
+        token = _evaluated_spans.set(spans)
+        try:
+            yield
+        finally:
+            _evaluated_spans.reset(token)
+
+    async def _reset_confirmation_counters(self, log_source_id: uuid.UUID) -> None:
+        """Zero every detector's healthy/anomalous streak for one source.
+
+        A pause breaks a confirmation streak: neither the pause's length nor the
+        old pending zeros may count toward grace or confirmation on re-enable.
+        """
+        states = (
+            await self.session.scalars(
+                select(LogSourceDetectorState).where(
+                    LogSourceDetectorState.log_source_id == log_source_id
+                )
+            )
+        ).all()
+        for state in states:
+            state.consecutive_anomalous = 0
+            state.consecutive_healthy = 0
+        await self.session.flush()
+
     async def evaluate_latest(self, log_source: LogSource) -> EvaluationReport:
         """Test-only: no collector calls this; tests pin that it reads live rows."""
         metric = await self.session.scalar(
@@ -330,8 +440,33 @@ class AnomalyEngine:
             )
             if metric is None:
                 return EvaluationReport(log_source.id, None, skipped_reason="no metrics")
-            try:
+            spans = await self._pause_spans(
+                log_source.id,
+                metric.bucket_start,
+                metric.bucket_start + timedelta(seconds=metric.bucket_seconds),
+                bucket_seconds=metric.bucket_seconds,
+            )
+            bucket_end = metric.bucket_start + timedelta(seconds=metric.bucket_seconds)
+            if _span_overlaps_bucket(spans, metric.bucket_start, bucket_end):
+                # Not judged: seed the mark so this bucket is not retried every
+                # tick, and drop the streaks so a later whole bucket starts fresh.
+                # No `_clear_failure`: a skipped bucket is not an evaluation, so an
+                # open fault for this source is intentionally left as it was.
                 async with self.session.begin_nested():
+                    self.session.add(
+                        AnomalyEvaluationWatermark(
+                            log_source_id=log_source.id,
+                            evaluated_through=metric.bucket_start,
+                            updated_at=self._clock(),
+                        )
+                    )
+                    await self.session.flush()
+                    await self._reset_confirmation_counters(log_source.id)
+                return EvaluationReport(
+                    log_source.id, metric.bucket_start, skipped_reason=SKIPPED_OVERLAPS_PAUSE
+                )
+            try:
+                async with self._scoped_spans(spans), self.session.begin_nested():
                     report = await self.evaluate_interval(log_source, metric)
                     self.session.add(
                         AnomalyEvaluationWatermark(
@@ -384,9 +519,35 @@ class AnomalyEngine:
             combined.skipped_reason = "no pending metrics"
             return combined
 
+        # One bulk read for the whole pending window (rule 9), never one per
+        # bucket. Off returns no spans and issues no statement.
+        spans = await self._pause_spans(
+            log_source.id,
+            metrics[0].bucket_start,
+            metrics[-1].bucket_start + timedelta(seconds=metrics[-1].bucket_seconds),
+            bucket_seconds=max(m.bucket_seconds for m in metrics),
+        )
+        needs_reset = False
         for metric in metrics:
-            try:
+            bucket_end = metric.bucket_start + timedelta(seconds=metric.bucket_seconds)
+            if _span_overlaps_bucket(spans, metric.bucket_start, bucket_end):
+                # An overlapping retained bucket is not judged: the mark moves
+                # through it, no incident/transition/alert is written, and the
+                # confirmation counters are dropped. No `_clear_failure`: a skipped
+                # bucket is not an evaluation, so an open fault stays open.
                 async with self.session.begin_nested():
+                    watermark.evaluated_through = metric.bucket_start
+                    watermark.updated_at = self._clock()
+                    await self.session.flush()
+                needs_reset = True
+                if combined.skipped_reason is None:
+                    combined.skipped_reason = SKIPPED_OVERLAPS_PAUSE
+                continue
+            if needs_reset:
+                await self._reset_confirmation_counters(log_source.id)
+                needs_reset = False
+            try:
+                async with self._scoped_spans(spans), self.session.begin_nested():
                     report = await self.evaluate_interval(log_source, metric)
                     watermark.evaluated_through = metric.bucket_start
                     watermark.updated_at = self._clock()
@@ -413,6 +574,8 @@ class AnomalyEngine:
             combined.recovering.extend(report.recovering)
             combined.states = report.states
             combined.unsupported = report.unsupported
+        if needs_reset:
+            await self._reset_confirmation_counters(log_source.id)
         return combined
 
     # ---------------------------------------------------------------- faults
@@ -506,16 +669,32 @@ class AnomalyEngine:
             report.skipped_reason = SKIPPED_DISABLED_IN_QRADAR
             return report
 
+        spans = _evaluated_spans.get()
+        if spans is None:
+            spans = await self._pause_spans(
+                log_source.id,
+                metric.bucket_start,
+                metric.bucket_start + timedelta(seconds=metric.bucket_seconds),
+                bucket_seconds=metric.bucket_seconds,
+            )
+        bucket_end = metric.bucket_start + timedelta(seconds=metric.bucket_seconds)
+        if _span_overlaps_bucket(spans, metric.bucket_start, bucket_end):
+            # Direct evaluation of an overlapping bucket writes nothing at all.
+            report.skipped_reason = SKIPPED_OVERLAPS_PAUSE
+            return report
+
         in_maintenance = self._in_maintenance(log_source, metric.bucket_start)
 
-        ctx = await self._build_context(log_source, metric)
+        ctx = await self._build_context(log_source, metric, spans=spans)
         telemetry = bucket_telemetry(metric.collection_source, metric.query_provenance)
         evidences = self._run_detectors(ctx, telemetry, report)
 
         for evidence in evidences:
             if evidence.is_anomalous:
                 report.anomalous.append(evidence.anomaly_type.value)
-            await self._apply_hysteresis(log_source, metric, evidence, in_maintenance, report)
+            await self._apply_hysteresis(
+                log_source, metric, evidence, in_maintenance, report, spans=spans
+            )
 
         await self._fleet_step(log_source, metric, ctx, evidences, in_maintenance)
         await self.session.flush()
@@ -626,7 +805,11 @@ class AnomalyEngine:
 
     # ------------------------------------------------------------- context
     async def _build_context(
-        self, log_source: LogSource, metric: LogSourceMetric
+        self,
+        log_source: LogSource,
+        metric: LogSourceMetric,
+        *,
+        spans: list[PauseSpan] | None = None,
     ) -> DetectionContext:
         weekday = metric.bucket_start.isoweekday()
         hour = metric.bucket_start.hour
@@ -657,12 +840,17 @@ class AnomalyEngine:
             recent_signatures=recent,
             is_expected_active=self._is_expected_active(log_source, metric.bucket_start),
             preceding_empty_buckets=await self._preceding_empty_buckets(
-                log_source.id, metric
+                log_source.id, metric, spans=spans
             ),
         )
 
     async def _preceding_empty_buckets(
-        self, log_source_id: uuid.UUID, metric: LogSourceMetric, limit: int = 12
+        self,
+        log_source_id: uuid.UUID,
+        metric: LogSourceMetric,
+        limit: int = PRECEDING_EMPTY_BUCKETS,
+        *,
+        spans: list[PauseSpan] | None = None,
     ) -> int:
         """Consecutive empty buckets immediately before this one.
 
@@ -673,7 +861,9 @@ class AnomalyEngine:
         collect is not evidence that the source was silent, and letting it
         extend the streak would make a collector outage graduate into NO_EVENTS.
         The walk is therefore gap-aware: each row must end exactly where the
-        bucket after it starts, or the streak stops there.
+        bucket after it starts, or the streak stops there. Under the D-52 policy a
+        row overlapping a pause stops the walk the same way, including a legacy
+        COMPLETE zero written before pause tracking existed.
         """
         rows = list(
             (
@@ -692,7 +882,10 @@ class AnomalyEngine:
         streak = 0
         expected_next = metric.bucket_start
         for row in rows:
-            if row.bucket_start + timedelta(seconds=row.bucket_seconds) != expected_next:
+            row_end = row.bucket_start + timedelta(seconds=row.bucket_seconds)
+            if row_end != expected_next:
+                break
+            if spans and _span_overlaps_bucket(spans, row.bucket_start, row_end):
                 break
             if not row.is_complete or row.event_count > 0:
                 break
@@ -755,6 +948,8 @@ class AnomalyEngine:
         evidence: AnomalyEvidence,
         in_maintenance: bool,
         report: EvaluationReport,
+        *,
+        spans: list[PauseSpan] | None = None,
     ) -> None:
         state = await self._get_state(log_source.id, evidence.anomaly_type)
 
@@ -774,6 +969,17 @@ class AnomalyEngine:
         # allow recovery to proceed so a pre-existing anomaly can clear.
         if in_maintenance and signal is DetectorSignal.ANOMALOUS:
             signal = DetectorSignal.UNKNOWN
+
+        # A pause since this detector's last judged bucket breaks the streak even
+        # when it fell wholly inside a missing-row gap (no retained bucket overlapped
+        # it): neither confirmation nor recovery may count across it (D-52 §5).
+        if (
+            spans
+            and state.last_interval_start is not None
+            and _span_between(spans, state.last_interval_start, metric.bucket_start)
+        ):
+            state.consecutive_anomalous = 0
+            state.consecutive_healthy = 0
 
         state.consecutive_anomalous, state.consecutive_healthy = advance_counters(
             signal, state.consecutive_anomalous, state.consecutive_healthy
