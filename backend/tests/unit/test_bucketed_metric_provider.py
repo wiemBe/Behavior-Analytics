@@ -99,3 +99,22 @@ async def test_bucketed_misaligned_window_is_rejected_before_io() -> None:
             START + timedelta(seconds=1), END, bucket_seconds=300, max_rows=2
         )
     await provider.aclose()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("ceiling", [100_000, 4])
+async def test_bucketed_limit_respects_the_provider_ceiling(ceiling: int) -> None:
+    captured: list[str] = []
+    provider = _provider([_row(index) for index in range(5)], captured)
+    if ceiling == 4:
+        provider._page_size = 2
+        provider._max_pages = 2
+    try:
+        batch = await provider.get_log_source_metrics_bucketed(
+            START, END, bucket_seconds=300, max_rows=200_000
+        )
+        assert f"LIMIT {ceiling + 1} " in captured[0]
+        assert batch.truncated is (ceiling == 4)
+        assert batch.rows_returned == min(5, ceiling)
+    finally:
+        await provider.aclose()

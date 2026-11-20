@@ -241,10 +241,15 @@ class MetricCollector:
             intervals = self._intervals_to_collect(
                 watermark, current_boundary, interval, max_intervals=max_intervals
             )
+            # The search is console-wide, including unmonitored inventory. Reuse this
+            # map for writes and size searches before spending an Ariel permit.
+            id_map = await self._log_source_id_map(instance.id)
 
             try:
                 completed, searches_sent, splits, search_partial = (
-                    await self._collect_bucketed_window(intervals, interval)
+                    await self._collect_bucketed_window(
+                        intervals, interval, source_count=len(id_map)
+                    )
                 )
             except ProviderError as exc:
                 # Record the failure against the watermark and leave it
@@ -279,6 +284,7 @@ class MetricCollector:
                     search_window_end=bucket.search_window_end,
                     search_bucket_count=bucket.search_bucket_count,
                     split_depth=bucket.split_depth,
+                    id_map=id_map,
                 )
                 total_samples += written
                 buckets_collected += 1
@@ -303,6 +309,7 @@ class MetricCollector:
                 now=now,
                 live_searches=searches_sent,
                 cadence_seconds=cadence.cadence_seconds,
+                source_count=len(id_map),
             )
 
             return CollectionReport(
@@ -340,7 +347,7 @@ class MetricCollector:
         return out
 
     async def _collect_bucketed_window(
-        self, intervals: list[datetime], interval: int
+        self, intervals: list[datetime], interval: int, *, source_count: int = 0
     ) -> tuple[dict[datetime, CompletedBucket], int, int, bool]:
         """The live pass: search the cadence window, retaining the complete buckets."""
         if not intervals:
@@ -350,6 +357,7 @@ class MetricCollector:
             len(intervals),
             interval,
             max_searches=self.settings.search_cadence_max_searches_per_tick,
+            source_count=source_count,
         )
         # Complete buckets before the failure are kept; with none, nothing
         # advanced and the error surfaces so the run is recorded as failed.
@@ -371,6 +379,7 @@ class MetricCollector:
         max_searches: int,
         deadline: datetime | None = None,
         qradar_ids: Sequence[int] | None = None,
+        source_count: int = 0,
     ) -> _WindowSearch:
         """Search `bucket_count` buckets from `start`, recursively splitting truncation.
 
@@ -462,7 +471,19 @@ class MetricCollector:
                     collected_at=collected_at,
                 )
 
-        await search(start, bucket_count, 0)
+        # One row per (source, bucket). Plan fitting spans without sending a
+        # parent search we already expect to discard. Unknown/new sources can
+        # still exceed the estimate: the truncation split above remains authoritative.
+        sources = len(qradar_ids) if qradar_ids is not None else source_count
+        span = max(1, self.settings.ariel_multi_bucket_max_rows // max(1, sources))
+        for offset in range(0, bucket_count, span):
+            await search(
+                start + timedelta(seconds=interval * offset),
+                min(span, bucket_count - offset),
+                0,
+            )
+            if found.capped or found.failure is not None:
+                break
         return found
 
     async def _collect_interval(
@@ -502,11 +523,13 @@ class MetricCollector:
         search_window_end: datetime | None = None,
         search_bucket_count: int | None = None,
         split_depth: int | None = None,
+        id_map: dict[int, uuid.UUID] | None = None,
     ) -> int:
         """Persist one complete bucket through the existing upsert and zero-fill."""
 
         # Map qradar_id -> internal LogSource id for this instance.
-        id_map = await self._log_source_id_map(instance.id)
+        if id_map is None:
+            id_map = await self._log_source_id_map(instance.id)
 
         # Non-secret evidence of how these rows were produced. Never the token,
         # never response headers — only the shape of the request. What `event_count`
@@ -679,6 +702,7 @@ class MetricCollector:
         now: datetime,
         live_searches: int,
         cadence_seconds: int,
+        source_count: int = 0,
     ) -> HistoryReport:
         """One tick of Phase A history, after the live pass, in a savepoint.
 
@@ -694,6 +718,7 @@ class MetricCollector:
                     now=now,
                     live_searches=live_searches,
                     cadence_seconds=cadence_seconds,
+                    source_count=source_count,
                 )
         except ArielPermitUnavailable as exc:
             reason_message = ariel_history_deferred_message(exc)
@@ -737,6 +762,7 @@ class MetricCollector:
         now: datetime,
         live_searches: int,
         cadence_seconds: int,
+        source_count: int = 0,
     ) -> HistoryReport:
         report = HistoryReport()
         repo = HistoryBackfillRepository(self.session)
@@ -797,6 +823,7 @@ class MetricCollector:
                 live_searches=live_searches,
                 cadence_seconds=cadence_seconds,
                 report=report,
+                source_count=source_count,
             )
 
         # The baseline rebuild of the sources a finished reading read (§B.8.5), in batches.
@@ -854,6 +881,7 @@ class MetricCollector:
         live_searches: int,
         cadence_seconds: int,
         report: HistoryReport,
+        source_count: int = 0,
     ) -> dict[str, Any] | None:
         """One bounded step of a `READING` scope; the scope row to write, or None."""
         if row.anchor is None:
@@ -975,6 +1003,7 @@ class MetricCollector:
                     max_searches=budget - spent,
                     deadline=deadline,
                     qradar_ids=search_ids,
+                    source_count=source_count,
                 )
             if isinstance(found.failure, ArielPermitUnavailable):
                 # Before chunk_results and settle_step. Those treat a provider

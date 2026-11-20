@@ -21,10 +21,11 @@ from app.collectors.metric_collector import (
 )
 from app.core.config import Settings
 from app.models.enums import BucketCompleteness, SearchFamily
+from app.models.instance import QRadarInstance
 from app.models.log_source import LogSource, LogSourceMetric
 from app.models.monitoring import CollectionWatermark
 from app.providers.base import ProviderError
-from app.providers.dto import LogSourceMetricSample
+from app.providers.dto import LogSourceMetricBucketBatch, LogSourceMetricSample
 from app.providers.mock import MockQRadarProvider
 from app.providers.qradar_rest import QRadarRestProvider
 from app.services.ariel_permit import ArielPermitUnavailable
@@ -32,6 +33,7 @@ from app.services.inventory_sync import InventorySyncService
 from app.services.locks import collector_lock_key
 from app.services.search_cadence import SearchCadenceService
 from tests.integration.factories import make_instance
+from tests.integration.history_phase_a_support import say_yes
 
 pytestmark = [pytest.mark.integration, pytest.mark.asyncio]
 
@@ -353,6 +355,123 @@ async def test_twelve_buckets_use_one_search(db_session) -> None:
     assert report.buckets_collected == 12
     assert report.searches_sent == 1
     assert report.splits == 0
+
+
+class ScaleVolumeProvider(MockQRadarProvider):
+    """One aggregate row per source per bucket; truncated rows are poisoned."""
+
+    def __init__(self, sources: int) -> None:
+        super().__init__(seed=1337)
+        self.sources = sources
+        self.calls: list[tuple[int, int | None, bool]] = []
+
+    def samples(self, start: datetime, count: int = 1) -> list[LogSourceMetricSample]:
+        return [
+            LogSourceMetricSample(
+                qradar_id=qid, bucket_start=start, bucket_seconds=300, event_count=count
+            )
+            for qid in range(1, self.sources + 1)
+        ]
+
+    async def get_log_source_metrics(self, window_start, window_end):  # type: ignore[no-untyped-def]
+        self.calls.append((1, None, False))
+        return self.samples(window_start)
+
+    async def get_log_source_metrics_bucketed(
+        self, window_start, window_end, *, bucket_seconds, max_rows
+    ):  # type: ignore[no-untyped-def]
+        buckets = int((window_end - window_start).total_seconds()) // bucket_seconds
+        truncated = self.sources * buckets > max_rows
+        self.calls.append((buckets, max_rows, truncated))
+        return LogSourceMetricBucketBatch(
+            buckets={
+                window_start + timedelta(seconds=bucket_seconds * i): self.samples(
+                    window_start + timedelta(seconds=bucket_seconds * i),
+                    999 if truncated else 1,
+                )
+                for i in range(buckets)
+            },
+            rows_returned=min(max_rows, self.sources * buckets),
+            truncated=truncated,
+            aql="scripted aggregate",
+        )
+
+
+async def _scale_volume_tick(session, sources: int, *, actual: int | None = None):
+    instance = await make_instance(session)
+    await session.execute(insert(LogSource), [
+        {
+            "instance_id": instance.id, "qradar_id": qid, "name": f"scale-{qid}",
+            # Unmonitored inventory still appears in a console-wide search.
+            "monitoring_enabled": qid <= 100,
+        }
+        for qid in range(1, sources + 1)
+    ])
+    settings = _settings(collection_max_backfill_intervals=0)
+    await _set_phase_a_cadence(session, settings, 3600)
+    boundary = datetime(2026, 7, 15, 10, 0, tzinfo=UTC)
+    await _seed_watermark(session, instance, boundary - timedelta(minutes=65))
+    provider = ScaleVolumeProvider(actual if actual is not None else sources)
+    with _recorded_statements(session) as statements:
+        report = await MetricCollector(
+            session, provider, settings=settings, clock=lambda: boundary,
+        ).collect(instance)
+    rows, buckets, minimum, maximum = (await session.execute(
+        select(
+            func.count(), func.count(func.distinct(LogSourceMetric.bucket_start)),
+            func.min(LogSourceMetric.event_count), func.max(LogSourceMetric.event_count),
+        ).join(LogSource).where(LogSource.instance_id == instance.id)
+    )).one()
+    assert report.buckets_collected == buckets == 12
+    assert report.samples_written == rows == sources * 12
+    assert minimum == maximum == 1  # no truncated-parent rows or invented zeros
+    assert report.watermark_at == boundary - timedelta(minutes=5)
+    assert not report.partial
+    return provider, report, len(statements)
+
+
+@pytest.mark.parametrize(("sources", "searches"), [(100, 1), (8000, 12)])
+async def test_scale_volume_plans_searches_without_discarding_results(
+    db_session, sources: int, searches: int,
+) -> None:
+    provider, report, _ = await _scale_volume_tick(db_session, sources)
+    assert report.searches_sent == len(provider.calls) == searches
+    assert report.splits == 0
+    assert not any(truncated for _, _, truncated in provider.calls)
+
+
+async def test_scale_volume_underestimate_still_discards_and_splits(db_session) -> None:
+    provider, report, _ = await _scale_volume_tick(db_session, 100, actual=1000)
+    assert report.searches_sent == len(provider.calls) == 7
+    assert report.splits == 3
+    assert sum(truncated for _, _, truncated in provider.calls) == 3
+
+
+async def test_scale_volume_statement_count_is_constant(db_session, record_property) -> None:
+    _, _, one = await _scale_volume_tick(db_session, 1)
+    _, _, many = await _scale_volume_tick(db_session, 200)
+    record_property("statements_1_source", one)
+    record_property("statements_200_sources", many)
+    assert one == many
+
+
+async def test_scale_volume_history_counts_unmonitored_inventory(db_session) -> None:
+    provider, report, _ = await _scale_volume_tick(db_session, 1000)
+    instance = await db_session.get(QRadarInstance, report.instance_id)
+    await say_yes(db_session, instance)
+    settings = _settings(collection_max_backfill_intervals=0)
+    boundary = datetime(2026, 7, 15, 10, 0, tzinfo=UTC)
+    collector = MetricCollector(db_session, provider, settings=settings, clock=lambda: boundary)
+    await collector.collect(instance)  # creates the history scope, with no live bucket due
+    provider.calls.clear()
+
+    result = await collector.collect(instance)
+
+    assert result.searches_sent == 0
+    assert result.history is not None and result.history.error is None
+    assert result.history.searches == len(provider.calls) > 0
+    # Only 100 are monitored, but all 1,000 emit: at most five buckets fit 5,000 rows.
+    assert all(buckets <= 5 and not truncated for buckets, _, truncated in provider.calls)
 
 
 async def test_truncation_splits_cover_window_without_overlap(db_session) -> None:
