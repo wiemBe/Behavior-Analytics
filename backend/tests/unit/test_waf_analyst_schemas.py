@@ -66,7 +66,7 @@ def test_ratio_evidence_reads_nested_sections_by_key() -> None:
     assert "198.51.100.2" not in out.model_dump_json()
 
 
-NEW_ENDPOINT_CAVEAT = "A newly requested endpoint may be a deployment as easily as a probe."
+NEW_ENDPOINT_CAVEAT = "A new endpoint may be a deployment, not a probe."
 
 
 def test_caveat_is_forwarded_from_the_evidence() -> None:

@@ -298,7 +298,7 @@ def test_each_entity_spike_uses_increase_only_scope_for_a_lower_bound(
     )
     assert anomalous.signal is DetectorSignal.ANOMALOUS
     assert anomalous.evidence.extra["observed_measurement"] == "LOWER_BOUND"
-    _assert_insufficient(not_normal, "normal verdict cannot be concluded")
+    _assert_insufficient(not_normal, "so no normal verdict")
 
 
 @pytest.mark.parametrize("value_key", ["0/tcp", "443/255"])
@@ -490,7 +490,7 @@ def test_fanout_lower_bound_can_only_prove_an_increase() -> None:
         )
     )
     assert anomalous.signal is DetectorSignal.ANOMALOUS
-    _assert_insufficient(not_normal, "normal verdict cannot be concluded")
+    _assert_insufficient(not_normal, "so no normal verdict")
 
 
 @pytest.mark.parametrize(
@@ -580,7 +580,7 @@ def test_unmapped_actions_make_blocked_events_increase_only() -> None:
     )
     assert anomalous.signal is DetectorSignal.ANOMALOUS
     assert anomalous.evidence.extra["observed_measurement"] == "LOWER_BOUND"
-    _assert_insufficient(not_normal, "normal verdict cannot be concluded")
+    _assert_insufficient(not_normal, "so no normal verdict")
 
 
 def test_pooled_detectors_refuse_a_baseline_without_a_denominator() -> None:
@@ -677,7 +677,7 @@ def test_verify_port_history_accepts_only_a_complete_comparable_window() -> None
         (
             [_history_bucket(0, bucket_seconds=300), _history_bucket(1)],
             {},
-            "different collection bucket width",
+            "different bucket width",
         ),
         (
             [
@@ -783,7 +783,7 @@ def test_new_port_has_normal_anomalous_and_re_admitted_paths() -> None:
         _novelty_context(novelty=_novelty(readmitted=True))
     )
     assert anomalous.signal is DetectorSignal.ANOMALOUS
-    assert "stayed below" in anomalous.evidence.reason
+    assert "always below" in anomalous.evidence.reason
     assert quiet.signal is DetectorSignal.HEALTHY
     assert established.signal is DetectorSignal.HEALTHY
     assert readmitted.signal is DetectorSignal.HEALTHY

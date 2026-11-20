@@ -95,15 +95,15 @@ EXPECTED: dict[str, tuple[str, str]] = {
     ),
     "rate.no_baseline": (
         "UNKNOWN",
-        "no request-rate baseline for this weekday/hour cell yet",
+        "no request-rate baseline for this weekday/hour yet",
     ),
     "rate.baseline_samples": (
         "UNKNOWN",
-        "baseline has 3 sample(s), below the minimum required for a defensible verdict",
+        "baseline has 3 sample(s), below the minimum",
     ),
     "rate.below_min_volume": (
         "HEALTHY",
-        "12 requests/bucket is below the 20 minimum for a defensible verdict",
+        "12 requests/bucket is below the 20 minimum",
     ),
     "rate.ratio_not_reached": (
         "HEALTHY",
@@ -115,7 +115,7 @@ EXPECTED: dict[str, tuple[str, str]] = {
     ),
     "rate.z_not_reached": (
         "HEALTHY",
-        "robust z=2.53 has not reached the +3.5 threshold",
+        "robust z=2.53 has not reached +3.5",
     ),
     "rate.mad_within_band": (
         "HEALTHY",
@@ -150,7 +150,7 @@ EXPECTED: dict[str, tuple[str, str]] = {
     "rate.lower_fired": (
         "ANOMALOUS",
         (
-            "at least 500 requests (a lower bound: the count is a lower bound: an increase can be "
+            "at least 500 requests (lower bound: the count is a lower bound: an increase can be "
             "proven, normal behaviour cannot) is above the baseline median 100.0 (5.00x expected, "
             "+400 requests/bucket); robust z=26.98 (threshold +3.5)"
         ),
@@ -158,14 +158,14 @@ EXPECTED: dict[str, tuple[str, str]] = {
     "rate.lower_fired_plain_scope": (
         "ANOMALOUS",
         (
-            "at least 500 requests (a lower bound: a caller's own wording) is above the baseline "
+            "at least 500 requests (lower bound: a caller's own wording) is above the baseline "
             "median 100.0 (5.00x expected, +400 requests/bucket); robust z=26.98 (threshold +3.5)"
         ),
     ),
     "rate.lower_fired_no_scope": (
         "ANOMALOUS",
         (
-            "at least 500 requests (a lower bound: some events could not be attributed) is above "
+            "at least 500 requests (lower bound: some events could not be attributed) is above "
             "the baseline median 100.0 (5.00x expected, +400 requests/bucket); robust z=26.98 "
             "(threshold +3.5)"
         ),
@@ -173,7 +173,7 @@ EXPECTED: dict[str, tuple[str, str]] = {
     "rate.lower_fired_mad_outside_band": (
         "ANOMALOUS",
         (
-            "at least 500 requests (a lower bound: the count is a lower bound: an increase can be "
+            "at least 500 requests (lower bound: the count is a lower bound: an increase can be "
             "proven, normal behaviour cannot) is above the baseline median 100.0 (5.00x expected, "
             "+400 requests/bucket); robust score unavailable (MAD=0); observed value is outside "
             "the expected band [80.00, 130.00]"
@@ -182,53 +182,47 @@ EXPECTED: dict[str, tuple[str, str]] = {
     "rate.lower_below_min_volume": (
         "UNKNOWN",
         (
-            "at least 12 requests were attributed to this endpoint, but the count is a lower "
-            "bound and 12 requests/bucket is below the 20 minimum for a defensible verdict; a "
-            "normal verdict cannot be concluded from a lower bound"
+            "at least 12 requests (lower bound); 12 requests/bucket is below the 20 minimum, so "
+            "no normal verdict"
         ),
     ),
     "rate.lower_ratio_not_reached": (
         "UNKNOWN",
         (
-            "at least 150 requests were attributed to this endpoint, but the count is a lower "
-            "bound and observed/expected ratio 1.50 has not reached 2.00; a normal verdict cannot "
-            "be concluded from a lower bound"
+            "at least 150 requests (lower bound); observed/expected ratio 1.50 has not reached "
+            "2.00, so no normal verdict"
         ),
     ),
     "rate.lower_delta_below_min": (
         "UNKNOWN",
         (
-            "at least 45 requests were attributed to this endpoint, but the count is a lower "
-            "bound and increase of 25 requests/bucket is below the 50 minimum absolute delta; a "
-            "normal verdict cannot be concluded from a lower bound"
+            "at least 45 requests (lower bound); increase of 25 requests/bucket is below the 50 "
+            "minimum absolute delta, so no normal verdict"
         ),
     ),
     "rate.lower_z_not_reached": (
         "UNKNOWN",
         (
-            "at least 250 requests were attributed to this endpoint, but the count is a lower "
-            "bound and robust z=2.53 has not reached the +3.5 threshold; a normal verdict cannot "
-            "be concluded from a lower bound"
+            "at least 250 requests (lower bound); robust z=2.53 has not reached +3.5, so no "
+            "normal verdict"
         ),
     ),
     "rate.lower_mad_within_band": (
         "UNKNOWN",
         (
-            "at least 250 requests were attributed to this endpoint, but the count is a lower "
-            "bound and robust score unavailable (MAD=0) and observed value is inside the expected "
-            "band [80.00, 300.00]; a normal verdict cannot be concluded from a lower bound"
+            "at least 250 requests (lower bound); robust score unavailable (MAD=0) and observed "
+            "value is inside the expected band [80.00, 300.00], so no normal verdict"
         ),
     ),
     "ratio.block.not_collected": (
         "UNKNOWN",
         (
-            "the ACTION breakdown was not collected for this bucket: the value is unavailable, "
-            "not zero"
+            "the ACTION breakdown was not collected for this bucket; value unavailable, not zero"
         ),
     ),
     "ratio.block.failed": (
         "UNKNOWN",
-        "the ACTION breakdown failed for this bucket: the value is unavailable, not zero",
+        "the ACTION breakdown failed for this bucket; value unavailable, not zero",
     ),
     "ratio.block.scope_none_coded": (
         "UNKNOWN",
@@ -246,8 +240,7 @@ EXPECTED: dict[str, tuple[str, str]] = {
         "UNKNOWN",
         (
             "only 62\xa0% of this source's events parsed to an endpoint, below the 90\xa0% "
-            "coverage floor: the unparsed requests may differ in kind from the parsed ones, so "
-            "the visible proportion bounds nothing"
+            "coverage floor, so the proportion bounds nothing"
         ),
     ),
     "ratio.block.field_coverage_low": (
@@ -266,13 +259,12 @@ EXPECTED: dict[str, tuple[str, str]] = {
     ),
     "ratio.block.no_baseline": (
         "UNKNOWN",
-        "no block_ratio baseline for this weekday/hour cell yet",
+        "no block_ratio baseline for this weekday/hour yet",
     ),
     "ratio.block.baseline_samples": (
         "UNKNOWN",
         (
-            "the block_ratio baseline has 2 material bucket(s), below the minimum for a "
-            "defensible verdict"
+            "the block_ratio baseline has 2 material bucket(s), below the minimum"
         ),
     ),
     "ratio.block.no_denominator": (
@@ -282,13 +274,12 @@ EXPECTED: dict[str, tuple[str, str]] = {
     "ratio.block.numerator_below_min": (
         "HEALTHY",
         (
-            "9 blocked requests is below the 10 minimum; no material rise in the proportion is "
-            "possible"
+            "9 blocked requests is below the 10 minimum; no material rise is possible"
         ),
     ),
     "ratio.block.denominator_below_min": (
         "UNKNOWN",
-        "49 requests carrying a WAF action is below the 50 minimum denominator for a ratio verdict",
+        "49 requests carrying a WAF action is below the 50 minimum denominator",
     ),
     "ratio.block.guard_rise": (
         "HEALTHY",
@@ -299,7 +290,7 @@ EXPECTED: dict[str, tuple[str, str]] = {
         (
             "6.0\xa0% is +3.0\xa0pp from the expected 3.0\xa0%, below the 10\xa0pp minimum rise; "
             "the numerator is a lower bound (the count is a lower bound: an increase can be "
-            "proven, normal behaviour cannot), so a normal verdict cannot be concluded from it"
+            "proven, normal behaviour cannot), so no normal verdict"
         ),
     ),
     "ratio.block.guard_multiple": (
@@ -311,7 +302,7 @@ EXPECTED: dict[str, tuple[str, str]] = {
         (
             "50.0\xa0% is 1.67x the expected 30.0\xa0%, below 2.00x; the numerator is a lower "
             "bound (the count is a lower bound: an increase can be proven, normal behaviour "
-            "cannot), so a normal verdict cannot be concluded from it"
+            "cannot), so no normal verdict"
         ),
     ),
     "ratio.block.guard_robust_z": (
@@ -322,8 +313,8 @@ EXPECTED: dict[str, tuple[str, str]] = {
         "UNKNOWN",
         (
             "robust z=1.01 has not reached +3.5; the numerator is a lower bound (the count is a "
-            "lower bound: an increase can be proven, normal behaviour cannot), so a normal "
-            "verdict cannot be concluded from it"
+            "lower bound: an increase can be proven, normal behaviour cannot), so no normal "
+            "verdict"
         ),
     ),
     "ratio.block.guard_mad_zero_within_p95": (
@@ -335,87 +326,81 @@ EXPECTED: dict[str, tuple[str, str]] = {
         (
             "robust score unavailable (MAD=0) and 20.0\xa0% is within the historical p95 "
             "20.0\xa0%; the numerator is a lower bound (the count is a lower bound: an increase "
-            "can be proven, normal behaviour cannot), so a normal verdict cannot be concluded "
-            "from it"
+            "can be proven, normal behaviour cannot), so no normal verdict"
         ),
     ),
     "ratio.block.lower_guard_no_scope": (
         "UNKNOWN",
         (
-            "9 blocked requests is below the 10 minimum; no material rise in the proportion is "
-            "possible; the numerator is a lower bound (some values were unclassified), so a "
-            "normal verdict cannot be concluded from it"
+            "9 blocked requests is below the 10 minimum; no material rise is possible; the "
+            "numerator is a lower bound (some values were unclassified), so no normal verdict"
         ),
     ),
     "ratio.block.lower_guard_plain_scope": (
         "UNKNOWN",
         (
-            "9 blocked requests is below the 10 minimum; no material rise in the proportion is "
-            "possible; the numerator is a lower bound (odd), so a normal verdict cannot be "
-            "concluded from it"
+            "9 blocked requests is below the 10 minimum; no material rise is possible; the "
+            "numerator is a lower bound (odd), so no normal verdict"
         ),
     ),
     "ratio.block.fired": (
         "ANOMALOUS",
         (
             "40 of 100 requests carrying a WAF action to GET /login were blocked requests "
-            "(40.0\xa0%), against an expected 10.0\xa0% from 1000 historical requests "
-            "(+30.0\xa0pp, 4.0x); robust z=10.12 (threshold +3.5)"
+            "(40.0\xa0%); expected 10.0\xa0% from 1000 historical requests (+30.0\xa0pp, 4.0x); "
+            "robust z=10.12 (threshold +3.5)"
         ),
     ),
     "ratio.block.fired_mad_above_p95": (
         "ANOMALOUS",
         (
             "25 of 100 requests carrying a WAF action to GET /login were blocked requests "
-            "(25.0\xa0%), against an expected 10.0\xa0% from 1000 historical requests "
-            "(+15.0\xa0pp, 2.5x); robust score unavailable (MAD=0); 25.0\xa0% is above the "
-            "historical p95 20.0\xa0%"
+            "(25.0\xa0%); expected 10.0\xa0% from 1000 historical requests (+15.0\xa0pp, 2.5x); "
+            "robust score unavailable (MAD=0); 25.0\xa0% is above the historical p95 20.0\xa0%"
         ),
     ),
     "ratio.block.fired_no_multiple": (
         "ANOMALOUS",
         (
             "15 of 100 requests carrying a WAF action to GET /login were blocked requests "
-            "(15.0\xa0%), against an expected 0.0\xa0% from 1000 historical requests "
-            "(+15.0\xa0pp); robust score unavailable (MAD=0); 15.0\xa0% is above the historical "
-            "p95 0.0\xa0%"
+            "(15.0\xa0%); expected 0.0\xa0% from 1000 historical requests (+15.0\xa0pp); robust "
+            "score unavailable (MAD=0); 15.0\xa0% is above the historical p95 0.0\xa0%"
         ),
     ),
     "ratio.block.lower_fired": (
         "ANOMALOUS",
         (
-            "at least 40 of 100 requests carrying a WAF action to GET /login were blocked "
-            "requests (at least 40.0\xa0%), against an expected 10.0\xa0% from 1000 historical "
-            "requests (+30.0\xa0pp, 4.0x); robust z=10.12 (threshold +3.5)"
+            "at least 40 of 100 requests carrying a WAF action to GET /login were blocked requests "
+            "(at least 40.0\xa0%); expected 10.0\xa0% from 1000 historical requests (+30.0\xa0pp, "
+            "4.0x); robust z=10.12 (threshold +3.5)"
         ),
     ),
     "ratio.block.lower_fired_no_multiple": (
         "ANOMALOUS",
         (
-            "at least 15 of 100 requests carrying a WAF action to GET /login were blocked "
-            "requests (at least 15.0\xa0%), against an expected 0.0\xa0% from 1000 historical "
-            "requests (+15.0\xa0pp); robust score unavailable (MAD=0); 15.0\xa0% is above the "
-            "historical p95 0.0\xa0%"
+            "at least 15 of 100 requests carrying a WAF action to GET /login were blocked requests "
+            "(at least 15.0\xa0%); expected 0.0\xa0% from 1000 historical requests (+15.0\xa0pp); "
+            "robust score unavailable (MAD=0); 15.0\xa0% is above the historical p95 0.0\xa0%"
         ),
     ),
     "ratio.block.fired_no_entity": (
         "ANOMALOUS",
         (
             "40 of 100 requests carrying a WAF action to this endpoint were blocked requests "
-            "(40.0\xa0%), against an expected 10.0\xa0% from 1000 historical requests "
-            "(+30.0\xa0pp, 4.0x); robust z=10.12 (threshold +3.5)"
+            "(40.0\xa0%); expected 10.0\xa0% from 1000 historical requests (+30.0\xa0pp, 4.0x); "
+            "robust z=10.12 (threshold +3.5)"
         ),
     ),
     "ratio.server.not_collected": (
         "UNKNOWN",
         (
-            "the RESPONSE_CODE breakdown was not collected for this bucket: the value is "
-            "unavailable, not zero"
+            "the RESPONSE_CODE breakdown was not collected for this bucket; value unavailable, "
+            "not zero"
         ),
     ),
     "ratio.server.failed": (
         "UNKNOWN",
-        "the RESPONSE_CODE breakdown failed for this bucket: the value is unavailable, not zero",
+        "the RESPONSE_CODE breakdown failed for this bucket; value unavailable, not zero",
     ),
     "ratio.server.scope_none_coded": (
         "UNKNOWN",
@@ -433,8 +418,7 @@ EXPECTED: dict[str, tuple[str, str]] = {
         "UNKNOWN",
         (
             "only 62\xa0% of this source's events parsed to an endpoint, below the 90\xa0% "
-            "coverage floor: the unparsed requests may differ in kind from the parsed ones, so "
-            "the visible proportion bounds nothing"
+            "coverage floor, so the proportion bounds nothing"
         ),
     ),
     "ratio.server.field_coverage_low": (
@@ -453,13 +437,12 @@ EXPECTED: dict[str, tuple[str, str]] = {
     ),
     "ratio.server.no_baseline": (
         "UNKNOWN",
-        "no server_error_ratio baseline for this weekday/hour cell yet",
+        "no server_error_ratio baseline for this weekday/hour yet",
     ),
     "ratio.server.baseline_samples": (
         "UNKNOWN",
         (
-            "the server_error_ratio baseline has 2 material bucket(s), below the minimum for a "
-            "defensible verdict"
+            "the server_error_ratio baseline has 2 material bucket(s), below the minimum"
         ),
     ),
     "ratio.server.no_denominator": (
@@ -469,15 +452,13 @@ EXPECTED: dict[str, tuple[str, str]] = {
     "ratio.server.numerator_below_min": (
         "HEALTHY",
         (
-            "9 HTTP 5xx responses is below the 10 minimum; no material rise in the proportion is "
-            "possible"
+            "9 HTTP 5xx responses is below the 10 minimum; no material rise is possible"
         ),
     ),
     "ratio.server.denominator_below_min": (
         "UNKNOWN",
         (
-            "49 requests carrying a response code is below the 50 minimum denominator for a ratio "
-            "verdict"
+            "49 requests carrying a response code is below the 50 minimum denominator"
         ),
     ),
     "ratio.server.guard_rise": (
@@ -489,7 +470,7 @@ EXPECTED: dict[str, tuple[str, str]] = {
         (
             "6.0\xa0% is +3.0\xa0pp from the expected 3.0\xa0%, below the 10\xa0pp minimum rise; "
             "the numerator is a lower bound (the count is a lower bound: an increase can be "
-            "proven, normal behaviour cannot), so a normal verdict cannot be concluded from it"
+            "proven, normal behaviour cannot), so no normal verdict"
         ),
     ),
     "ratio.server.guard_multiple": (
@@ -501,7 +482,7 @@ EXPECTED: dict[str, tuple[str, str]] = {
         (
             "50.0\xa0% is 1.67x the expected 30.0\xa0%, below 2.00x; the numerator is a lower "
             "bound (the count is a lower bound: an increase can be proven, normal behaviour "
-            "cannot), so a normal verdict cannot be concluded from it"
+            "cannot), so no normal verdict"
         ),
     ),
     "ratio.server.guard_robust_z": (
@@ -512,8 +493,8 @@ EXPECTED: dict[str, tuple[str, str]] = {
         "UNKNOWN",
         (
             "robust z=1.01 has not reached +3.5; the numerator is a lower bound (the count is a "
-            "lower bound: an increase can be proven, normal behaviour cannot), so a normal "
-            "verdict cannot be concluded from it"
+            "lower bound: an increase can be proven, normal behaviour cannot), so no normal "
+            "verdict"
         ),
     ),
     "ratio.server.guard_mad_zero_within_p95": (
@@ -525,87 +506,82 @@ EXPECTED: dict[str, tuple[str, str]] = {
         (
             "robust score unavailable (MAD=0) and 20.0\xa0% is within the historical p95 "
             "20.0\xa0%; the numerator is a lower bound (the count is a lower bound: an increase "
-            "can be proven, normal behaviour cannot), so a normal verdict cannot be concluded "
-            "from it"
+            "can be proven, normal behaviour cannot), so no normal verdict"
         ),
     ),
     "ratio.server.lower_guard_no_scope": (
         "UNKNOWN",
         (
-            "9 HTTP 5xx responses is below the 10 minimum; no material rise in the proportion is "
-            "possible; the numerator is a lower bound (some values were unclassified), so a "
-            "normal verdict cannot be concluded from it"
+            "9 HTTP 5xx responses is below the 10 minimum; no material rise is possible; the "
+            "numerator is a lower bound (some values were unclassified), so no normal verdict"
         ),
     ),
     "ratio.server.lower_guard_plain_scope": (
         "UNKNOWN",
         (
-            "9 HTTP 5xx responses is below the 10 minimum; no material rise in the proportion is "
-            "possible; the numerator is a lower bound (odd), so a normal verdict cannot be "
-            "concluded from it"
+            "9 HTTP 5xx responses is below the 10 minimum; no material rise is possible; the "
+            "numerator is a lower bound (odd), so no normal verdict"
         ),
     ),
     "ratio.server.fired": (
         "ANOMALOUS",
         (
             "40 of 100 requests carrying a response code to GET /login were HTTP 5xx responses "
-            "(40.0\xa0%), against an expected 10.0\xa0% from 1000 historical requests "
-            "(+30.0\xa0pp, 4.0x); robust z=10.12 (threshold +3.5)"
+            "(40.0\xa0%); expected 10.0\xa0% from 1000 historical requests (+30.0\xa0pp, 4.0x); "
+            "robust z=10.12 (threshold +3.5)"
         ),
     ),
     "ratio.server.fired_mad_above_p95": (
         "ANOMALOUS",
         (
             "25 of 100 requests carrying a response code to GET /login were HTTP 5xx responses "
-            "(25.0\xa0%), against an expected 10.0\xa0% from 1000 historical requests "
-            "(+15.0\xa0pp, 2.5x); robust score unavailable (MAD=0); 25.0\xa0% is above the "
-            "historical p95 20.0\xa0%"
+            "(25.0\xa0%); expected 10.0\xa0% from 1000 historical requests (+15.0\xa0pp, 2.5x); "
+            "robust score unavailable (MAD=0); 25.0\xa0% is above the historical p95 20.0\xa0%"
         ),
     ),
     "ratio.server.fired_no_multiple": (
         "ANOMALOUS",
         (
             "15 of 100 requests carrying a response code to GET /login were HTTP 5xx responses "
-            "(15.0\xa0%), against an expected 0.0\xa0% from 1000 historical requests "
-            "(+15.0\xa0pp); robust score unavailable (MAD=0); 15.0\xa0% is above the historical "
-            "p95 0.0\xa0%"
+            "(15.0\xa0%); expected 0.0\xa0% from 1000 historical requests (+15.0\xa0pp); robust "
+            "score unavailable (MAD=0); 15.0\xa0% is above the historical p95 0.0\xa0%"
         ),
     ),
     "ratio.server.lower_fired": (
         "ANOMALOUS",
         (
             "at least 40 of 100 requests carrying a response code to GET /login were HTTP 5xx "
-            "responses (at least 40.0\xa0%), against an expected 10.0\xa0% from 1000 historical "
-            "requests (+30.0\xa0pp, 4.0x); robust z=10.12 (threshold +3.5)"
+            "responses (at least 40.0\xa0%); expected 10.0\xa0% from 1000 historical requests "
+            "(+30.0\xa0pp, 4.0x); robust z=10.12 (threshold +3.5)"
         ),
     ),
     "ratio.server.lower_fired_no_multiple": (
         "ANOMALOUS",
         (
             "at least 15 of 100 requests carrying a response code to GET /login were HTTP 5xx "
-            "responses (at least 15.0\xa0%), against an expected 0.0\xa0% from 1000 historical "
-            "requests (+15.0\xa0pp); robust score unavailable (MAD=0); 15.0\xa0% is above the "
-            "historical p95 0.0\xa0%"
+            "responses (at least 15.0\xa0%); expected 0.0\xa0% from 1000 historical requests "
+            "(+15.0\xa0pp); robust score unavailable (MAD=0); 15.0\xa0% is above the historical "
+            "p95 0.0\xa0%"
         ),
     ),
     "ratio.server.fired_no_entity": (
         "ANOMALOUS",
         (
             "40 of 100 requests carrying a response code to this endpoint were HTTP 5xx responses "
-            "(40.0\xa0%), against an expected 10.0\xa0% from 1000 historical requests "
-            "(+30.0\xa0pp, 4.0x); robust z=10.12 (threshold +3.5)"
+            "(40.0\xa0%); expected 10.0\xa0% from 1000 historical requests (+30.0\xa0pp, 4.0x); "
+            "robust z=10.12 (threshold +3.5)"
         ),
     ),
     "ratio.client.not_collected": (
         "UNKNOWN",
         (
-            "the RESPONSE_CODE breakdown was not collected for this bucket: the value is "
-            "unavailable, not zero"
+            "the RESPONSE_CODE breakdown was not collected for this bucket; value unavailable, "
+            "not zero"
         ),
     ),
     "ratio.client.failed": (
         "UNKNOWN",
-        "the RESPONSE_CODE breakdown failed for this bucket: the value is unavailable, not zero",
+        "the RESPONSE_CODE breakdown failed for this bucket; value unavailable, not zero",
     ),
     "ratio.client.scope_none_coded": (
         "UNKNOWN",
@@ -623,8 +599,7 @@ EXPECTED: dict[str, tuple[str, str]] = {
         "UNKNOWN",
         (
             "only 62\xa0% of this source's events parsed to an endpoint, below the 90\xa0% "
-            "coverage floor: the unparsed requests may differ in kind from the parsed ones, so "
-            "the visible proportion bounds nothing"
+            "coverage floor, so the proportion bounds nothing"
         ),
     ),
     "ratio.client.field_coverage_low": (
@@ -643,13 +618,12 @@ EXPECTED: dict[str, tuple[str, str]] = {
     ),
     "ratio.client.no_baseline": (
         "UNKNOWN",
-        "no client_error_ratio baseline for this weekday/hour cell yet",
+        "no client_error_ratio baseline for this weekday/hour yet",
     ),
     "ratio.client.baseline_samples": (
         "UNKNOWN",
         (
-            "the client_error_ratio baseline has 2 material bucket(s), below the minimum for a "
-            "defensible verdict"
+            "the client_error_ratio baseline has 2 material bucket(s), below the minimum"
         ),
     ),
     "ratio.client.no_denominator": (
@@ -659,15 +633,13 @@ EXPECTED: dict[str, tuple[str, str]] = {
     "ratio.client.numerator_below_min": (
         "HEALTHY",
         (
-            "9 HTTP 4xx responses is below the 10 minimum; no material rise in the proportion is "
-            "possible"
+            "9 HTTP 4xx responses is below the 10 minimum; no material rise is possible"
         ),
     ),
     "ratio.client.denominator_below_min": (
         "UNKNOWN",
         (
-            "49 requests carrying a response code is below the 50 minimum denominator for a ratio "
-            "verdict"
+            "49 requests carrying a response code is below the 50 minimum denominator"
         ),
     ),
     "ratio.client.guard_rise": (
@@ -679,7 +651,7 @@ EXPECTED: dict[str, tuple[str, str]] = {
         (
             "6.0\xa0% is +3.0\xa0pp from the expected 3.0\xa0%, below the 10\xa0pp minimum rise; "
             "the numerator is a lower bound (the count is a lower bound: an increase can be "
-            "proven, normal behaviour cannot), so a normal verdict cannot be concluded from it"
+            "proven, normal behaviour cannot), so no normal verdict"
         ),
     ),
     "ratio.client.guard_multiple": (
@@ -691,7 +663,7 @@ EXPECTED: dict[str, tuple[str, str]] = {
         (
             "50.0\xa0% is 1.67x the expected 30.0\xa0%, below 2.00x; the numerator is a lower "
             "bound (the count is a lower bound: an increase can be proven, normal behaviour "
-            "cannot), so a normal verdict cannot be concluded from it"
+            "cannot), so no normal verdict"
         ),
     ),
     "ratio.client.guard_robust_z": (
@@ -702,8 +674,8 @@ EXPECTED: dict[str, tuple[str, str]] = {
         "UNKNOWN",
         (
             "robust z=1.01 has not reached +3.5; the numerator is a lower bound (the count is a "
-            "lower bound: an increase can be proven, normal behaviour cannot), so a normal "
-            "verdict cannot be concluded from it"
+            "lower bound: an increase can be proven, normal behaviour cannot), so no normal "
+            "verdict"
         ),
     ),
     "ratio.client.guard_mad_zero_within_p95": (
@@ -715,87 +687,82 @@ EXPECTED: dict[str, tuple[str, str]] = {
         (
             "robust score unavailable (MAD=0) and 20.0\xa0% is within the historical p95 "
             "20.0\xa0%; the numerator is a lower bound (the count is a lower bound: an increase "
-            "can be proven, normal behaviour cannot), so a normal verdict cannot be concluded "
-            "from it"
+            "can be proven, normal behaviour cannot), so no normal verdict"
         ),
     ),
     "ratio.client.lower_guard_no_scope": (
         "UNKNOWN",
         (
-            "9 HTTP 4xx responses is below the 10 minimum; no material rise in the proportion is "
-            "possible; the numerator is a lower bound (some values were unclassified), so a "
-            "normal verdict cannot be concluded from it"
+            "9 HTTP 4xx responses is below the 10 minimum; no material rise is possible; the "
+            "numerator is a lower bound (some values were unclassified), so no normal verdict"
         ),
     ),
     "ratio.client.lower_guard_plain_scope": (
         "UNKNOWN",
         (
-            "9 HTTP 4xx responses is below the 10 minimum; no material rise in the proportion is "
-            "possible; the numerator is a lower bound (odd), so a normal verdict cannot be "
-            "concluded from it"
+            "9 HTTP 4xx responses is below the 10 minimum; no material rise is possible; the "
+            "numerator is a lower bound (odd), so no normal verdict"
         ),
     ),
     "ratio.client.fired": (
         "ANOMALOUS",
         (
             "40 of 100 requests carrying a response code to GET /login were HTTP 4xx responses "
-            "(40.0\xa0%), against an expected 10.0\xa0% from 1000 historical requests "
-            "(+30.0\xa0pp, 4.0x); robust z=10.12 (threshold +3.5)"
+            "(40.0\xa0%); expected 10.0\xa0% from 1000 historical requests (+30.0\xa0pp, 4.0x); "
+            "robust z=10.12 (threshold +3.5)"
         ),
     ),
     "ratio.client.fired_mad_above_p95": (
         "ANOMALOUS",
         (
             "25 of 100 requests carrying a response code to GET /login were HTTP 4xx responses "
-            "(25.0\xa0%), against an expected 10.0\xa0% from 1000 historical requests "
-            "(+15.0\xa0pp, 2.5x); robust score unavailable (MAD=0); 25.0\xa0% is above the "
-            "historical p95 20.0\xa0%"
+            "(25.0\xa0%); expected 10.0\xa0% from 1000 historical requests (+15.0\xa0pp, 2.5x); "
+            "robust score unavailable (MAD=0); 25.0\xa0% is above the historical p95 20.0\xa0%"
         ),
     ),
     "ratio.client.fired_no_multiple": (
         "ANOMALOUS",
         (
             "15 of 100 requests carrying a response code to GET /login were HTTP 4xx responses "
-            "(15.0\xa0%), against an expected 0.0\xa0% from 1000 historical requests "
-            "(+15.0\xa0pp); robust score unavailable (MAD=0); 15.0\xa0% is above the historical "
-            "p95 0.0\xa0%"
+            "(15.0\xa0%); expected 0.0\xa0% from 1000 historical requests (+15.0\xa0pp); robust "
+            "score unavailable (MAD=0); 15.0\xa0% is above the historical p95 0.0\xa0%"
         ),
     ),
     "ratio.client.lower_fired": (
         "ANOMALOUS",
         (
             "at least 40 of 100 requests carrying a response code to GET /login were HTTP 4xx "
-            "responses (at least 40.0\xa0%), against an expected 10.0\xa0% from 1000 historical "
-            "requests (+30.0\xa0pp, 4.0x); robust z=10.12 (threshold +3.5)"
+            "responses (at least 40.0\xa0%); expected 10.0\xa0% from 1000 historical requests "
+            "(+30.0\xa0pp, 4.0x); robust z=10.12 (threshold +3.5)"
         ),
     ),
     "ratio.client.lower_fired_no_multiple": (
         "ANOMALOUS",
         (
             "at least 15 of 100 requests carrying a response code to GET /login were HTTP 4xx "
-            "responses (at least 15.0\xa0%), against an expected 0.0\xa0% from 1000 historical "
-            "requests (+15.0\xa0pp); robust score unavailable (MAD=0); 15.0\xa0% is above the "
-            "historical p95 0.0\xa0%"
+            "responses (at least 15.0\xa0%); expected 0.0\xa0% from 1000 historical requests "
+            "(+15.0\xa0pp); robust score unavailable (MAD=0); 15.0\xa0% is above the historical "
+            "p95 0.0\xa0%"
         ),
     ),
     "ratio.client.fired_no_entity": (
         "ANOMALOUS",
         (
             "40 of 100 requests carrying a response code to this endpoint were HTTP 4xx responses "
-            "(40.0\xa0%), against an expected 10.0\xa0% from 1000 historical requests "
-            "(+30.0\xa0pp, 4.0x); robust z=10.12 (threshold +3.5)"
+            "(40.0\xa0%); expected 10.0\xa0% from 1000 historical requests (+30.0\xa0pp, 4.0x); "
+            "robust z=10.12 (threshold +3.5)"
         ),
     ),
     "conc.not_collected": (
         "UNKNOWN",
         (
-            "the SOURCE_IP breakdown was not collected for this bucket: the value is unavailable, "
-            "not zero"
+            "the SOURCE_IP breakdown was not collected for this bucket; value unavailable, not "
+            "zero"
         ),
     ),
     "conc.failed": (
         "UNKNOWN",
-        "the SOURCE_IP breakdown failed for this bucket: the value is unavailable, not zero",
+        "the SOURCE_IP breakdown failed for this bucket; value unavailable, not zero",
     ),
     "conc.scope_inc_coded": (
         "UNKNOWN",
@@ -813,26 +780,24 @@ EXPECTED: dict[str, tuple[str, str]] = {
         "UNKNOWN",
         (
             "only 62\xa0% of this source's events parsed to an endpoint, below the 90\xa0% "
-            "coverage floor: the unparsed requests may differ in kind from the parsed ones, so "
-            "the visible proportion bounds nothing"
+            "coverage floor, so the proportion bounds nothing"
         ),
     ),
     "conc.attributed_low": (
         "UNKNOWN",
         (
-            "only 85\xa0% of the endpoint's requests were attributed to a source IP, below the "
-            "90\xa0% coverage floor"
+            "only 85\xa0% of the endpoint's requests had a source IP, below the 90\xa0% coverage "
+            "floor"
         ),
     ),
     "conc.no_baseline": (
         "UNKNOWN",
-        "no top1_client_share baseline for this weekday/hour cell yet",
+        "no top1_client_share baseline for this weekday/hour yet",
     ),
     "conc.baseline_samples": (
         "UNKNOWN",
         (
-            "the top1_client_share baseline has 1 material bucket(s), below the minimum for a "
-            "defensible verdict"
+            "the top1_client_share baseline has 1 material bucket(s), below the minimum"
         ),
     ),
     "conc.no_denominator": (
@@ -841,7 +806,7 @@ EXPECTED: dict[str, tuple[str, str]] = {
     ),
     "conc.top_below_min": (
         "HEALTHY",
-        "the largest source IP sent 19 requests, below the 20 minimum for a material concentration",
+        "the largest source IP sent 19 requests, below the 20 minimum for concentration",
     ),
     "conc.endpoint_below_min": (
         "UNKNOWN",
@@ -865,35 +830,34 @@ EXPECTED: dict[str, tuple[str, str]] = {
     "conc.fired_no_volume_baseline": (
         "ANOMALOUS",
         (
-            "the largest source IP sent 60 of 100 requests to GET /login (60.0\xa0%), against an "
-            "expected share of 10.0\xa0% (+50.0\xa0pp); the five largest sent 80.0\xa0%; endpoint "
-            "volume 100 requests (no reliable volume baseline); robust z=33.72 (threshold +3.5)"
+            "the largest source IP sent 60 of 100 requests to GET /login (60.0\xa0%) against an "
+            "expected 10.0\xa0% (+50.0\xa0pp); the top five sent 80.0\xa0%; endpoint volume 100 "
+            "requests (no reliable baseline); robust z=33.72 (threshold +3.5)"
         ),
     ),
     "conc.fired_volume_baseline": (
         "ANOMALOUS",
         (
-            "the largest source IP sent 60 of 100 requests to GET /login (60.0\xa0%), against an "
-            "expected share of 10.0\xa0% (+50.0\xa0pp); the five largest sent 80.0\xa0%; endpoint "
-            "volume 100 requests against an expected 120.5; robust z=33.72 (threshold +3.5)"
+            "the largest source IP sent 60 of 100 requests to GET /login (60.0\xa0%) against an "
+            "expected 10.0\xa0% (+50.0\xa0pp); the top five sent 80.0\xa0%; endpoint volume 100 "
+            "requests, expected 120.5; robust z=33.72 (threshold +3.5)"
         ),
     ),
     "conc.fired_mad_above_p95": (
         "ANOMALOUS",
         (
-            "the largest source IP sent 60 of 100 requests to GET /login (60.0\xa0%), against an "
-            "expected share of 10.0\xa0% (+50.0\xa0pp); the five largest sent 70.0\xa0%; endpoint "
-            "volume 100 requests (no reliable volume baseline); robust score unavailable (MAD=0); "
-            "60.0\xa0% is above the historical p95 15.0\xa0%"
+            "the largest source IP sent 60 of 100 requests to GET /login (60.0\xa0%) against an "
+            "expected 10.0\xa0% (+50.0\xa0pp); the top five sent 70.0\xa0%; endpoint volume 100 "
+            "requests (no reliable baseline); robust score unavailable (MAD=0); 60.0\xa0% is above "
+            "the historical p95 15.0\xa0%"
         ),
     ),
     "conc.fired_no_entity": (
         "ANOMALOUS",
         (
-            "the largest source IP sent 60 of 100 requests to this endpoint (60.0\xa0%), against "
-            "an expected share of 10.0\xa0% (+50.0\xa0pp); the five largest sent 70.0\xa0%; "
-            "endpoint volume 100 requests (no reliable volume baseline); robust z=33.72 "
-            "(threshold +3.5)"
+            "the largest source IP sent 60 of 100 requests to this endpoint (60.0\xa0%) against an "
+            "expected 10.0\xa0% (+50.0\xa0pp); the top five sent 70.0\xa0%; endpoint volume 100 "
+            "requests (no reliable baseline); robust z=33.72 (threshold +3.5)"
         ),
     ),
     "new.no_facts": (
@@ -910,7 +874,7 @@ EXPECTED: dict[str, tuple[str, str]] = {
     "new.hand_off": (
         "HEALTHY",
         (
-            "established endpoint: first admitted 2026-08-03T19:15:00+00:00 before the history "
+            "established endpoint: first admitted 2026-08-03T19:15:00+00:00, before history "
             "hand-off 2026-08-04T19:25:00+00:00"
         ),
     ),
@@ -940,54 +904,52 @@ EXPECTED: dict[str, tuple[str, str]] = {
     "new.below_requests": (
         "HEALTHY",
         (
-            "19 request(s) in 5 bucket(s) since first appearance has not reached 20 requests in 2 "
-            "buckets"
+            "19 request(s) in 5 bucket(s) since first appearance, below 20 requests in 2 buckets"
         ),
     ),
     "new.below_buckets": (
         "HEALTHY",
         (
-            "500 request(s) in 1 bucket(s) since first appearance has not reached 20 requests in "
-            "2 buckets"
+            "500 request(s) in 1 bucket(s) since first appearance, below 20 requests in 2 buckets"
         ),
     ),
     "new.lower_below": (
         "UNKNOWN",
         (
-            "3 request(s) in 1 bucket(s) since first appearance has not reached 20 requests in 2 "
-            "buckets; the counts are lower bounds"
+            "3 request(s) in 1 bucket(s) since first appearance, below 20 requests in 2 buckets; "
+            "the counts are lower bounds"
         ),
     ),
     "new.fired": (
         "ANOMALOUS",
         (
-            "GET /login received 30 requests across 3 buckets since it first appeared at "
-            "2026-08-03T19:15:00+00:00; in the verified history 2026-07-27T19:25:00+00:00 to "
-            "2026-08-03T19:15:00+00:00 it was never requested 3 or more times in one bucket"
+            "GET /login received 30 requests in 3 buckets since first appearing at "
+            "2026-08-03T19:15:00+00:00; in verified history 2026-07-27T19:25:00+00:00 to "
+            "2026-08-03T19:15:00+00:00 never 3 or more in one bucket"
         ),
     ),
     "new.lower_fired": (
         "ANOMALOUS",
         (
-            "GET /login received at least 30 requests across 3 buckets since it first appeared at "
-            "2026-08-03T19:15:00+00:00; in the verified history 2026-07-27T19:25:00+00:00 to "
-            "2026-08-03T19:15:00+00:00 it was never requested 3 or more times in one bucket"
+            "GET /login received at least 30 requests in 3 buckets since first appearing at "
+            "2026-08-03T19:15:00+00:00; in verified history 2026-07-27T19:25:00+00:00 to "
+            "2026-08-03T19:15:00+00:00 never 3 or more in one bucket"
         ),
     ),
     "new.fired_no_entity": (
         "ANOMALOUS",
         (
-            "this endpoint received 30 requests across 3 buckets since it first appeared at "
-            "2026-08-03T19:15:00+00:00; in the verified history 2026-07-27T19:25:00+00:00 to "
-            "2026-08-03T19:15:00+00:00 it was never requested 3 or more times in one bucket"
+            "this endpoint received 30 requests in 3 buckets since first appearing at "
+            "2026-08-03T19:15:00+00:00; in verified history 2026-07-27T19:25:00+00:00 to "
+            "2026-08-03T19:15:00+00:00 never 3 or more in one bucket"
         ),
     ),
     "new.fired_scope_inc": (
         "ANOMALOUS",
         (
-            "GET /login received at least 30 requests across 3 buckets since it first appeared at "
-            "2026-08-03T19:15:00+00:00; in the verified history 2026-07-27T19:25:00+00:00 to "
-            "2026-08-03T19:15:00+00:00 it was never requested 3 or more times in one bucket"
+            "GET /login received at least 30 requests in 3 buckets since first appearing at "
+            "2026-08-03T19:15:00+00:00; in verified history 2026-07-27T19:25:00+00:00 to "
+            "2026-08-03T19:15:00+00:00 never 3 or more in one bucket"
         ),
     ),
 }
@@ -1406,24 +1368,24 @@ def _history_cases() -> list[tuple[str, WafHistoryFacts, str]]:
     check(
         "not_divisible",
         tn.verify(tn.history(), bucket_seconds=7),
-        "the history window is not divisible by the collection bucket width",
+        "the history window is not divisible by the bucket width",
     )
     check(
         "never_collected",
         tn.verify(tn.history()[3:]),
-        f"3 of {count} history buckets were never collected",
+        f"3 of {count} history buckets never collected",
     )
     check(
         "record_count",
         tn.verify([*tn.history(), tn.bucket(0)]),
-        f"the history contains {count + 1} bucket records for {count} expected buckets",
+        f"history has {count + 1} bucket records for {count} expected",
     )
     rows = tn.history()
     rows[5] = replace(rows[5], bucket_seconds=60)
     check(
         "bucket_width",
         tn.verify(rows),
-        f"history bucket {iso} used a different collection bucket width",
+        f"history bucket {iso} had a different bucket width",
     )
     rows = tn.history()
     rows[5] = replace(rows[5], groups_truncated=True)
@@ -1451,7 +1413,7 @@ def _history_cases() -> list[tuple[str, WafHistoryFacts, str]]:
     check(
         "normalizer_version",
         tn.verify(rows),
-        f"history bucket {iso} is incompatible with endpoint normalizer version "
+        f"history bucket {iso} is incompatible with normalizer version "
         f"{tn.ENDPOINT_NORMALIZER_VERSION}",
     )
     return cases
@@ -1513,13 +1475,13 @@ def test_the_engine_codes_the_first_appearance_reasons_and_floods() -> None:
     assert flood is None
     facts, _, _ = _engine_history(_appearance(profile_version=None))
     _check(
-        "appearance_no_profile", facts, "the first-appearance bucket carries no profile version"
+        "appearance_no_profile", facts, "the first-appearance bucket has no profile version"
     )
     facts, _, _ = _engine_history(_appearance(metric_semantics="x;normalizer/v99;y"))
     _check(
         "appearance_normalizer",
         facts,
-        "the first-appearance bucket is incompatible with endpoint normalizer version "
+        "the first-appearance bucket is incompatible with normalizer version "
         f"{tn.ENDPOINT_NORMALIZER_VERSION}",
     )
     facts, _, flood = _engine_history(_appearance(groups_truncated=True))
@@ -1575,22 +1537,19 @@ def test_a_flood_reference_is_the_verdict_sentence_itself() -> None:
 # ------------------------------------------------------------------------- the caveats
 CAVEAT_ENGLISH = {
     "waf.caveat.block_ratio": (
-        "Blocking is judged through the profile's action map. A higher block ratio "
-        "describes WAF decisions; it does not establish that an attack succeeded."
+        "A higher block ratio describes WAF decisions, not a successful attack."
     ),
     "waf.caveat.server_error_ratio": (
-        "HTTP 5xx responses describe server-side failures. They do not establish that "
-        "the traffic was malicious."
+        "HTTP 5xx responses describe server failures, not malicious traffic."
     ),
     "waf.caveat.client_error_ratio": (
-        "HTTP 4xx responses are response codes, not WAF decisions: a 403 is not by "
-        "itself a block, and WAF blocking is reported separately."
+        "HTTP 4xx responses are response codes, not WAF decisions; a 403 alone is not a block."
     ),
     "waf.caveat.client_concentration": (
         "A dominant source IP describes traffic composition, not intent."
     ),
     "waf.caveat.new_endpoint": (
-        "A newly requested endpoint may be a deployment as easily as a probe."
+        "A new endpoint may be a deployment, not a probe."
     ),
 }
 CAVEAT_SCENARIOS = {

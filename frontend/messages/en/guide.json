@@ -306,6 +306,9 @@
         },
         {
           "p": "The traffic page (Traffic by destination) ranks WAF endpoints or IPS destination IPs by average events per second over the window you pick. A rate is the average events per second over the stored buckets, divided by the time of the buckets that were measured only; a missing bucket is not counted as zero, and the line above the table says how many buckets were measured. A row that has data in fewer buckets than were measured still divides by the whole measured time. The trend column is drawn per row on its own scale. The unattributed share is the part of the source's events that no listed row carries, so a total built from the rows is a lower bound. Export CSV downloads the whole ranking; an export beyond the server's limit is cut and marked in the file. A reason code for a partial, truncated or insufficient window is under Details."
+        },
+        {
+          "p": "A verdict sentence names the guard that stopped it. An endpoint is judged only against a baseline for the same weekday and hour with enough material buckets, and a ratio also needs a pooled denominator and a minimum numerator and denominator. A figure that could not be measured is unavailable, not zero. A count that is a lower bound can prove an increase but never normal behavior. When fewer events than the coverage floor parsed to an endpoint, carried a source IP or carried a field, the unparsed events may differ in kind from the parsed ones, so the visible proportion bounds nothing. Blocking is judged through the profile's action map: a higher block ratio describes WAF decisions, not a successful attack, a 4xx response is a response code, not a WAF decision, and WAF blocking is reported separately. A new endpoint is judged against verified history only: every history bucket must have been collected under the same profile and normalizer versions, and a first appearance inside a flood of new endpoints is not individually new. A dominant source IP, a new endpoint and a higher server-error ratio describe traffic composition, a deployment or a failure, not intent."
         }
       ],
       "states": [
@@ -332,6 +335,9 @@
         },
         {
           "p": "The **EMA 3**, **EMA 5**, **EMA 10** and **EMA 20** buttons above the chart overlay exponential moving averages of the series of the source. The periods are counted in buckets, and the legend gives each one's span in time. All are off until you switch them on, and the browser remembers your choice, shared with the other charts. An average is drawn in your browser for display only. It takes no part in detection, and it stops at a bucket that was not fully observed, or measured only as a lower bound, rather than bridging the gap."
+        },
+        {
+          "p": "A verdict sentence names the guard that stopped it. An entity is judged only against a baseline for the same weekday and hour with enough samples under the same profile and normalizer versions, and a ratio also needs a minimum numerator and denominator. A count that is a lower bound can prove an increase but never normal behavior. When the coverage of a dimension is below its floor or could not be measured, the events without a value may differ in kind from the ones with one, so the visible numbers bound nothing; a search that failed or was not collected leaves the value unavailable, not zero. Port 0 and protocol 255 are absent values, not a service, and a generic signature name supports no claim about one signature. A new destination port is judged against verified history only: it must not have been admitted before the history hand-off, and a port that arrived in a flood of new ports, or was retired and seen again, is not new. A rising port can be a scan, a deployment or a misconfigured client, many distinct ports from one source IP is a traffic shape, not an attack verdict, behind a proxy or NAT a dominant source IP is the intermediary, and a higher block ratio, judged through the profile's action map, describes the IPS's decisions, not a successful attack."
         }
       ],
       "states": [
@@ -645,6 +651,9 @@
         },
         {
           "p": "**Rule statistics** opens the fleet-wide view of composition, matching load and silence. To collect rules from QRadar, run a rule sync (`python -m app.cli.sync rules`)."
+        },
+        {
+          "p": "A match anomaly is judged only when the rule is enabled with health monitoring on, its building-block dependencies are enabled and in the inventory, the inventory was synced after the judged window ended, and the window and the baseline span were fully collected at the current window width. Health monitoring is the rule's health_monitoring_enabled flag, which the health status does not read. A rule whose type gives no exact match counts is not judged for silence, because a window cannot prove how many times it matched. A rule enabled or disabled inside the baseline or the streak is not judged, because the platform notices the change only at its recorded sync time. A truncated window with no row for the rule is neither zero nor small, so silence is not judged and a storm only when the rule has a row. A baseline for the weekday and slot that is still learning needs the samples and weeks the sentence states."
         }
       ],
       "states": [

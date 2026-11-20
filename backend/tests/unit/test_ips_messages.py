@@ -34,10 +34,10 @@ EXPECTED: dict[str, tuple[str, str]] = {
     "spike.destination_port.lower_fired": (
         "ANOMALOUS",
         (
-            "at least 100 events (a lower bound: volume: the count is a lower bound: an"
-            " increase can be proven, normal behaviour cannot) for destination port"
-            " 443/tcp is above the baseline median 10.0 (10.00x expected, +90"
-            " events/bucket); robust z=30.35 (threshold +3.5)"
+            "at least 100 events (lower bound: volume: the count is a lower bound: an increase "
+            "can be proven, normal behaviour cannot) for destination port 443/tcp is above the "
+            "baseline median 10.0 (10.00x expected, +90 events/bucket); robust z=30.35 (threshold "
+            "+3.5)"
         ),
     ),
     "spike.destination_ip.fired": (
@@ -50,10 +50,10 @@ EXPECTED: dict[str, tuple[str, str]] = {
     "spike.destination_ip.lower_fired": (
         "ANOMALOUS",
         (
-            "at least 100 events (a lower bound: volume: the count is a lower bound: an"
-            " increase can be proven, normal behaviour cannot) for destination IP"
-            " 10.10.20.15 is above the baseline median 10.0 (10.00x expected, +90"
-            " events/bucket); robust z=30.35 (threshold +3.5)"
+            "at least 100 events (lower bound: volume: the count is a lower bound: an increase "
+            "can be proven, normal behaviour cannot) for destination IP 10.10.20.15 is above the "
+            "baseline median 10.0 (10.00x expected, +90 events/bucket); robust z=30.35 (threshold "
+            "+3.5)"
         ),
     ),
     "spike.signature.fired": (
@@ -66,10 +66,10 @@ EXPECTED: dict[str, tuple[str, str]] = {
     "spike.signature.lower_fired": (
         "ANOMALOUS",
         (
-            "at least 100 events (a lower bound: volume: the count is a lower bound: an"
-            " increase can be proven, normal behaviour cannot) for signature Example"
-            " signature is above the baseline median 10.0 (10.00x expected, +90"
-            " events/bucket); robust z=30.35 (threshold +3.5)"
+            "at least 100 events (lower bound: volume: the count is a lower bound: an increase "
+            "can be proven, normal behaviour cannot) for signature Example signature is above the "
+            "baseline median 10.0 (10.00x expected, +90 events/bucket); robust z=30.35 (threshold "
+            "+3.5)"
         ),
     ),
     "spike.fired_big": (
@@ -83,51 +83,49 @@ EXPECTED: dict[str, tuple[str, str]] = {
     "spike.fired_mad_above_p95": (
         "ANOMALOUS",
         (
-            "100 events for destination port 443/tcp is above the baseline median 10.0"
-            " (10.00x expected, +90 events/bucket); robust score unavailable (MAD=0); 100"
-            " is above the historical p95 15"
+            "100 events for destination port 443/tcp is above the baseline median 10.0 (10.00x "
+            "expected, +90 events/bucket); robust score unavailable (MAD=0); 100 is above the "
+            "historical p95 15"
         ),
     ),
     "spike.fired_expected_zero": (
         "ANOMALOUS",
         (
-            "100 events for destination port 443/tcp is above the baseline median 0.0"
-            " (expected none, +100 events/bucket); robust score unavailable (MAD=0); 100"
-            " is above the historical p95 10"
+            "100 events for destination port 443/tcp is above the baseline median 0.0 (expected "
+            "none, +100 events/bucket); robust score unavailable (MAD=0); 100 is above the "
+            "historical p95 10"
         ),
     ),
     "spike.lower_fired_big": (
         "ANOMALOUS",
         (
-            "at least 12,345 events (a lower bound: volume: the count is a lower bound:"
-            " an increase can be proven, normal behaviour cannot) for destination port"
-            " 443/tcp is above the baseline median 1000.0 (12.35x expected, +11,345"
-            " events/bucket); robust z=38.26 (threshold +3.5)"
+            "at least 12,345 events (lower bound: volume: the count is a lower bound: an increase "
+            "can be proven, normal behaviour cannot) for destination port 443/tcp is above the "
+            "baseline median 1000.0 (12.35x expected, +11,345 events/bucket); robust z=38.26 "
+            "(threshold +3.5)"
         ),
     ),
     "spike.lower_fired_mad_above_p95": (
         "ANOMALOUS",
         (
-            "at least 100 events (a lower bound: volume: the count is a lower bound: an"
-            " increase can be proven, normal behaviour cannot) for destination port"
-            " 443/tcp is above the baseline median 10.0 (10.00x expected, +90"
-            " events/bucket); robust score unavailable (MAD=0); 100 is above the"
-            " historical p95 15"
+            "at least 100 events (lower bound: volume: the count is a lower bound: an increase "
+            "can be proven, normal behaviour cannot) for destination port 443/tcp is above the "
+            "baseline median 10.0 (10.00x expected, +90 events/bucket); robust score unavailable "
+            "(MAD=0); 100 is above the historical p95 15"
         ),
     ),
     "spike.lower_fired_expected_zero": (
         "ANOMALOUS",
         (
-            "at least 100 events (a lower bound: volume: the count is a lower bound: an"
-            " increase can be proven, normal behaviour cannot) for destination port"
-            " 443/tcp is above the baseline median 0.0 (expected none, +100"
-            " events/bucket); robust score unavailable (MAD=0); 100 is above the"
-            " historical p95 10"
+            "at least 100 events (lower bound: volume: the count is a lower bound: an increase "
+            "can be proven, normal behaviour cannot) for destination port 443/tcp is above the "
+            "baseline median 0.0 (expected none, +100 events/bucket); robust score unavailable "
+            "(MAD=0); 100 is above the historical p95 10"
         ),
     ),
     "spike.below_min": (
         "HEALTHY",
-        "15 events/bucket is below the 20 minimum for a defensible verdict",
+        "15 events/bucket is below the 20 minimum",
     ),
     "spike.ratio_not_reached": (
         "HEALTHY",
@@ -147,49 +145,46 @@ EXPECTED: dict[str, tuple[str, str]] = {
     ),
     "spike.below_min_big": (
         "HEALTHY",
-        "15 events/bucket is below the 20 minimum for a defensible verdict",
+        "15 events/bucket is below the 20 minimum",
     ),
     "spike.lower_below_min": (
         "UNKNOWN",
         (
-            "15 events/bucket is below the 20 minimum for a defensible verdict; the count"
-            " is a lower bound (volume: the count is a lower bound: an increase can be"
-            " proven, normal behaviour cannot), so a normal verdict cannot be concluded"
-            " from it"
+            "15 events/bucket is below the 20 minimum; the count is a lower bound (volume: the "
+            "count is a lower bound: an increase can be proven, normal behaviour cannot), so no "
+            "normal verdict"
         ),
     ),
     "spike.lower_ratio_not_reached": (
         "UNKNOWN",
         (
-            "observed/expected ratio 1.25 has not reached 2.00; the count is a lower"
-            " bound (volume: the count is a lower bound: an increase can be proven,"
-            " normal behaviour cannot), so a normal verdict cannot be concluded from it"
+            "observed/expected ratio 1.25 has not reached 2.00; the count is a lower bound "
+            "(volume: the count is a lower bound: an increase can be proven, normal behaviour "
+            "cannot), so no normal verdict"
         ),
     ),
     "spike.lower_delta_below_min": (
         "UNKNOWN",
         (
-            "increase of 15 events/bucket is below the 50 minimum absolute delta; the"
-            " count is a lower bound (volume: the count is a lower bound: an increase can"
-            " be proven, normal behaviour cannot), so a normal verdict cannot be"
-            " concluded from it"
+            "increase of 15 events/bucket is below the 50 minimum absolute delta; the count is a "
+            "lower bound (volume: the count is a lower bound: an increase can be proven, normal "
+            "behaviour cannot), so no normal verdict"
         ),
     ),
     "spike.lower_z_not_reached": (
         "UNKNOWN",
         (
-            "robust z=0.81 has not reached +3.5; the count is a lower bound (volume: the"
-            " count is a lower bound: an increase can be proven, normal behaviour"
-            " cannot), so a normal verdict cannot be concluded from it"
+            "robust z=0.81 has not reached +3.5; the count is a lower bound (volume: the count is "
+            "a lower bound: an increase can be proven, normal behaviour cannot), so no normal "
+            "verdict"
         ),
     ),
     "spike.lower_mad_within_p95": (
         "UNKNOWN",
         (
-            "robust score unavailable (MAD=0) and 70 is within the historical p95 1,000;"
-            " the count is a lower bound (volume: the count is a lower bound: an increase"
-            " can be proven, normal behaviour cannot), so a normal verdict cannot be"
-            " concluded from it"
+            "robust score unavailable (MAD=0) and 70 is within the historical p95 1,000; the "
+            "count is a lower bound (volume: the count is a lower bound: an increase can be "
+            "proven, normal behaviour cannot), so no normal verdict"
         ),
     ),
     "spike.maintenance": (
@@ -198,7 +193,7 @@ EXPECTED: dict[str, tuple[str, str]] = {
     ),
     "spike.no_entity": (
         "UNKNOWN",
-        "no destination port entity was supplied for this verdict",
+        "no destination port entity was supplied",
     ),
     "spike.wrong_dimension": (
         "UNKNOWN",
@@ -207,22 +202,19 @@ EXPECTED: dict[str, tuple[str, str]] = {
     "spike.absent_port.0/tcp": (
         "UNKNOWN",
         (
-            "port 0 and protocol 255 are absent values, not a service: no claim about"
-            " them"
+            "port 0 and protocol 255 are absent values, not a service"
         ),
     ),
     "spike.absent_port.443/255": (
         "UNKNOWN",
         (
-            "port 0 and protocol 255 are absent values, not a service: no claim about"
-            " them"
+            "port 0 and protocol 255 are absent values, not a service"
         ),
     ),
     "spike.generic_signature": (
         "UNKNOWN",
         (
-            "the signature's name is generic: a claim about a specific signature is not"
-            " safe"
+            "the signature's name is generic; a specific-signature claim is unsafe"
         ),
     ),
     "spike.count_unknown_text": (
@@ -236,96 +228,86 @@ EXPECTED: dict[str, tuple[str, str]] = {
     "spike.destination_port.dimension_not_collected": (
         "UNKNOWN",
         (
-            "the destination port search was not collected for this bucket: the value is"
-            " unavailable, not zero"
+            "the destination port search was not collected for this bucket; value unavailable, "
+            "not zero"
         ),
     ),
     "spike.destination_port.dimension_failed": (
         "UNKNOWN",
         (
-            "the destination port search was failed for this bucket: the value is"
-            " unavailable, not zero"
+            "the destination port search was failed for this bucket; value unavailable, not zero"
         ),
     ),
     "spike.destination_port.dimension_rejected": (
         "UNKNOWN",
         (
-            "the destination port search was rejected for this bucket: the value is"
-            " unavailable, not zero"
+            "the destination port search was rejected for this bucket; value unavailable, not "
+            "zero"
         ),
     ),
     "spike.destination_port.coverage_low": (
         "UNKNOWN",
         (
-            "destination port coverage was 89\xa0%, below the 90\xa0% floor: the events without"
-            " a value may differ in kind from the ones with one, so the visible numbers"
-            " bound nothing"
+            "destination port coverage was 89\xa0%, below the 90\xa0% floor, so these numbers "
+            "bound nothing"
         ),
     ),
     "spike.destination_ip.dimension_not_collected": (
         "UNKNOWN",
         (
-            "the destination IP search was not collected for this bucket: the value is"
-            " unavailable, not zero"
+            "the destination IP search was not collected for this bucket; value unavailable, not "
+            "zero"
         ),
     ),
     "spike.destination_ip.dimension_failed": (
         "UNKNOWN",
         (
-            "the destination IP search was failed for this bucket: the value is"
-            " unavailable, not zero"
+            "the destination IP search was failed for this bucket; value unavailable, not zero"
         ),
     ),
     "spike.destination_ip.dimension_rejected": (
         "UNKNOWN",
         (
-            "the destination IP search was rejected for this bucket: the value is"
-            " unavailable, not zero"
+            "the destination IP search was rejected for this bucket; value unavailable, not zero"
         ),
     ),
     "spike.destination_ip.coverage_low": (
         "UNKNOWN",
         (
-            "destination IP coverage was 89\xa0%, below the 90\xa0% floor: the events without a"
-            " value may differ in kind from the ones with one, so the visible numbers"
-            " bound nothing"
+            "destination IP coverage was 89\xa0%, below the 90\xa0% floor, so these numbers bound "
+            "nothing"
         ),
     ),
     "spike.signature.dimension_not_collected": (
         "UNKNOWN",
         (
-            "the signature search was not collected for this bucket: the value is"
-            " unavailable, not zero"
+            "the signature search was not collected for this bucket; value unavailable, not zero"
         ),
     ),
     "spike.signature.dimension_failed": (
         "UNKNOWN",
         (
-            "the signature search was failed for this bucket: the value is unavailable,"
-            " not zero"
+            "the signature search was failed for this bucket; value unavailable, not zero"
         ),
     ),
     "spike.signature.dimension_rejected": (
         "UNKNOWN",
         (
-            "the signature search was rejected for this bucket: the value is unavailable,"
-            " not zero"
+            "the signature search was rejected for this bucket; value unavailable, not zero"
         ),
     ),
     "spike.signature.coverage_low": (
         "UNKNOWN",
         (
-            "signature coverage was 89\xa0%, below the 90\xa0% floor: the events without a"
-            " value may differ in kind from the ones with one, so the visible numbers"
-            " bound nothing"
+            "signature coverage was 89\xa0%, below the 90\xa0% floor, so these numbers bound "
+            "nothing"
         ),
     ),
     "spike.coverage_unmeasurable": (
         "UNKNOWN",
         (
-            "destination port coverage was not measurable, below the 90\xa0% floor: the"
-            " events without a value may differ in kind from the ones with one, so the"
-            " visible numbers bound nothing"
+            "destination port coverage was not measurable, below the 90\xa0% floor, so these "
+            "numbers bound nothing"
         ),
     ),
     "spike.scope_unstated": (
@@ -337,41 +319,39 @@ EXPECTED: dict[str, tuple[str, str]] = {
     ),
     "spike.no_baseline": (
         "UNKNOWN",
-        "no entity_events baseline for this weekday/hour cell yet",
+        "no entity_events baseline for this weekday/hour yet",
     ),
     "spike.baseline_unreliable": (
         "UNKNOWN",
         (
-            "the entity_events baseline has 12 sample(s), below the minimum of 8 for a"
-            " defensible verdict"
+            "the entity_events baseline has 12 sample(s), below the minimum of 8"
         ),
     ),
     "spike.baseline_samples": (
         "UNKNOWN",
         (
-            "the entity_events baseline has 7 sample(s), below the minimum of 8 for a"
-            " defensible verdict"
+            "the entity_events baseline has 7 sample(s), below the minimum of 8"
         ),
     ),
     "spike.baseline_profile": (
         "UNKNOWN",
         (
-            "the entity_events baseline was built under profile version 4 and normalizer"
-            " version 2, not the bucket's 3 and 2"
+            "the entity_events baseline is profile version 4 and normalizer version 2, not the "
+            "bucket's 3 and 2"
         ),
     ),
     "spike.baseline_normalizer": (
         "UNKNOWN",
         (
-            "the entity_events baseline was built under profile version 3 and normalizer"
-            " version 9, not the bucket's 3 and 2"
+            "the entity_events baseline is profile version 3 and normalizer version 9, not the "
+            "bucket's 3 and 2"
         ),
     ),
     "spike.baseline_versions_none": (
         "UNKNOWN",
         (
-            "the entity_events baseline was built under profile version None and"
-            " normalizer version 2, not the bucket's 3 and 2"
+            "the entity_events baseline is profile version None and normalizer version 2, not the "
+            "bucket's 3 and 2"
         ),
     ),
     "fanout.fired": (
@@ -393,23 +373,22 @@ EXPECTED: dict[str, tuple[str, str]] = {
     "fanout.lower_fired": (
         "ANOMALOUS",
         (
-            "at least 60 distinct ports (a lower bound: largest fan-out: the count is a"
-            " lower bound: an increase can be proven, normal behaviour cannot) for the"
-            " busiest source IP's distinct ports is above the baseline median 10.0 (6.00x"
-            " expected, +50 distinct ports/bucket); robust z=16.86 (threshold +3.5)"
+            "at least 60 distinct ports (lower bound: largest fan-out: the count is a lower "
+            "bound: an increase can be proven, normal behaviour cannot) for the busiest source "
+            "IP's distinct ports is above the baseline median 10.0 (6.00x expected, +50 distinct "
+            "ports/bucket); robust z=16.86 (threshold +3.5)"
         ),
     ),
     "fanout.below_min": (
         "HEALTHY",
-        "15 distinct ports/bucket is below the 20 minimum for a defensible verdict",
+        "15 distinct ports/bucket is below the 20 minimum",
     ),
     "fanout.lower_below_min": (
         "UNKNOWN",
         (
-            "15 distinct ports/bucket is below the 20 minimum for a defensible verdict;"
-            " the count is a lower bound (largest fan-out: the count is a lower bound: an"
-            " increase can be proven, normal behaviour cannot), so a normal verdict"
-            " cannot be concluded from it"
+            "15 distinct ports/bucket is below the 20 minimum; the count is a lower bound "
+            "(largest fan-out: the count is a lower bound: an increase can be proven, normal "
+            "behaviour cannot), so no normal verdict"
         ),
     ),
     "fanout.unstated": (
@@ -419,51 +398,46 @@ EXPECTED: dict[str, tuple[str, str]] = {
     "fanout.port_coverage_low": (
         "UNKNOWN",
         (
-            "destination-port coverage was 50\xa0%, below the 90\xa0% floor: the events without"
-            " a value may differ in kind from the ones with one, so the visible numbers"
-            " bound nothing"
+            "destination-port coverage was 50\xa0%, below the 90\xa0% floor, so these numbers "
+            "bound nothing"
         ),
     ),
     "fanout.dimension_failed": (
         "UNKNOWN",
         (
-            "the port fan-out search was failed for this bucket: the value is"
-            " unavailable, not zero"
+            "the port fan-out search was failed for this bucket; value unavailable, not zero"
         ),
     ),
     "fanout.port_dimension_not_collected": (
         "UNKNOWN",
         (
-            "the destination-port search was not collected for this bucket: the value is"
-            " unavailable, not zero"
+            "the destination-port search was not collected for this bucket; value unavailable, "
+            "not zero"
         ),
     ),
     "conc.fired": (
         "ANOMALOUS",
         (
-            "the largest source IP sent 70 of 100 events (70.0\xa0%), against an expected"
-            " share of 10.0\xa0% (+60.0\xa0pp); the five largest sent 95.0\xa0%; robust z=20.23"
-            " (threshold +3.5)"
+            "the largest source IP sent 70 of 100 events (70.0\xa0%) against an expected 10.0\xa0% "
+            "(+60.0\xa0pp); the top five sent 95.0\xa0%; robust z=20.23 (threshold +3.5)"
         ),
     ),
     "conc.fired_no_top5": (
         "ANOMALOUS",
         (
-            "the largest source IP sent 70 of 100 events (70.0\xa0%), against an expected"
-            " share of 10.0\xa0% (+60.0\xa0pp); the five largest sent n/a; robust z=20.23"
-            " (threshold +3.5)"
+            "the largest source IP sent 70 of 100 events (70.0\xa0%) against an expected 10.0\xa0% "
+            "(+60.0\xa0pp); the top five sent n/a; robust z=20.23 (threshold +3.5)"
         ),
     ),
     "conc.top_below_min": (
         "HEALTHY",
         (
-            "the largest source IP sent 15 events, below the 20 minimum for a material"
-            " concentration"
+            "the largest source IP sent 15 events, below the 20 minimum for concentration"
         ),
     ),
     "conc.total_below_min": (
         "UNKNOWN",
-        "40 events is below the 50 minimum for a composition verdict",
+        "40 events is below the 50 minimum for composition",
     ),
     "conc.rise_below_min": (
         "HEALTHY",
@@ -490,9 +464,8 @@ EXPECTED: dict[str, tuple[str, str]] = {
     "conc.source_coverage_low": (
         "UNKNOWN",
         (
-            "source-IP coverage was 50\xa0%, below the 90\xa0% floor: the events without a"
-            " value may differ in kind from the ones with one, so the visible numbers"
-            " bound nothing"
+            "source-IP coverage was 50\xa0%, below the 90\xa0% floor, so these numbers bound "
+            "nothing"
         ),
     ),
     "conc.z_not_reached": (
@@ -502,16 +475,15 @@ EXPECTED: dict[str, tuple[str, str]] = {
     "conc.mad_within_p95": (
         "HEALTHY",
         (
-            "robust score unavailable (MAD=0) and 45.0\xa0% is within the historical p95"
-            " 90.0\xa0%"
+            "robust score unavailable (MAD=0) and 45.0\xa0% is within the historical p95 90.0\xa0%"
         ),
     ),
     "conc.mad_above_p95": (
         "ANOMALOUS",
         (
-            "the largest source IP sent 70 of 100 events (70.0\xa0%), against an expected"
-            " share of 10.0\xa0% (+60.0\xa0pp); the five largest sent 95.0\xa0%; robust score"
-            " unavailable (MAD=0); 70.0\xa0% is above the historical p95 15.0\xa0%"
+            "the largest source IP sent 70 of 100 events (70.0\xa0%) against an expected 10.0\xa0% "
+            "(+60.0\xa0pp); the top five sent 95.0\xa0%; robust score unavailable (MAD=0); "
+            "70.0\xa0% is above the historical p95 15.0\xa0%"
         ),
     ),
     "conc.no_denominator": (
@@ -521,56 +493,52 @@ EXPECTED: dict[str, tuple[str, str]] = {
     "block.fired": (
         "ANOMALOUS",
         (
-            "60 of 100 events carrying an action were blocked (60.0\xa0%), against an"
-            " expected 10.0\xa0% from 100 historical events (+50.0\xa0pp, 6.0x); robust z=16.86"
-            " (threshold +3.5)"
+            "60 of 100 events carrying an action were blocked (60.0\xa0%); expected 10.0\xa0% from "
+            "100 historical events (+50.0\xa0pp, 6.0x); robust z=16.86 (threshold +3.5)"
         ),
     ),
     "block.fired_no_multiple": (
         "ANOMALOUS",
         (
-            "60 of 100 events carrying an action were blocked (60.0\xa0%), against an"
-            " expected 0.0\xa0% from 100 historical events (+60.0\xa0pp); robust score"
-            " unavailable (MAD=0); 60.0\xa0% is above the historical p95 0.0\xa0%"
+            "60 of 100 events carrying an action were blocked (60.0\xa0%); expected 0.0\xa0% from "
+            "100 historical events (+60.0\xa0pp); robust score unavailable (MAD=0); 60.0\xa0% is "
+            "above the historical p95 0.0\xa0%"
         ),
     ),
     "block.lower_fired": (
         "ANOMALOUS",
         (
-            "at least 60 of 100 events carrying an action were blocked (at least 60.0\xa0%),"
-            " against an expected 10.0\xa0% from 100 historical events (+50.0\xa0pp, 6.0x);"
-            " robust z=16.86 (threshold +3.5)"
+            "at least 60 of 100 events carrying an action were blocked (at least 60.0\xa0%); "
+            "expected 10.0\xa0% from 100 historical events (+50.0\xa0pp, 6.0x); robust z=16.86 "
+            "(threshold +3.5)"
         ),
     ),
     "block.lower_fired_no_multiple": (
         "ANOMALOUS",
         (
-            "at least 60 of 100 events carrying an action were blocked (at least 60.0\xa0%),"
-            " against an expected 0.0\xa0% from 100 historical events (+60.0\xa0pp); robust"
-            " score unavailable (MAD=0); 60.0\xa0% is above the historical p95 0.0\xa0%"
+            "at least 60 of 100 events carrying an action were blocked (at least 60.0\xa0%); "
+            "expected 0.0\xa0% from 100 historical events (+60.0\xa0pp); robust score unavailable "
+            "(MAD=0); 60.0\xa0% is above the historical p95 0.0\xa0%"
         ),
     ),
     "block.numerator_below_min": (
         "HEALTHY",
         (
-            "5 blocked events is below the 10 minimum; no material rise in the proportion"
-            " is possible"
+            "5 blocked events is below the 10 minimum; no material rise is possible"
         ),
     ),
     "block.lower_numerator_below_min": (
         "UNKNOWN",
         (
-            "5 blocked events is below the 10 minimum; no material rise in the proportion"
-            " is possible; the count is a lower bound (numerator: the count is a lower"
-            " bound: an increase can be proven, normal behaviour cannot), so a normal"
-            " verdict cannot be concluded from it"
+            "5 blocked events is below the 10 minimum; no material rise is possible; the count is "
+            "a lower bound (numerator: the count is a lower bound: an increase can be proven, "
+            "normal behaviour cannot), so no normal verdict"
         ),
     ),
     "block.denominator_below_min": (
         "UNKNOWN",
         (
-            "40 events carrying an action is below the 50 minimum denominator for a ratio"
-            " verdict"
+            "40 events carrying an action is below the 50 minimum denominator"
         ),
     ),
     "block.rise_below_min": (
@@ -580,10 +548,9 @@ EXPECTED: dict[str, tuple[str, str]] = {
     "block.lower_rise_below_min": (
         "UNKNOWN",
         (
-            "15.0\xa0% is +5.0\xa0pp from the expected 10.0\xa0%, below the 10\xa0pp minimum rise;"
-            " the count is a lower bound (numerator: the count is a lower bound: an"
-            " increase can be proven, normal behaviour cannot), so a normal verdict"
-            " cannot be concluded from it"
+            "15.0\xa0% is +5.0\xa0pp from the expected 10.0\xa0%, below the 10\xa0pp minimum rise; "
+            "the count is a lower bound (numerator: the count is a lower bound: an increase can be "
+            "proven, normal behaviour cannot), so no normal verdict"
         ),
     ),
     "block.multiple_below_min": (
@@ -593,9 +560,9 @@ EXPECTED: dict[str, tuple[str, str]] = {
     "block.lower_multiple_below_min": (
         "UNKNOWN",
         (
-            "62.0\xa0% is 1.24x the expected 50.0\xa0%, below 2.00x; the count is a lower bound"
-            " (numerator: the count is a lower bound: an increase can be proven, normal"
-            " behaviour cannot), so a normal verdict cannot be concluded from it"
+            "62.0\xa0% is 1.24x the expected 50.0\xa0%, below 2.00x; the count is a lower bound "
+            "(numerator: the count is a lower bound: an increase can be proven, normal behaviour "
+            "cannot), so no normal verdict"
         ),
     ),
     "block.z_not_reached": (
@@ -605,41 +572,39 @@ EXPECTED: dict[str, tuple[str, str]] = {
     "block.mad_within_p95": (
         "HEALTHY",
         (
-            "robust score unavailable (MAD=0) and 30.0\xa0% is within the historical p95"
-            " 90.0\xa0%"
+            "robust score unavailable (MAD=0) and 30.0\xa0% is within the historical p95 90.0\xa0%"
         ),
     ),
     "block.mad_above_p95": (
         "ANOMALOUS",
         (
-            "60 of 100 events carrying an action were blocked (60.0\xa0%), against an"
-            " expected 10.0\xa0% from 100 historical events (+50.0\xa0pp, 6.0x); robust score"
-            " unavailable (MAD=0); 60.0\xa0% is above the historical p95 15.0\xa0%"
+            "60 of 100 events carrying an action were blocked (60.0\xa0%); expected 10.0\xa0% from "
+            "100 historical events (+50.0\xa0pp, 6.0x); robust score unavailable (MAD=0); "
+            "60.0\xa0% is above the historical p95 15.0\xa0%"
         ),
     ),
     "block.lower_z_not_reached": (
         "UNKNOWN",
         (
-            "robust z=0.45 has not reached +3.5; the count is a lower bound (numerator:"
-            " the count is a lower bound: an increase can be proven, normal behaviour"
-            " cannot), so a normal verdict cannot be concluded from it"
+            "robust z=0.45 has not reached +3.5; the count is a lower bound (numerator: the count "
+            "is a lower bound: an increase can be proven, normal behaviour cannot), so no normal "
+            "verdict"
         ),
     ),
     "block.lower_mad_within_p95": (
         "UNKNOWN",
         (
-            "robust score unavailable (MAD=0) and 30.0\xa0% is within the historical p95"
-            " 90.0\xa0%; the count is a lower bound (numerator: the count is a lower bound:"
-            " an increase can be proven, normal behaviour cannot), so a normal verdict"
-            " cannot be concluded from it"
+            "robust score unavailable (MAD=0) and 30.0\xa0% is within the historical p95 "
+            "90.0\xa0%; the count is a lower bound (numerator: the count is a lower bound: an "
+            "increase can be proven, normal behaviour cannot), so no normal verdict"
         ),
     ),
     "block.lower_mad_above_p95": (
         "ANOMALOUS",
         (
-            "at least 60 of 100 events carrying an action were blocked (at least 60.0\xa0%),"
-            " against an expected 10.0\xa0% from 100 historical events (+50.0\xa0pp, 6.0x);"
-            " robust score unavailable (MAD=0); 60.0\xa0% is above the historical p95 15.0\xa0%"
+            "at least 60 of 100 events carrying an action were blocked (at least 60.0\xa0%); "
+            "expected 10.0\xa0% from 100 historical events (+50.0\xa0pp, 6.0x); robust score "
+            "unavailable (MAD=0); 60.0\xa0% is above the historical p95 15.0\xa0%"
         ),
     ),
     "block.no_action_mapped": (
@@ -653,16 +618,13 @@ EXPECTED: dict[str, tuple[str, str]] = {
     "block.action_failed": (
         "UNKNOWN",
         (
-            "the action search was failed for this bucket: the value is unavailable, not"
-            " zero"
+            "the action search was failed for this bucket; value unavailable, not zero"
         ),
     ),
     "block.action_coverage_low": (
         "UNKNOWN",
         (
-            "action coverage was 50\xa0%, below the 90\xa0% floor: the events without a value"
-            " may differ in kind from the ones with one, so the visible numbers bound"
-            " nothing"
+            "action coverage was 50\xa0%, below the 90\xa0% floor, so these numbers bound nothing"
         ),
     ),
     "block.denominator_scope": (
@@ -672,42 +634,38 @@ EXPECTED: dict[str, tuple[str, str]] = {
     "port.fired": (
         "ANOMALOUS",
         (
-            "destination port 443/tcp carried 30 events across 2 buckets since it first"
-            " appeared at 2026-10-13T12:00:00+00:00; in the verified history"
-            " 2026-10-06T12:00:00+00:00 to 2026-10-13T12:00:00+00:00 it stayed below 3"
-            " events in every bucket"
+            "destination port 443/tcp carried 30 events in 2 buckets since first appearing at "
+            "2026-10-13T12:00:00+00:00; in verified history 2026-10-06T12:00:00+00:00 to "
+            "2026-10-13T12:00:00+00:00 always below 3 per bucket"
         ),
     ),
     "port.fired_big": (
         "ANOMALOUS",
         (
-            "destination port 443/tcp carried 12345 events across 9 buckets since it"
-            " first appeared at 2026-10-13T12:00:00+00:00; in the verified history"
-            " 2026-10-06T12:00:00+00:00 to 2026-10-13T12:00:00+00:00 it stayed below 3"
-            " events in every bucket"
+            "destination port 443/tcp carried 12345 events in 9 buckets since first appearing at "
+            "2026-10-13T12:00:00+00:00; in verified history 2026-10-06T12:00:00+00:00 to "
+            "2026-10-13T12:00:00+00:00 always below 3 per bucket"
         ),
     ),
     "port.fired_lower": (
         "ANOMALOUS",
         (
-            "destination port 443/tcp carried at least 30 events across 2 buckets since"
-            " it first appeared at 2026-10-13T12:00:00+00:00; in the verified history"
-            " 2026-10-06T12:00:00+00:00 to 2026-10-13T12:00:00+00:00 it stayed below 3"
-            " events in every bucket"
+            "destination port 443/tcp carried at least 30 events in 2 buckets since first "
+            "appearing at 2026-10-13T12:00:00+00:00; in verified history "
+            "2026-10-06T12:00:00+00:00 to 2026-10-13T12:00:00+00:00 always below 3 per bucket"
         ),
     ),
     "port.below_materiality": (
         "HEALTHY",
         (
-            "5 event(s) in 1 bucket(s) since first appearance has not reached 20 events"
-            " in 2 buckets"
+            "5 event(s) in 1 bucket(s) since first appearance, below 20 events in 2 buckets"
         ),
     ),
     "port.below_materiality_lower": (
         "UNKNOWN",
         (
-            "5 event(s) in 1 bucket(s) since first appearance has not reached 20 events"
-            " in 2 buckets; the counts are lower bounds"
+            "5 event(s) in 1 bucket(s) since first appearance, below 20 events in 2 buckets; the "
+            "counts are lower bounds"
         ),
     ),
     "port.not_established": (
@@ -723,7 +681,7 @@ EXPECTED: dict[str, tuple[str, str]] = {
     ),
     "port.readmitted": (
         "HEALTHY",
-        "re-admitted port: it was retired and seen again, so it is not new",
+        "re-admitted port: retired and seen again, so not new",
     ),
     "port.maintenance": (
         "UNKNOWN",
@@ -731,32 +689,29 @@ EXPECTED: dict[str, tuple[str, str]] = {
     ),
     "port.no_entity": (
         "UNKNOWN",
-        "no destination-port entity was supplied for this verdict",
+        "no destination-port entity was supplied",
     ),
     "port.wrong_dimension": (
         "UNKNOWN",
-        "no destination-port entity was supplied for this verdict",
+        "no destination-port entity was supplied",
     ),
     "port.absent_port": (
         "UNKNOWN",
         (
-            "port 0 and protocol 255 are absent values, not a service: no claim about"
-            " them"
+            "port 0 and protocol 255 are absent values, not a service"
         ),
     ),
     "port.dimension_failed": (
         "UNKNOWN",
         (
-            "the destination-port search was failed for this bucket: the value is"
-            " unavailable, not zero"
+            "the destination-port search was failed for this bucket; value unavailable, not zero"
         ),
     ),
     "port.coverage_low": (
         "UNKNOWN",
         (
-            "destination-port coverage was 50\xa0%, below the 90\xa0% floor: the events without"
-            " a value may differ in kind from the ones with one, so the visible numbers"
-            " bound nothing"
+            "destination-port coverage was 50\xa0%, below the 90\xa0% floor, so these numbers "
+            "bound nothing"
         ),
     ),
     "port.history_incomplete_default": (
@@ -784,15 +739,15 @@ EXPECTED: dict[str, tuple[str, str]] = {
     "port.flood_discovery": (
         "UNKNOWN",
         (
-            "the first-appearance bucket's destination-port discovery was incomplete: the"
-            " port cannot be told apart from a flood of new ports"
+            "the first-appearance bucket's destination-port discovery was incomplete; the port is "
+            "indistinguishable from a flood"
         ),
     ),
     "port.flood_admission": (
         "UNKNOWN",
         (
-            "the first-appearance bucket's destination-port admission was truncated: the"
-            " port appeared in a flood of new ports and is not individually new"
+            "the first-appearance bucket's destination-port admission was truncated; the port "
+            "arrived in a flood"
         ),
     ),
     "port.flood_text": (
@@ -806,29 +761,29 @@ EXPECTED: dict[str, tuple[str, str]] = {
     "flood.not_measured": (
         "FLOOD",
         (
-            "the first-appearance bucket's destination-port discovery was incomplete: the"
-            " port cannot be told apart from a flood of new ports"
+            "the first-appearance bucket's destination-port discovery was incomplete; the port is "
+            "indistinguishable from a flood"
         ),
     ),
     "flood.not_exact": (
         "FLOOD",
         (
-            "the first-appearance bucket's destination-port discovery was incomplete: the"
-            " port cannot be told apart from a flood of new ports"
+            "the first-appearance bucket's destination-port discovery was incomplete; the port is "
+            "indistinguishable from a flood"
         ),
     ),
     "flood.admission": (
         "FLOOD",
         (
-            "the first-appearance bucket's destination-port admission was truncated: the"
-            " port appeared in a flood of new ports and is not individually new"
+            "the first-appearance bucket's destination-port admission was truncated; the port "
+            "arrived in a flood"
         ),
     ),
     "flood.admission_unrecorded": (
         "FLOOD",
         (
-            "the first-appearance bucket's destination-port admission was truncated: the"
-            " port appeared in a flood of new ports and is not individually new"
+            "the first-appearance bucket's destination-port admission was truncated; the port "
+            "arrived in a flood"
         ),
     ),
     "history.complete": (
@@ -837,53 +792,52 @@ EXPECTED: dict[str, tuple[str, str]] = {
     ),
     "history.not_divisible": (
         "HISTORY",
-        "False: the history window is not divisible by the collection bucket width",
+        "False: the history window is not divisible by the bucket width",
     ),
     "history.zero_width": (
         "HISTORY",
-        "False: the history window is not divisible by the collection bucket width",
+        "False: the history window is not divisible by the bucket width",
     ),
     "history.never_collected": (
         "HISTORY",
-        "False: 1 of 3 history buckets were never collected",
+        "False: 1 of 3 history buckets never collected",
     ),
     "history.record_count": (
         "HISTORY",
-        "False: the history contains 4 bucket records for 3 expected buckets",
+        "False: history has 4 bucket records for 3 expected",
     ),
     "history.bucket_width": (
         "HISTORY",
         (
-            "False: history bucket 2026-10-13T10:00:00+00:00 used a different collection"
-            " bucket width"
+            "False: history bucket 2026-10-13T10:00:00+00:00 had a different bucket width"
         ),
     ),
     "history.port_search_not_collected": (
         "HISTORY",
         (
-            "False: history bucket 2026-10-13T10:00:00+00:00 had a destination-port"
-            " search that was not collected, not exact"
+            "False: history bucket 2026-10-13T10:00:00+00:00 had a destination-port search not "
+            "collected, not exact"
         ),
     ),
     "history.port_search_failed": (
         "HISTORY",
         (
-            "False: history bucket 2026-10-13T10:00:00+00:00 had a destination-port"
-            " search that was failed, not exact"
+            "False: history bucket 2026-10-13T10:00:00+00:00 had a destination-port search "
+            "failed, not exact"
         ),
     ),
     "history.port_search_rejected": (
         "HISTORY",
         (
-            "False: history bucket 2026-10-13T10:00:00+00:00 had a destination-port"
-            " search that was rejected, not exact"
+            "False: history bucket 2026-10-13T10:00:00+00:00 had a destination-port search "
+            "rejected, not exact"
         ),
     ),
     "history.port_search_lower_bound": (
         "HISTORY",
         (
-            "False: history bucket 2026-10-13T10:00:00+00:00 had a destination-port"
-            " search that was lower_bound, not exact"
+            "False: history bucket 2026-10-13T10:00:00+00:00 had a destination-port search "
+            "lower_bound, not exact"
         ),
     ),
     "history.coverage_low": (

@@ -97,7 +97,7 @@ describe("MSG-6b a nested sentence continues the sentence that holds it", () => 
       renderBackendMessage({ text: "the API text", code: "waf.rate.fired_lower", params }, "en", EN),
     ).toBe("the API text");
     expect(renderBackendCode(rate(SCOPE), "en", EN)).toContain(
-      "(a lower bound: the count is a lower bound: an increase can be proven, normal behaviour cannot)",
+      "(lower bound: the count is a lower bound: an increase can be proven, normal behaviour cannot)",
     );
   });
 });
