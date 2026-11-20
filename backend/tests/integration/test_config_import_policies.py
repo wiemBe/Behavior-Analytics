@@ -397,7 +397,8 @@ async def test_policy_and_outage_resolve_and_merge(db_schema, db_session, tmp_pa
     fleet = await _fleet(db_session)
     source_policy = {**POLICY, "scope_kind": "SOURCE", "family": "waf", "source_class": None,
                      "log_source": WAF}
-    watch_policy = {**POLICY, "family": "property_watch", "source_class": None,
+    watch_policy = {**POLICY, "scope_kind": "SOURCE", "family": "property_watch",
+                    "source_class": None,
                     "watch": {"name": "Denied actions"}, "detector_type": "PW_NEW_VALUE"}
     outage_source = {**OUTAGE, "scope_kind": "SOURCE", "source_class": None, "log_source": WAF}
     report = _import(db_schema, tmp_path, _document(
@@ -484,3 +485,37 @@ async def test_exported_row_with_warnings_is_unresolved(db_schema, db_session, t
     assert _lines(report, "notification_rules", "unresolved")[0]["reason"] == (
         "export reported an unresolved reference")
     assert await _count(db_session, NotificationRule) == [0]
+
+
+WATCH_REF = {"name": "Denied actions"}
+POLICY_SCOPE_MISMATCHES = [
+    ("source kind, class ref", {"scope_kind": "SOURCE"}),
+    ("class kind, source ref", {"source_class": None, "log_source": WAF}),
+    ("class kind, both refs", {"log_source": WAF}),
+    ("source kind, both refs", {"scope_kind": "SOURCE", "log_source": WAF}),
+    ("class kind, watch ref", {"source_class": None, "family": "property_watch",
+                               "watch": WATCH_REF}),
+    ("source kind, watch ref on a non-watch family",
+     {"scope_kind": "SOURCE", "source_class": None, "watch": WATCH_REF}),
+    ("watch family, source ref", {"scope_kind": "SOURCE", "source_class": None,
+                                  "family": "property_watch", "log_source": WAF}),
+    ("watch family, both refs", {"scope_kind": "SOURCE", "family": "property_watch",
+                                 "source_class": None, "log_source": WAF, "watch": WATCH_REF}),
+    ("unknown kind", {"scope_kind": "WATCH"}),
+]
+
+
+@pytest.mark.parametrize(("label", "change"), POLICY_SCOPE_MISMATCHES,
+                         ids=[item[0] for item in POLICY_SCOPE_MISMATCHES])
+async def test_policy_scope_must_match_its_reference_and_family(
+        db_schema, db_session, tmp_path, label, change):
+    await _fleet(db_session)
+    report = _import(db_schema, tmp_path, _document(
+        alert_policies=[{**POLICY, **change}], log_source_settings=[SOC]))
+    unresolved = _lines(report, "alert_policies", "unresolved")
+    assert len(unresolved) == 1, label
+    assert unresolved[0]["reason"] in (
+        "alert policy scope does not match scope_kind and family",
+        "alert policy scope_kind is not CLASS or SOURCE")
+    assert await _count(db_session, AlertPolicy) == [0]
+    assert len(_lines(report, "log_source_settings", "created")) == 1

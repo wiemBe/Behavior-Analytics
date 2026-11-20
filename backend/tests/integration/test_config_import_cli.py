@@ -396,11 +396,11 @@ async def test_invalid_rows_are_unresolved_and_other_sections_still_commit(
 async def test_duplicate_keys_and_later_sections_are_reported(db_schema, db_session, tmp_path):
     await _fleet(db_session)
     document = _document(log_source_settings=[_soc(owner="first"), _soc(owner="second")],
-                         technique_mappings=[{"name": "x"}],
-                         property_watches=[{"name": "policy"}], dashboards=[{"name": "SOC"}])
+                         custom_rules=[{"name": "x"}],
+                         dashboard_prefs=[{"name": "policy"}], dashboards=[{"name": "SOC"}])
     report = _report(_run(db_schema, tmp_path, "--apply", "--yes", document=document))
     assert len(_lines(report, "log_source_settings", "unresolved")) == 2
-    for section in ("technique_mappings", "property_watches", "dashboards"):
+    for section in ("custom_rules", "dashboard_prefs", "dashboards"):
         assert _lines(report, section, "unresolved")[0]["reason"] == "not applied in this release"
     source = await db_session.scalar(select(LogSource))
     await db_session.refresh(source)
