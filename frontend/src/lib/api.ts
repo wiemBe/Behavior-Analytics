@@ -594,6 +594,8 @@ export interface SearchExecution {
   status: string;
   trigger: string;
   triggered_by: string | null;
+  /** When the row was created; a manual run's queue time. */
+  created_at?: string | null;
   ariel_search_id: string | null;
   ariel_status: string | null;
   started_at: string | null;

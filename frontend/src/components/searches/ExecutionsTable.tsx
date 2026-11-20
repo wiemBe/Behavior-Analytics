@@ -9,6 +9,7 @@ import "@/components/ui/controls.css";
 
 import { useLocale, useTranslations } from "next-intl";
 
+import { workerStopLabel } from "@/components/searches/authoring";
 import { TableScroll } from "@/components/ui/TableScroll";
 import { useBackendMessage } from "@/i18n/backendMessage";
 import { enumLabel } from "@/i18n/enumLabels";
@@ -116,7 +117,7 @@ export function ExecutionsTable({ executions }: { executions: SearchExecution[] 
                 <td>
                   {e.error_type ? (
                     <span className="pill crit pill-wrap">
-                      {enumLabel(say, "executionErrorType", e.error_type)}
+                      {workerStopLabel(say, e) ?? enumLabel(say, "executionErrorType", e.error_type)}
                     </span>
                   ) : (
                     "—"

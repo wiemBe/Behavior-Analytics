@@ -4937,6 +4937,25 @@ REGISTRY: tuple[MessageSpec, ...] = (
         {"reasons": ParamSpec(ParamKind.LIST, style="semicolon")},
         {"reasons": [MessageRef("search.aql.empty", {})]},
     ),
+    # --- SCALE-2h2: a manual run is queued (D-87, English only, D-45) ---
+    _msg(
+        "search.run.conflict.running",
+        "a manual run of this search has been queued or running since {since}",
+        {"since": _TEXT},
+        {"since": "2026-11-20T10:00:00+00:00"},
+    ),
+    _fixed(
+        "search.run.abandoned",
+        "the run was abandoned: no worker finished it within the search timeout",
+    ),
+    _fixed(
+        "search.run.not_queued",
+        "the run could not be queued, so nothing was sent to QRadar; try again shortly",
+    ),
+    _fixed(
+        "search.run.worker_failed",
+        "the run stopped because the worker failed before it finished",
+    ),
     # --- end MSG-8b ---
     # --- FIX-44: why a failed search-cadence run waits for its next slot (English only, D-45) ---
     # A failed run keeps the slot it claimed: the family runs again at the next slot of its own

@@ -97,3 +97,21 @@ describe("ExecutionsTable truncated runs", () => {
     expect(row(0)).not.toHaveTextContent("UTC");
   });
 });
+
+describe("ExecutionsTable worker-stopped runs", () => {
+  it("words an abandoned run and a worker error, and keeps other types as labels", () => {
+    render(
+      <ExecutionsTable
+        executions={[
+          exec("w1", { status: "FAILED", error_type: "ABANDONED", error_message_code: "search.run.abandoned" }),
+          exec("w2", { status: "FAILED", error_type: "KeyError", error_message_code: "search.run.worker_failed" }),
+          exec("w3", { status: "FAILED", error_type: "CAPACITY" }),
+        ]}
+      />,
+    );
+    expect(row(0)).toHaveTextContent("Abandoned: the worker stopped before finishing");
+    expect(row(0)).not.toHaveTextContent("ABANDONED");
+    expect(row(1)).toHaveTextContent("Worker error (KeyError)");
+    expect(row(2)).toHaveTextContent("CAPACITY");
+  });
+});

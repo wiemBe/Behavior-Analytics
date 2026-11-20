@@ -685,6 +685,18 @@ Each point carries execution state, duration, result count, threshold state and 
 failed execution creates a chart gap, not a zero. Query-version boundaries are marked because data
 on either side may not be comparable.
 
+`POST /searches/{search_id}/run` (`search:execute`, rate limited) queues a manual run of the stored
+query and returns `202` with the execution (`status: QUEUED`); it builds no provider and takes no
+Ariel permit. A worker runs it on that row: Ariel polling (up to 15 minutes), result storage, then the
+alert evaluation. Read progress with `GET /searches/{search_id}/executions` (the row goes `QUEUED`,
+`RUNNING`, then a terminal status). A refusal for a full Ariel budget is no longer a `503`: the row
+ends `FAILED` with `error_type: CAPACITY` and its coded `error_message`. A worker that fails leaves the
+row `FAILED` with the exception's class as `error_type`, never `QUEUED` or `RUNNING`. A second run
+while a manual run of the same search is `QUEUED` or `RUNNING` and younger than
+`min(timeout_seconds, 900) + 120` seconds is `409` (`search.run.conflict.running`, `since` = when it was
+queued); an older open row is closed as `FAILED`/`ABANDONED` and the new run is accepted. If the queue
+cannot be reached the row is closed `FAILED` and the answer is `503` (`search.run.not_queued`).
+
 The dispatcher seeds a new search without running it immediately, runs one catch-up after downtime,
 deduplicates repeated delivery by run key, skips a still-running execution, preserves schedule state
 for malformed cron text, and caps the number dispatched per cycle.

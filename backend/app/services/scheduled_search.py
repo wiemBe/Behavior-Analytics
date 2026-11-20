@@ -179,8 +179,9 @@ class ScheduledSearchService:
 
     def manual_run_key(self, search: ScheduledSearch, actor: str) -> str:
         """A run key unique to this manual trigger instant, so two manual runs
-        are distinct executions but a retry of one reuses its row."""
-        stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S")
+        are distinct executions (the stamp runs to the microsecond: a queued run
+        owns its row, and a second run in the same second must not reuse it)."""
+        stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S%f")
         return f"manual:{actor}:{stamp}"
 
     @staticmethod

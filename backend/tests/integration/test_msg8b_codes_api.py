@@ -16,14 +16,12 @@ from fastapi.testclient import TestClient
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.pool import NullPool
 
-from app.api.routes.searches import get_ariel_permit_factory
 from app.core.config import Settings, get_settings
 from app.core.database import get_session
 from app.main import create_app
 from app.models.enums import ExecutionErrorType, ExecutionStatus
 from app.providers.base import ProviderCapability, ProviderUnavailableError
 from app.providers.dto import ArielSearchStatusDTO
-from app.providers.factory import get_provider
 from app.providers.mock import MockQRadarProvider
 from app.security.auth import get_principal
 from app.security.rbac import Principal
@@ -31,6 +29,7 @@ from app.services.aql_validator import AQLValidationError, validate_aql
 from app.services.search_executor import SearchExecutor
 from tests.integration.ariel_permit_fakes import CountingBudget
 from tests.integration.factories import FakeClock, make_search, utc
+from tests.integration.manual_run_support import capture_queue, run_queued
 
 pytestmark = [
     pytest.mark.integration,
@@ -267,7 +266,7 @@ class _Provider(MockQRadarProvider):
         super().__init__(seed=1337)
 
 
-def _client(db_url: str, budget: CountingBudget) -> TestClient:
+def _client(db_url: str) -> TestClient:
     engine = create_async_engine(db_url, future=True, poolclass=NullPool)
     maker = async_sessionmaker(engine, expire_on_commit=False)
 
@@ -280,16 +279,11 @@ def _client(db_url: str, budget: CountingBudget) -> TestClient:
                 await session.rollback()
                 raise
 
-    async def _provider():  # type: ignore[no-untyped-def]
-        yield _Provider()
-
     settings = get_settings()
     app = create_app()
     app.dependency_overrides[get_session] = _session
     app.dependency_overrides[get_settings] = lambda: settings
     app.dependency_overrides[get_principal] = lambda: ADMIN
-    app.dependency_overrides[get_provider] = _provider
-    app.dependency_overrides[get_ariel_permit_factory] = lambda: lambda _session, _settings: budget
     return TestClient(app)
 
 
@@ -302,82 +296,61 @@ def _create(client: TestClient) -> str:
     return str(created.json()["id"])
 
 
-def test_a_full_budget_503_carries_its_code_with_the_held_pair(db_schema: str) -> None:
+def _run_to_the_end(db_schema, monkeypatch, budget):  # type: ignore[no-untyped-def]
+    """POST the run (202, queued), run the task as the worker would, return the stored row."""
+    client = _client(db_schema)
+    search_id = _create(client)
+    queued = capture_queue(monkeypatch)
+    response = client.post(f"/api/v1/searches/{search_id}/run")
+    assert response.status_code == 202, response.text
+    assert response.json()["status"] == "QUEUED"
+    run_queued(db_schema, monkeypatch, queued, provider=_Provider(), budget=budget)
+    return client.get(f"/api/v1/searches/{search_id}/executions").json()[0]
+
+
+def test_a_full_budget_is_a_capacity_row_that_carries_its_code(db_schema, monkeypatch) -> None:  # type: ignore[no-untyped-def]
     budget = CountingBudget(
         global_limit=6, instance_limit=3, refuse=True, wait_seconds=30.0, reported_held=6
     )
-    client = _client(db_schema, budget)
-    search_id = _create(client)
 
-    response = client.post(f"/api/v1/searches/{search_id}/run")
+    row = _run_to_the_end(db_schema, monkeypatch, budget)
 
-    assert response.status_code == 503, response.text
-    body = response.json()
-    assert body["detail"] == (
-        "the Ariel search budget is full (6 of 6 in flight); waited 30 s; "
-        "nothing was sent to QRadar"
-    )
-    assert body["detail_code"] == "search.budget.full"
-    assert body["detail_params"] == {
-        "held": {"code": "search.budget.held_of", "params": {"held": 6, "cap": 6}},
-        "waited": 30.0,
-    }
-    rows = client.get(f"/api/v1/searches/{search_id}/executions").json()
-    assert rows[0]["error_message"] == (
+    assert row["status"] == "FAILED"
+    assert row["error_type"] == "CAPACITY"
+    assert row["error_message"] == (
         "No Ariel permit became available within 30 seconds (per-console cap 3, global cap 6)"
     )
-    assert rows[0]["error_message_code"] == "search.run.capacity"
-    assert rows[0]["error_message_params"] == {
+    assert row["error_message_code"] == "search.run.capacity"
+    assert row["error_message_params"] == {
         "waited": 30.0,
         "instance_cap": 3,
         "global_cap": 6,
     }
 
 
-def test_a_partly_held_budget_names_held_before_cap(db_schema: str) -> None:
-    budget = CountingBudget(
-        global_limit=6, instance_limit=3, refuse=True, wait_seconds=30.0, reported_held=4
-    )
-    client = _client(db_schema, budget)
-    search_id = _create(client)
-
-    body = client.post(f"/api/v1/searches/{search_id}/run").json()
-
-    assert "(4 of 6 in flight)" in body["detail"]
-    assert body["detail_params"]["held"]["params"] == {"held": 4, "cap": 6}
-
-
-def test_a_budget_the_pool_cannot_count_says_the_cap(db_schema: str) -> None:
+def test_a_budget_the_pool_cannot_count_still_names_its_caps_on_the_row(  # type: ignore[no-untyped-def]
+    db_schema, monkeypatch
+) -> None:
     budget = CountingBudget(global_limit=6, instance_limit=3, refuse=True, wait_seconds=2.5)
-    client = _client(db_schema, budget)
-    search_id = _create(client)
 
-    response = client.post(f"/api/v1/searches/{search_id}/run")
+    row = _run_to_the_end(db_schema, monkeypatch, budget)
 
-    assert response.status_code == 503
-    body = response.json()
-    assert body["detail"] == (
-        "the Ariel search budget is full (cap 6 in flight); waited 2.5 s; "
-        "nothing was sent to QRadar"
+    assert row["error_message"] == (
+        "No Ariel permit became available within 2.5 seconds (per-console cap 3, global cap 6)"
     )
-    assert body["detail_params"]["held"] == {
-        "code": "search.budget.held_cap",
-        "params": {"cap": 6},
-    }
+    assert row["error_message_params"]["waited"] == 2.5
 
 
-def test_a_completed_run_serves_no_code(db_schema: str) -> None:
-    client = _client(db_schema, CountingBudget())
-    search_id = _create(client)
-    ran = client.post(f"/api/v1/searches/{search_id}/run")
-    assert ran.status_code == 200
-    assert ran.json()["error_message"] is None
-    assert ran.json()["error_message_code"] is None
-    assert ran.json()["error_message_params"] is None
+def test_a_completed_run_serves_no_code(db_schema, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    row = _run_to_the_end(db_schema, monkeypatch, CountingBudget())
+    assert row["status"] == "COMPLETED"
+    assert row["error_message"] is None
+    assert row["error_message_code"] is None
+    assert row["error_message_params"] is None
 
 
 def test_a_cron_below_the_floor_is_a_coded_422_on_create_and_on_update(db_schema: str) -> None:
-    client = _client(db_schema, CountingBudget())
+    client = _client(db_schema)
     refused = client.post(
         "/api/v1/searches",
         json={"name": "fast", "aql_query": AQL, "schedule_cron": "*/2 * * * *"},
