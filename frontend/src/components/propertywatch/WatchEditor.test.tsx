@@ -498,14 +498,19 @@ describe("the queued preview (SCALE-2h3)", () => {
   });
 
   it("follows queued to running to done, then stops reading", async () => {
+    let resolveDone!: (value: PwPreviewStatus) => void;
+    const donePromise = new Promise<PwPreviewStatus>((resolve) => {
+      resolveDone = resolve;
+    });
     const read = vi
       .spyOn(api, "propertyWatchPreview")
       .mockResolvedValueOnce(open())
       .mockResolvedValueOnce(open({ status: "RUNNING" }))
-      .mockResolvedValue(status());
+      .mockImplementationOnce(() => donePromise);
     renderEdit();
     clickSave();
     expect(await screen.findByText(/Preview running\. Queued at/)).toBeInTheDocument();
+    resolveDone(status());
     expect(await screen.findByText(/Last closed hour/)).toBeInTheDocument();
     expect(screen.queryByText(/Preview running/)).toBeNull();
     expect(read).toHaveBeenCalledWith(watch().id, "pv-1");
@@ -538,13 +543,18 @@ describe("the queued preview (SCALE-2h3)", () => {
   });
 
   it("keeps following when one read fails and says so", async () => {
+    let resolveDone!: (value: PwPreviewStatus) => void;
+    const donePromise = new Promise<PwPreviewStatus>((resolve) => {
+      resolveDone = resolve;
+    });
     vi.spyOn(api, "propertyWatchPreview")
       .mockResolvedValueOnce(open())
       .mockRejectedValueOnce(new ApiError(503, "Service Unavailable"))
-      .mockResolvedValue(status());
+      .mockImplementationOnce(() => donePromise);
     renderEdit(40);
     clickSave();
     expect(await screen.findByText(/progress could not be read/)).toBeInTheDocument();
+    resolveDone(status());
     expect(await screen.findByText(/Last closed hour/)).toBeInTheDocument();
     expect(screen.queryByText(/progress could not be read/)).toBeNull();
   });
