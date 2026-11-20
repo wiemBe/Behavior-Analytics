@@ -240,7 +240,10 @@ describe("saving", () => {
     expect(openButton()).toHaveFocus();
     // The new row is listed in the protection line and the page is asked to read again.
     expect(screen.getByRole("list", { name: "Training protection" })).toHaveTextContent("04 Nov 08:00–10:00 UTC");
-    expect(refresh).toHaveBeenCalledTimes(1);
+    // `PageRefresh` mounts in the commit that renders the pending line and calls
+    // `router.refresh()` in a passive effect (ExcludeInterval.tsx:48-55, :209), so waiting for
+    // the text alone can outrun the call.
+    await waitFor(() => expect(refresh).toHaveBeenCalledTimes(1));
   });
 
   it("states what an existing exact row already is, not that it was just saved", async () => {
