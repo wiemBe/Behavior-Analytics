@@ -1407,6 +1407,7 @@ class QRadarRestProvider(QRadarProvider):
         self.require(ProviderCapability.AQL_EXECUTION)
         if max_rows < 1:
             raise ValueError("metric row limit must be positive")
+        max_rows = self._keyed_row_cap(max_rows)
         start, end = validate_bucketed_metric_window(
             window_start, window_end, bucket_seconds
         )
