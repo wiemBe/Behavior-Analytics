@@ -137,6 +137,7 @@ from app.providers.normalize import (
     as_str_list,
     as_text,
     parse_qradar_time,
+    source_enabled,
 )
 from app.providers.telemetry import EndpointCategory, ErrorClass, observe
 from app.providers.tls import build_ssl_context
@@ -3567,9 +3568,7 @@ class QRadarRestProvider(QRadarProvider):
             type_id=as_int(row.get("type_id")) or as_int(type_info.get("id")),
             type_name=(type_info.get("name") if isinstance(type_info.get("name"), str) else None),
             protocol_type_id=as_int(row.get("protocol_type_id")),
-            enabled=(
-                row.get("enabled") if isinstance(row.get("enabled"), bool) else None
-            ) if self._strict_source_enabled else bool(row.get("enabled", True)),
+            enabled=source_enabled(row, strict=self._strict_source_enabled),
             status=self._log_source_status(row),
             credibility=as_int(row.get("credibility")),
             target_event_collector_id=as_int(row.get("target_event_collector_id")),
