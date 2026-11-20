@@ -15,10 +15,19 @@ Slice 1d2: the two sections 1d left out -- outage alert policies and e-mail reci
 unresolved-reference rule. A ref that no longer resolves on this console keeps the shape the row
 spells (a null ref, or a null-named object) and the row gains a ``warnings`` entry, so a dangling
 id is never written silently; the entry names the field, never the id.
+
+Slice 1e: watches, scheduled searches (their current query only), custom threshold rules, rule SOC
+columns, EXPLICIT technique mappings and dashboards. Collection state stays out (``history_days``,
+hysteresis counters, run cursors); a widget's id becomes a name ref, and a null binding stays null.
 """
 
 from __future__ import annotations
 
+import copy
+import re
+import sys
+import uuid
+from collections.abc import Mapping
 from datetime import UTC, datetime
 from typing import Any
 
@@ -29,20 +38,30 @@ from app.config_transfer.document import build_document, format_timestamp
 from app.core.version import read_version
 from app.models.alert_policy import AlertPolicy
 from app.models.alert_suppression import AlertSuppression
+from app.models.custom_rule import CustomRule
+from app.models.dashboard import Dashboard, UserDashboardPref
 from app.models.email import EmailRecipient, EmailTemplate
-from app.models.fleet import ClassificationRule, LogSourceClassification, LogSourceGroup
+from app.models.enums import MappingSource
+from app.models.fleet import (
+    ClassificationRule,
+    LogSourceClassification,
+    LogSourceGroup,
+    LogSourceType,
+)
 from app.models.identity import LdapConfig
 from app.models.identity_detection import IdentitySourceProfile
 from app.models.instance import QRadarInstance
-from app.models.ips import IpsSourceProfile
+from app.models.ips import IpsEntity, IpsSourceProfile
 from app.models.log_source import LogSource
 from app.models.notification_destination import NotificationDestination
 from app.models.notification_rule import NotificationRule
 from app.models.outage import OutageAlertPolicy
-from app.models.property_watch import PropertyWatch
-from app.models.rule import AnalyticsRule
+from app.models.property_watch import PropertyWatch, PwValue
+from app.models.rule import AnalyticsRule, TechniqueMapping
+from app.models.search import ScheduledSearch
 from app.models.search_cadence import SearchCadenceSetting
-from app.models.waf import WafSourceProfile
+from app.models.waf import WafEndpoint, WafSourceProfile
+from app.schemas.dashboard import SUPPORTED_LAYOUT_VERSIONS
 
 #: The SOC-owned log-source columns. Mirrored QRadar columns, maintenance and health stay out.
 _SOC_FIELDS = (
@@ -72,10 +91,56 @@ _LOG_SOURCE_ORDER = (
     LogSource.name, LogSource.type_name.nullsfirst(), LogSource.qradar_id, LogSource.id,
 )
 
+#: A widget config key that stores an id today, and the ref it becomes (design, "Identity").
+_WIDGET_BINDINGS: dict[str, dict[str, str]] = {
+    "chart.eps_observed_expected": {"source": "log_source"},
+    "waf.endpoint_traffic": {"waf_source": "log_source", "endpoint": "endpoint"},
+    "chart.property_watch": {"watch_id": "watch"},
+    "chart.search_results": {"search_id": "search"},
+}
+#: The ref an unresolved widget binding is written as; it keeps the design's shape, not the id.
+_NULL_REFS: dict[str, dict[str, Any]] = {
+    "log_source": {"name": None, "type_name": None},
+    "watch": {"name": None},
+    "search": {"name": None},
+    "endpoint": {"log_source": None, "virtual_host": None, "normalized_endpoint": None,
+                 "http_method": None, "normalizer_version": None},
+}
+_ID_SHAPE = re.compile(
+    r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+)
+
 
 def _log_source_ref(row: LogSource) -> dict[str, Any]:
     """A log source is referenced by name and type, never by a QRadar id or a UUID."""
     return {"name": row.name, "type_name": row.type_name}
+
+
+def _rule_ref(row: AnalyticsRule) -> dict[str, Any]:
+    """An analytics rule's natural key: name alone is not unique."""
+    return {"name": row.name, "rule_type": row.rule_type,
+            "is_building_block": row.is_building_block}
+
+
+def _has_id(value: Any) -> bool:
+    """Whether an opaque widget config still holds a UUID, which must never be carried forward."""
+    if isinstance(value, str):
+        return _ID_SHAPE.fullmatch(value) is not None
+    if isinstance(value, Mapping):
+        return any(_has_id(item) for item in value.values())
+    if isinstance(value, list | tuple):
+        return any(_has_id(item) for item in value)
+    return False
+
+
+def _group_refs(refs: dict[str, Any]) -> dict[int, dict[str, Any]]:
+    """Log-source groups by QRadar id, their parent resolved to a name or left null."""
+    groups = refs["groups"]
+    return {
+        qid: {"name": name,
+              "parent_name": groups[parent][0] if parent is not None and parent in groups else None}
+        for qid, (name, parent) in groups.items()
+    }
 
 
 def _warn(row: dict[str, Any], kind: str) -> None:
@@ -410,10 +475,349 @@ async def _ldap_config(session: AsyncSession) -> list[dict[str, Any]]:
     }]
 
 
+async def _property_watches(
+    session: AsyncSession, instance: QRadarInstance, refs: dict[str, Any]
+) -> list[dict[str, Any]]:
+    """The watch definition: no ``history_days``, no cursors and no status.
+
+    ``history_days`` is the old console's bootstrap request; import stores it null (design,
+    open decision 15). A scope ref resolves to this console's local row.
+    """
+    watches = (await session.scalars(
+        select(PropertyWatch).where(PropertyWatch.instance_id == instance.id)
+        .order_by(PropertyWatch.name)
+    )).all()
+    groups = _group_refs(refs)
+    rows: list[dict[str, Any]] = []
+    for watch in watches:
+        source = refs["sources"].get(str(watch.log_source_id))
+        scope_type = None
+        scope_group = None
+        missing = None
+        if watch.scope_kind == "LOG_SOURCE":
+            if source is None:
+                missing = "log source"
+        elif watch.scope_kind == "LOG_SOURCE_TYPE":
+            scope_type = {"name": refs["types"].get(watch.scope_type_id)
+                          if watch.scope_type_id is not None else None}
+            if scope_type["name"] is None:
+                missing = "log source type"
+        else:
+            group_id = watch.scope_group_id
+            scope_group = groups.get(group_id) if group_id is not None else None
+            if scope_group is None:
+                missing = "log source group"
+            elif group_id is not None and scope_group["parent_name"] is None:
+                parent = refs["groups"][group_id][1]
+                if parent is not None:
+                    missing = "log source group parent"
+        row: dict[str, Any] = {
+            "name": watch.name, "description": watch.description,
+            "enabled_on_source": watch.enabled, "scope_kind": watch.scope_kind,
+            "log_source": source, "scope_type": scope_type, "scope_group": scope_group,
+            "properties": watch.properties, "pinned_values": watch.pinned_values,
+            "detectors": watch.detectors, "severity": watch.severity,
+        }
+        if missing is not None:
+            _warn(row, missing)
+        rows.append(row)
+    return rows
+
+
+async def _scheduled_searches(session: AsyncSession) -> list[dict[str, Any]]:
+    """The definition and its current query; older query versions and run cursors stay out."""
+    rows = (await session.scalars(
+        select(ScheduledSearch).order_by(ScheduledSearch.name)
+    )).all()
+    return [{
+        "name": row.name, "description": row.description, "owner": row.owner,
+        "category": row.category, "mitre_techniques": row.mitre_techniques,
+        "aql_query": row.aql_query, "schedule_cron": row.schedule_cron,
+        "schedule_timezone": row.schedule_timezone, "threshold_value": row.threshold_value,
+        "threshold_operator": row.threshold_operator, "severity": row.severity,
+        "timeout_seconds": row.timeout_seconds,
+        "max_time_range_hours": row.max_time_range_hours,
+        "max_result_rows": row.max_result_rows,
+        "visualization_type": row.visualization_type, "enabled_on_source": row.enabled,
+    } for row in rows]
+
+
+async def _subject_refs(
+    session: AsyncSession, instance: QRadarInstance, refs: dict[str, Any],
+    endpoint_ids: set[uuid.UUID], entity_ids: set[uuid.UUID], value_ids: set[uuid.UUID],
+) -> dict[str, dict[str, Any]]:
+    """The endpoint, IPS entity and watch-value refs a custom rule needs, in three selects."""
+    endpoints: dict[str, dict[str, Any]] = {}
+    if endpoint_ids:
+        endpoint_rows = (await session.scalars(
+            select(WafEndpoint).where(WafEndpoint.instance_id == instance.id,
+                                      WafEndpoint.id.in_(endpoint_ids))
+        )).all()
+        endpoints = {str(row.id): {
+            "log_source": refs["sources"].get(str(row.log_source_id)),
+            "virtual_host": row.virtual_host, "normalized_endpoint": row.normalized_endpoint,
+            "http_method": row.http_method, "normalizer_version": row.normalizer_version,
+        } for row in endpoint_rows}
+    entities: dict[str, dict[str, Any]] = {}
+    if entity_ids:
+        entity_rows = (await session.scalars(
+            select(IpsEntity).where(IpsEntity.instance_id == instance.id,
+                                    IpsEntity.id.in_(entity_ids))
+        )).all()
+        entities = {str(row.id): {
+            "log_source": refs["sources"].get(str(row.log_source_id)),
+            "dimension": row.dimension, "value_key": row.value_key,
+        } for row in entity_rows}
+    values: dict[str, dict[str, Any]] = {}
+    if value_ids:
+        value_rows = (await session.scalars(
+            select(PwValue).where(PwValue.id.in_(value_ids))
+        )).all()
+        values = {str(row.id): {
+            "watch": {"name": refs["watches"].get(str(row.watch_id))},
+            "value_key": row.value_key, "watch_version": row.watch_version,
+        } for row in value_rows}
+    return {"endpoints": endpoints, "entities": entities, "values": values}
+
+
+async def _custom_rules(
+    session: AsyncSession, instance: QRadarInstance, refs: dict[str, Any]
+) -> list[dict[str, Any]]:
+    """The threshold definition only: hysteresis counters and evaluation state stay out."""
+    rules = (await session.scalars(
+        select(CustomRule).order_by(CustomRule.name)
+    )).all()
+    subject = await _subject_refs(
+        session, instance, refs,
+        {rule.waf_endpoint_id for rule in rules if rule.waf_endpoint_id is not None},
+        {rule.ips_entity_id for rule in rules if rule.ips_entity_id is not None},
+        {rule.pw_value_id for rule in rules if rule.pw_value_id is not None},
+    )
+    rows: list[dict[str, Any]] = []
+    for rule in rules:
+        source_subject = rule.subject_kind in ("LOG_SOURCE", "IPS_SOURCE")
+        row: dict[str, Any] = {
+            "name": rule.name, "description": rule.description,
+            "enabled_on_source": rule.enabled, "subject_kind": rule.subject_kind,
+            "log_source": refs["sources"].get(str(rule.log_source_id))
+            if source_subject else None,
+            "source_class": rule.source_class,
+            "waf_endpoint": subject["endpoints"].get(str(rule.waf_endpoint_id))
+            if rule.waf_endpoint_id is not None else None,
+            "ips_entity": subject["entities"].get(str(rule.ips_entity_id))
+            if rule.ips_entity_id is not None else None,
+            "pw_value": subject["values"].get(str(rule.pw_value_id))
+            if rule.pw_value_id is not None else None,
+            "metric": rule.metric, "operator": rule.operator,
+            "threshold_value": rule.threshold_value, "sustain_buckets": rule.sustain_buckets,
+            "recovery_buckets": rule.recovery_buckets, "severity": rule.severity,
+        }
+        missing: list[str] = []
+        if source_subject and row["log_source"] is None:
+            missing.append("log source")
+        if rule.waf_endpoint_id is not None:
+            endpoint = row["waf_endpoint"]
+            if endpoint is None:
+                missing.append("WAF endpoint")
+            elif endpoint["log_source"] is None:
+                missing.append("WAF endpoint log source")
+        if rule.ips_entity_id is not None:
+            entity = row["ips_entity"]
+            if entity is None:
+                missing.append("IPS entity")
+            elif entity["log_source"] is None:
+                missing.append("IPS entity log source")
+        if rule.pw_value_id is not None:
+            value = row["pw_value"]
+            if value is None:
+                missing.append("property watch value")
+            elif value["watch"]["name"] is None:
+                missing.append("property watch")
+        for kind in missing:
+            _warn(row, kind)
+        rows.append(row)
+    return rows
+
+
+async def _analytics_rule_settings(
+    session: AsyncSession, instance: QRadarInstance
+) -> list[dict[str, Any]]:
+    """The SOC block only; mirrored QRadar columns and observed counters are never exported."""
+    rules = (await session.scalars(
+        select(AnalyticsRule).where(AnalyticsRule.instance_id == instance.id).order_by(
+            AnalyticsRule.name, AnalyticsRule.rule_type.nullsfirst(),
+            AnalyticsRule.is_building_block, AnalyticsRule.qradar_id,
+        )
+    )).all()
+    return [{
+        "rule": _rule_ref(row), "owner": row.owner, "mitre_techniques": row.mitre_techniques,
+        "soc_notes": row.soc_notes, "expected_daily_firings": row.expected_daily_firings,
+        "health_monitoring_enabled": row.health_monitoring_enabled,
+    } for row in rules]
+
+
+async def _technique_mappings(
+    session: AsyncSession, instance: QRadarInstance
+) -> list[dict[str, Any]]:
+    """Only SOC-curated mappings: an INFERRED row is derived and never travels."""
+    pairs = await session.execute(
+        select(TechniqueMapping, AnalyticsRule)
+        .join(AnalyticsRule, AnalyticsRule.id == TechniqueMapping.rule_id)
+        .where(TechniqueMapping.instance_id == instance.id,
+               TechniqueMapping.source == MappingSource.EXPLICIT)
+        .order_by(TechniqueMapping.technique_id, AnalyticsRule.name,
+                  AnalyticsRule.rule_type.nullsfirst(), AnalyticsRule.is_building_block,
+                  AnalyticsRule.qradar_id)
+    )
+    return [{
+        "technique_id": mapping.technique_id, "technique_name": mapping.technique_name,
+        "tactic": mapping.tactic, "rule": _rule_ref(rule), "source": mapping.source,
+        "confidence": mapping.confidence, "provenance": mapping.provenance,
+    } for mapping, rule in pairs.all()]
+
+
+def _widget_ref(
+    kind: str, value: Any, refs: dict[str, Any], subject: dict[str, dict[str, Any]],
+    searches: dict[str, str],
+) -> dict[str, Any] | None:
+    """The name ref a widget's stored id becomes; ``None`` when it no longer resolves."""
+    if not isinstance(value, str):
+        return None
+    if kind == "log_source":
+        return refs["sources"].get(value)
+    if kind == "endpoint":
+        return subject["endpoints"].get(value)
+    name = (refs["watches"] if kind == "watch" else searches).get(value)
+    return {"name": name} if name is not None else None
+
+
+def _supported(layout: Any) -> bool:
+    """Whether a stored layout carries a version this build reads.
+
+    A hand-edited row can hold a list or a dict at ``v``; a membership test on such a value
+    raises ``TypeError: unhashable type``. ``True`` is an ``int`` in Python but is not a layout
+    version.
+    """
+    version = layout.get("v") if isinstance(layout, Mapping) else None
+    return (
+        isinstance(version, int)
+        and not isinstance(version, bool)
+        and version in SUPPORTED_LAYOUT_VERSIONS
+    )
+
+
+def _skip_dashboard(dashboard: Dashboard, reason: str) -> None:
+    """Say on stderr that a dashboard was left out of the file, once, by name.
+
+    A skipped dashboard has no row in the file, so this line is the only trace it leaves. The
+    name is configuration, not a secret; the id is never printed.
+    """
+    print(f"warning: dashboard {dashboard.name!r} was not exported: {reason}",
+          file=sys.stderr)
+
+
+async def _dashboards(
+    session: AsyncSession, instance: QRadarInstance, refs: dict[str, Any]
+) -> tuple[list[dict[str, Any]], set[uuid.UUID]]:
+    """A dashboard layout with every widget id rewritten to a local name ref.
+
+    A null binding is not a missing ref and stays null. A dashboard whose opaque config still
+    holds a UUID is skipped whole: the file must not carry an old id forward. A binding that no
+    longer resolves keeps a null-named ref and warns, as slice 1d2 does for other rows.
+
+    A dashboard skipped for an unsupported layout version, a non-mapping layout or an opaque id
+    has no row in the file; one stderr line per skipped name is its only trace, and its id never
+    reaches that line. The returned ids are the dashboards that were exported, so a preference
+    cannot name one that is not in the file.
+    """
+    dashboards = (await session.scalars(
+        select(Dashboard).order_by(Dashboard.owner_subject, Dashboard.name)
+    )).all()
+    searches = {str(row_id): name for row_id, name in (await session.execute(
+        select(ScheduledSearch.id, ScheduledSearch.name))).all()}
+    endpoint_ids: set[uuid.UUID] = set()
+    for dashboard in dashboards:
+        if not _supported(dashboard.layout):
+            continue
+        for widget in dashboard.layout.get("widgets") or []:
+            if isinstance(widget, Mapping) and widget.get("type") == "waf.endpoint_traffic":
+                value = (widget.get("config") or {}).get("endpoint")
+                if isinstance(value, str) and _ID_SHAPE.fullmatch(value):
+                    endpoint_ids.add(uuid.UUID(value))
+    subject = await _subject_refs(session, instance, refs, endpoint_ids, set(), set())
+    rows: list[dict[str, Any]] = []
+    exported: set[uuid.UUID] = set()
+    for dashboard in dashboards:
+        if not _supported(dashboard.layout):
+            _skip_dashboard(dashboard, "layout version is not supported")
+            continue
+        layout = copy.deepcopy(dashboard.layout) if isinstance(dashboard.layout, dict) else {}
+        missing: list[str] = []
+        skip = False
+        for widget in layout.get("widgets") or []:
+            if not isinstance(widget, dict):
+                continue
+            bindings = _WIDGET_BINDINGS.get(str(widget.get("type")))
+            config = widget.get("config")
+            if bindings is None:
+                skip = skip or (config is not None and _has_id(config))
+                continue
+            if not isinstance(config, dict):
+                continue
+            for key, kind in bindings.items():
+                value = config.get(key)
+                if value is None:
+                    # A null binding is not a missing ref: keep it null, no warning.
+                    config[key] = None
+                    continue
+                ref = _widget_ref(kind, value, refs, subject, searches)
+                if ref is None:
+                    # A non-null binding that no longer resolves keeps the null-named
+                    # ref and warns, as every other unresolved reference does.
+                    config[key] = copy.deepcopy(_NULL_REFS[kind])
+                    missing.append("widget " + kind.replace("_", " "))
+                else:
+                    config[key] = ref
+        if skip:
+            _skip_dashboard(dashboard, "layout holds an opaque id")
+            continue
+        row: dict[str, Any] = {
+            "owner_subject": dashboard.owner_subject, "name": dashboard.name,
+            "description": dashboard.description, "visibility": dashboard.visibility,
+            "template_key": dashboard.template_key,
+            "template_version": dashboard.template_version,
+            "schema_version": dashboard.schema_version, "layout": layout,
+        }
+        for kind in missing:
+            _warn(row, kind)
+        rows.append(row)
+        exported.add(dashboard.id)
+    return rows, exported
+
+
+async def _dashboard_prefs(
+    session: AsyncSession, exported_ids: set[uuid.UUID]
+) -> list[dict[str, Any]]:
+    """The default dashboard by name, and only when that dashboard was exported.
+
+    A preference naming a skipped dashboard would point at a name the file does not carry;
+    import would resolve it to nothing, so the preference is dropped here.
+    """
+    rows = (await session.execute(
+        select(UserDashboardPref.owner_subject, Dashboard.name)
+        .join(Dashboard, Dashboard.id == UserDashboardPref.default_dashboard_id)
+        .where(Dashboard.id.in_(exported_ids))
+        .order_by(UserDashboardPref.owner_subject)
+    )).all()
+    return [{"owner_subject": owner, "dashboard_name": name} for owner, name in rows]
+
+
 async def _ref_maps(session: AsyncSession, instance: QRadarInstance) -> dict[str, Any]:
     """Local names a policy, suppression or rule ref resolves to on this console."""
     sources = (await session.scalars(
         select(LogSource).where(LogSource.instance_id == instance.id))).all()
+    types = (await session.scalars(
+        select(LogSourceType).where(LogSourceType.instance_id == instance.id))).all()
     watches = (await session.scalars(
         select(PropertyWatch).where(PropertyWatch.instance_id == instance.id))).all()
     rules = (await session.scalars(
@@ -423,9 +827,9 @@ async def _ref_maps(session: AsyncSession, instance: QRadarInstance) -> dict[str
         select(LogSourceGroup).where(LogSourceGroup.instance_id == instance.id))).all()
     return {
         "sources": {str(r.id): _log_source_ref(r) for r in sources},
+        "types": {r.type_id: r.name for r in types},
         "watches": {str(r.id): r.name for r in watches},
-        "rules": {str(r.id): {"name": r.name, "rule_type": r.rule_type,
-                              "is_building_block": r.is_building_block} for r in rules},
+        "rules": {str(r.id): _rule_ref(r) for r in rules},
         "destinations": {str(r.id): r.name for r in destinations},
         "groups": {r.qradar_id: (r.name, r.parent_qradar_id) for r in groups},
     }
@@ -436,6 +840,7 @@ async def export_document(
 ) -> dict[str, Any]:
     """The whole secret-free document for one console, its empty sections included."""
     refs = await _ref_maps(session, instance)
+    dashboards, dashboard_ids = await _dashboards(session, instance, refs)
     return build_document(
         product_version=read_version(),
         exported_at=exported_at,
@@ -444,9 +849,12 @@ async def export_document(
             "log_source_settings": await _log_source_settings(session, instance),
             "classification_overrides": await _classification_overrides(session, instance),
             "classification_rules": await _classification_rules(session, instance),
+            "analytics_rule_settings": await _analytics_rule_settings(session, instance),
+            "technique_mappings": await _technique_mappings(session, instance),
             "waf_source_profiles": await _waf_source_profiles(session, instance),
             "ips_source_profiles": await _ips_source_profiles(session, instance),
             "identity_source_profiles": await _identity_source_profiles(session, instance),
+            "property_watches": await _property_watches(session, instance, refs),
             "alert_policies": await _alert_policies(session, instance, refs),
             "outage_alert_policies": await _outage_alert_policies(session, instance, refs),
             "alert_suppressions": await _alert_suppressions(session, refs, datetime.now(UTC)),
@@ -456,5 +864,9 @@ async def export_document(
             "email_recipients": await _email_recipients(session),
             "ldap_config": await _ldap_config(session),
             "search_cadence": await _search_cadence(session),
+            "scheduled_searches": await _scheduled_searches(session),
+            "custom_rules": await _custom_rules(session, instance, refs),
+            "dashboards": dashboards,
+            "dashboard_prefs": await _dashboard_prefs(session, dashboard_ids),
         },
     )
