@@ -242,11 +242,11 @@ export function conflictConsole(err: unknown): HistoryConsole | null {
  */
 export const CONFIRM_TEXT = {
   yes: (days: number | null) =>
-    `This records Yes${days === null ? "" : ` for ${days} days`}. At its next collection each family reads the days before its first live data: source volume, catch-all senders and rule matches always, a WAF or IPS source only if it has not been collected yet. Nothing old raises an alert. A Yes is never reversed; reading can be stopped.`,
-  no: "This records No. No history is read. You can still choose Read history now later.",
+    `Records Yes${days === null ? "" : ` for ${days} days`}. Each family reads the days before its first live data at its next collection. Nothing old raises an alert. A Yes is never reversed.`,
+  no: "Records No. No history is read.",
   start:
-    "This asks every family to read history again at its next collection: source volume, catch-all senders and rule matches, including sources added since, and a WAF or IPS source only if it has not been collected yet. Nothing is read at once and nothing old raises an alert.",
-  stop: "This ends every scope that is reading as Partial, with the reason \"stopped by\" and your name. What was read stays and is used for learning. Nothing is deleted. Read history now starts it again.",
+    "Every family reads history again at its next collection, including sources added since. Nothing old raises an alert.",
+  stop: "Ends every reading scope as Partial, reason \"stopped by\" and your name. What was read stays.",
 } as const;
 
 /** What the action does, in the interface language (the `history.confirm` messages). */
