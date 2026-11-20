@@ -335,12 +335,17 @@ class TestDoctorWiring:
 
     @pytest.mark.asyncio
     async def test_the_collection_off_is_a_skip(self) -> None:
+        from app.services.feature_switches import ResolvedFeatures, ResolvedSwitch
+
         d = Doctor(
             settings=Settings(encryption_key=KEY, qradar_health_collection_enabled=False),
+            resolved_features=ResolvedFeatures(values={
+                "qradar_health_collection_enabled": ResolvedSwitch(False, "db"),
+            }),
             sessionmaker=cast(Any, lambda: (_ for _ in ()).throw(AssertionError("no session"))),
         )
-        assert (await d.check_qradar_disk()).status is Status.SKIP
-        assert (await d.check_qradar_pipeline()).status is Status.SKIP
+        assert (await d.check_qradar_disk()).status is Status.INFO
+        assert (await d.check_qradar_pipeline()).status is Status.INFO
 
 
 class TestCarriedTotalInDoctor:

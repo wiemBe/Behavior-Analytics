@@ -82,6 +82,7 @@ from app.models.log_source import LogSource
 from app.models.property_watch import PropertyWatch, PwValue
 from app.models.search_cadence import SearchCadenceSetting
 from app.models.waf import WafEndpoint
+from app.services.feature_switches import FAMILY_LABELS
 
 _RULE_COLUMNS = (
     "consecutive_breaching",
@@ -729,19 +730,19 @@ def _family_collected_message(
         if settings.waf_collection_enabled:
             return True, None
         return False, MessageRef(
-            "custom_rule.family.collection_off", {"setting": "waf_collection_enabled"}
+            "custom_rule.family.feature_off", {"family": FAMILY_LABELS["waf_collection_enabled"]}
         )
     if kind in (_IPS_ENTITY, _IPS_SOURCE):
         if settings.ips_collection_enabled:
             return True, None
         return False, MessageRef(
-            "custom_rule.family.collection_off", {"setting": "ips_collection_enabled"}
+            "custom_rule.family.feature_off", {"family": FAMILY_LABELS["ips_collection_enabled"]}
         )
     if kind == _PW_VALUE:
         if settings.pw_collection_enabled:
             return True, None
         return False, MessageRef(
-            "custom_rule.family.collection_off", {"setting": "pw_collection_enabled"}
+            "custom_rule.family.feature_off", {"family": FAMILY_LABELS["pw_collection_enabled"]}
         )
     if kind in _FAMILY_ALWAYS_COLLECTED:
         return True, None

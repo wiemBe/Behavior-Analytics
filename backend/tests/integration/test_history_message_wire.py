@@ -145,12 +145,15 @@ async def test_the_collection_switch_and_window_reasons_are_coded(db_session, db
     )
     console = client.get(BASE).json()[0]
     waf = family_of(console, "WAF")
-    assert waf["collection_reason"] == "WAF_COLLECTION_ENABLED is on"
-    assert waf["collection_reason_code"] == "history.family.switch_on"
-    assert waf["collection_reason_params"] == {"setting": "WAF_COLLECTION_ENABLED"}
+    assert waf["collection_reason"] == "WAF collection is on."
+    assert waf["collection_reason_code"] == "history.family.feature_on"
+    assert waf["collection_reason_params"] == {"family": "WAF collection"}
     ips = family_of(console, "IPS")
-    assert ips["collection_reason"] == "IPS_COLLECTION_ENABLED is off"
-    assert ips["collection_reason_code"] == "history.family.switch_off"
+    assert ips["collection_reason"] == (
+        "IPS collection is off. An administrator can turn it on under "
+        "Administration → Features."
+    )
+    assert ips["collection_reason_code"] == "history.family.feature_off"
     phase_a = family_of(console, "PHASE_A")
     assert phase_a["collection_reason_code"] == "history.family.always_on"
     assert phase_a["collection_reason_params"] == {}
@@ -225,8 +228,8 @@ async def test_the_estimate_reason_and_every_assumption_carry_their_code(  # typ
     # No count to estimate from: the reason is coded, and no number is invented.
     ips = estimates["IPS"]
     assert ips["searches"] is None
-    assert ips["reason_code"] == "history.estimate.no_collection"
-    assert ips["reason_params"]["reason"]["code"] == "history.family.switch_off"
+    assert ips["reason_code"] == "history.estimate.feature_off"
+    assert ips["reason_params"]["reason"]["code"] == "history.family.feature_off"
     assert estimates["PHASE_A"]["reason_code"] is not None
 
 

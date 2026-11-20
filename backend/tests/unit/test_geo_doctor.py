@@ -150,7 +150,7 @@ async def test_lookup_mode_and_a_disabled_family(monkeypatch: pytest.MonkeyPatch
     off = await doctor(
         monkeypatch, consoles=[], geo_collection_enabled=False
     ).check_geo_country_source()
-    assert off.status is Status.SKIP
+    assert off.status is Status.INFO
 
 
 @pytest.mark.asyncio

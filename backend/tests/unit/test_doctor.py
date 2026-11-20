@@ -1465,8 +1465,11 @@ async def test_rule_match_coverage_check_covers_every_state(settings: Settings) 
     on = settings.model_copy(update={"rule_match_collection_enabled": True})
 
     off = await make_doctor(settings, now=lambda: now).check_rule_match_coverage()
-    assert off.status is Status.SKIP
-    assert off.message == "rule-match collection is off; windows are not measured"
+    assert off.status is Status.INFO
+    assert off.message == (
+        "off: Rule-match collection. Turn it on under Administration → Features "
+        "(or python -m app.cli.features set)."
+    )
     assert off.runbook is None
 
     clean = await make_doctor(

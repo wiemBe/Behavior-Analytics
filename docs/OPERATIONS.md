@@ -1061,7 +1061,12 @@ Bu üç satır, konteyner içi kontrollerin tam kimlik listesi `render_text` ile
 genişliktir. En uzun kimlik `anomaly_evaluation` (18 karakter) olduğu için sütun 18'dir. Ana makine
 satırları ayrıdır ve 16 karakterlik sabit genişlik kullanır.
 
-`PASS`, `SKIP`, `WARN`, `FAIL` vardır. `SKIP`, ilgili özellik kapalı olduğu için denetimin
+`PASS`, `INFO`, `SKIP`, `WARN`, `FAIL` vardır.
+
+`INFO` reports an intentionally disabled family and does not raise the exit code.
+Family switches are managed under Administration → Features or with
+`python -m app.cli.features set`. `SKIP` covers checks with nothing configured or no console.
+`SKIP`, ilgili özellik kapalı olduğu için denetimin
 uygulanmadığını söyler ve çıkış kodunu yükseltmez. Neden tek satırdır. Kılavuz kimliği `OPS-R` ile giriş
 numarasıdır (`OPS-R30` 30. girişi gösterir). Çıktıda token, `.env` değeri, DSN ya da
 `ENCRYPTION_KEY` yoktur. Bağlantı hataları ana makineyi ve istisna sınıfını söyler, parolayı değil.

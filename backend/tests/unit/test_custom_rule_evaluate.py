@@ -336,7 +336,7 @@ def test_a_disabled_rule_keeps_its_counters_and_its_breach() -> None:
 def test_platform_off_is_not_enabled_and_ignores_readings() -> None:
     result = _fold(platform_enabled=False, readings=(_reading(0, 10_000),))
     assert result.status == "NOT_ENABLED"
-    assert "CUSTOM_RULES_ENABLED" in (result.status_reason or "")
+    assert "Custom rule evaluation is off." in (result.status_reason or "")
     assert result.breach is None
     assert result.events == ()
     assert result.judged == 0

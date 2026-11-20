@@ -24,6 +24,7 @@ from app.models.enums import (
     CustomRuleMetric,
     WafMeasurement,
 )
+from app.services.feature_switches import FAMILY_LABELS
 from app.waf.measurement import (
     WafMeasurementRequirement,
     WafVerdictScope,
@@ -424,7 +425,11 @@ class _Fold:
         spec = self.spec
         if not spec.platform_enabled:
             return self._coded_output(
-                RuleStatus.NOT_ENABLED.value, MessageRef("custom_rule.status.platform_off")
+                RuleStatus.NOT_ENABLED.value,
+                MessageRef(
+                    "custom_rule.status.feature_off",
+                    {"family": FAMILY_LABELS["custom_rules_enabled"]},
+                ),
             )
         if not spec.enabled:
             return self._coded_output(

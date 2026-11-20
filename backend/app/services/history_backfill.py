@@ -84,6 +84,7 @@ from app.schemas.history_backfill import (
     WindowOut,
 )
 from app.schemas.messages import MessageValue, stored_message, stored_message_parts
+from app.services.feature_switches import FAMILY_LABELS
 from app.services.search_cadence import SearchCadenceService
 
 #: The families in the order the page shows them (the registry's order, scope-table only).
@@ -483,9 +484,9 @@ def collection_state(
             return True, "collection has no switch", None
         return True, render(spec.always_on_reason), spec.always_on_reason
     on = bool(getattr(settings, spec.collection_switch))
-    name = spec.collection_switch.upper()
     message = MessageRef(
-        "history.family.switch_on" if on else "history.family.switch_off", {"setting": name}
+        "history.family.feature_on" if on else "history.family.feature_off",
+        {"family": FAMILY_LABELS[spec.collection_switch]},
     )
     return on, render(message), message
 
@@ -1198,7 +1199,7 @@ class HistoryBackfillService:
         enabled, _switch_reason, switch_message = collection_state(spec, settings)
         if not enabled:
             assert switch_message is not None  # a switched-off family always has words
-            message = MessageRef("history.estimate.no_collection", {"reason": switch_message})
+            message = MessageRef("history.estimate.feature_off", {"reason": switch_message})
             return none(render(message), message=message)
         fitted = fit_family_window(family, settings)
         if not fitted.available:

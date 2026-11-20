@@ -2404,6 +2404,21 @@
     },
     "template": "{setting} is off"
   },
+  "custom_rule.family.feature_off": {
+    "params": {
+      "family": {
+        "kind": "text"
+      }
+    },
+    "sample": {
+      "family": "WAF collection"
+    },
+    "sample_english": "WAF collection is off. An administrator can turn it on under Administration → Features.",
+    "sample_english_params": {
+      "family": "WAF collection"
+    },
+    "template": "{family} is off. An administrator can turn it on under Administration → Features."
+  },
   "custom_rule.family.unknown": {
     "params": {
       "kind": {
@@ -2565,6 +2580,21 @@
     "sample_english": "the subject's family is not collected",
     "sample_english_params": {},
     "template": "the subject's family is not collected"
+  },
+  "custom_rule.status.feature_off": {
+    "params": {
+      "family": {
+        "kind": "text"
+      }
+    },
+    "sample": {
+      "family": "Custom rule evaluation"
+    },
+    "sample_english": "Custom rule evaluation is off. An administrator can turn it on under Administration → Features.",
+    "sample_english_params": {
+      "family": "Custom rule evaluation"
+    },
+    "template": "{family} is off. An administrator can turn it on under Administration → Features."
   },
   "custom_rule.status.lower_bound_below_threshold": {
     "params": {},
@@ -3794,6 +3824,29 @@
     },
     "template": "{reason}; {count} source(s) fitted with no {noun} yet; the {limit}-hour limit still bounds the reading"
   },
+  "history.estimate.feature_off": {
+    "params": {
+      "reason": {
+        "kind": "ref",
+        "ref_codes": [
+          "history.family.feature_off"
+        ]
+      }
+    },
+    "sample": {
+      "reason": {
+        "code": "history.family.feature_off",
+        "params": {
+          "family": "IPS collection"
+        }
+      }
+    },
+    "sample_english": "no estimate: collection is switched off (IPS collection is off. An administrator can turn it on under Administration → Features.)",
+    "sample_english_params": {
+      "reason": "IPS collection is off. An administrator can turn it on under Administration → Features."
+    },
+    "template": "no estimate: collection is switched off ({reason})"
+  },
   "history.estimate.no_catchall": {
     "params": {
       "days": {
@@ -4064,6 +4117,36 @@
       "total": "10"
     },
     "template": "fitted with a fair share of {share} of the {total} shared history searches per tick"
+  },
+  "history.family.feature_off": {
+    "params": {
+      "family": {
+        "kind": "text"
+      }
+    },
+    "sample": {
+      "family": "IPS collection"
+    },
+    "sample_english": "IPS collection is off. An administrator can turn it on under Administration → Features.",
+    "sample_english_params": {
+      "family": "IPS collection"
+    },
+    "template": "{family} is off. An administrator can turn it on under Administration → Features."
+  },
+  "history.family.feature_on": {
+    "params": {
+      "family": {
+        "kind": "text"
+      }
+    },
+    "sample": {
+      "family": "WAF collection"
+    },
+    "sample_english": "WAF collection is on.",
+    "sample_english_params": {
+      "family": "WAF collection"
+    },
+    "template": "{family} is on."
   },
   "history.family.switch_off": {
     "params": {
@@ -13649,6 +13732,36 @@
     },
     "template": "total event volume was not measured ({error})"
   },
+  "validation.waf.breakdown.client_feature_off": {
+    "params": {
+      "family": {
+        "kind": "text"
+      }
+    },
+    "sample": {
+      "family": "client collection"
+    },
+    "sample_english": "client collection is off. An administrator can turn it on under Administration → Features.",
+    "sample_english_params": {
+      "family": "client collection"
+    },
+    "template": "{family} is off. An administrator can turn it on under Administration → Features."
+  },
+  "validation.waf.breakdown.outcome_feature_off": {
+    "params": {
+      "family": {
+        "kind": "text"
+      }
+    },
+    "sample": {
+      "family": "outcome collection"
+    },
+    "sample_english": "outcome collection is off. An administrator can turn it on under Administration → Features.",
+    "sample_english_params": {
+      "family": "outcome collection"
+    },
+    "template": "{family} is off. An administrator can turn it on under Administration → Features."
+  },
   "validation.waf.field.implausible_no_values": {
     "params": {
       "logical": {
@@ -13734,6 +13847,21 @@
     "sample_english": "WAF collection is disabled (WAF_COLLECTION_ENABLED=false)",
     "sample_english_params": {},
     "template": "WAF collection is disabled (WAF_COLLECTION_ENABLED=false)"
+  },
+  "validation.waf.ineligible.feature_off": {
+    "params": {
+      "family": {
+        "kind": "text"
+      }
+    },
+    "sample": {
+      "family": "WAF collection"
+    },
+    "sample_english": "WAF collection is off. An administrator can turn it on under Administration → Features.",
+    "sample_english_params": {
+      "family": "WAF collection"
+    },
+    "template": "{family} is off. An administrator can turn it on under Administration → Features."
   },
   "validation.waf.ineligible.monitoring_disabled": {
     "params": {},

@@ -251,6 +251,22 @@ GOLDEN: list[tuple[MessageRef, str]] = [
         "source-volume collection is the platform's base collection",
     ),
     (
+        ref("history.family.feature_on", family="WAF collection"),
+        "WAF collection is on.",
+    ),
+    (
+        ref("history.family.feature_off", family="IPS collection"),
+        "IPS collection is off. An administrator can turn it on under Administration → Features.",
+    ),
+    (
+        ref(
+            "history.estimate.feature_off",
+            reason=ref("history.family.feature_off", family="IPS collection"),
+        ),
+        "no estimate: collection is switched off (IPS collection is off. "
+        "An administrator can turn it on under Administration → Features.)",
+    ),
+    (
         ref("history.family.switch_on", setting="WAF_COLLECTION_ENABLED"),
         "WAF_COLLECTION_ENABLED is on",
     ),

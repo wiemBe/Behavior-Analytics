@@ -114,6 +114,7 @@ async def _endpoint_counts(
 #: Message code of `collection_ineligibility_message` -> the short code the page words.
 _INELIGIBLE_CODES = {
     "validation.waf.ineligible.collection_disabled": "collection_disabled",
+    "validation.waf.ineligible.feature_off": "collection_disabled",
     "validation.waf.ineligible.source_missing": "source_missing",
     "validation.profile.ineligible.disabled": "profile_disabled",
     "validation.waf.ineligible.monitoring_disabled": "monitoring_disabled",

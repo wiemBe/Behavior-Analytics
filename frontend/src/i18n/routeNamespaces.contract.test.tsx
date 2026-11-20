@@ -124,7 +124,12 @@ describe("the root provider", () => {
     expect(SHELL_NAMESPACES as readonly string[]).not.toContain("backend");
   });
 
-  it("holds every shell backend key in both catalogs, as a registered code, and words it in Turkish", () => {
+  it("holds every shell backend key in English, with Turkish for frozen codes", () => {
+    const frozenCodes: ReadonlySet<string> = new Set(
+      FROZEN_TR_KEYS.filter((key) => key.startsWith("backend.")).map((key) =>
+        key.slice("backend.".length),
+      ),
+    );
     const sent = shellMessages(tr);
     const say = createTextTranslator("tr", sent);
     for (const key of SHELL_BACKEND_KEYS) {
@@ -132,17 +137,23 @@ describe("the root provider", () => {
       for (const part of key.split(".")) {
         at = typeof at === "object" && at !== null && Object.hasOwn(at, part) ? (at as Record<string, unknown>)[part] : undefined;
       }
-      expect(typeof at, key).toBe("string");
+      const code = key.slice("backend.".length);
+      if (frozenCodes.has(code)) expect(typeof at, key).toBe("string");
       let inEnglish: unknown = shellMessages(en);
       for (const part of key.split(".")) {
         inEnglish = (inEnglish as Record<string, unknown>)?.[part];
       }
       expect(typeof inEnglish, key).toBe("string");
-      const code = key.slice("backend.".length);
       const spec = (codes as Record<string, { sample: Record<string, unknown>; sample_english: string }>)[code];
       expect(spec, code).toBeDefined();
       const words = renderRefusal({ text: spec.sample_english, code, params: spec.sample }, "tr", say);
-      expect(words, code).not.toBe(spec.sample_english);
+      if (frozenCodes.has(code)) {
+        expect(words, code).not.toBe(spec.sample_english);
+      } else {
+        expect(words, code).toBe(spec.sample_english);
+        expect(words, code).not.toMatch(/[{}]/);
+        expect(words, code).not.toContain("undefined");
+      }
     }
   });
 
