@@ -33,6 +33,8 @@ export const KNOWN_PERMISSIONS = [
   "read:alerts",
   "read:search_cadence",
   "admin:search_cadence",
+  "read:features",
+  "admin:features",
   "read:fleet",
   "admin:classification",
   "admin:outage",
