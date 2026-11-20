@@ -32,6 +32,7 @@ from app.providers.base import (
 from app.services import ariel_search_log as ariel_log
 from app.services.ariel_permit import ArielPermitUnavailable
 from app.waf.profile import breakdown_plan
+from tests.unit.test_property_catalog_names import NAMES, name_session
 
 #: A recognisable value no output may carry: it stands for a path, an IP or a property value.
 RAW_VALUE = "RAW-VALUE-/admin/secret-10.9.8.7"
@@ -89,6 +90,7 @@ class FakeProvider:
         self.fail_if = fail_if
         self.truncated = truncated
         self.properties = properties
+        self.snapshot_status = "COMPLETE"
         self.calls: list[tuple[str, dict[str, Any]]] = []
         self.callers: list[str] = []
         self.closed = False
@@ -99,7 +101,7 @@ class FakeProvider:
         return True
 
     async def list_custom_properties(self) -> list[Any]:
-        return [SimpleNamespace(name=name) for name in self.properties]
+        raise AssertionError("doctor name checks must use the stored snapshot")
 
     async def aclose(self) -> None:
         self.closed = True
@@ -278,17 +280,26 @@ def _console(kind: str = "rest", name: str = "lab-console") -> Any:
 class RoutedSession(FakeSession):
     """WAF and IPS rows by the table the query selects from."""
 
-    def __init__(self, waf: Any = None, ips: Any = None) -> None:
+    def __init__(self, waf: Any = None, ips: Any = None, provider: Any = None) -> None:
         super().__init__()
         self.waf, self.ips = waf, ips
+        self.catalog = name_session(
+            missing=set(NAMES) - set(provider.properties) if provider else (),
+            status=getattr(provider, "snapshot_status", "COMPLETE"),
+        )
+
+    def begin_nested(self) -> Any:
+        return self.catalog.begin_nested()
 
     async def execute(self, query: object) -> FakeRows:
         text = str(query)
+        if "property_catalog_state" in text:
+            return await self.catalog.execute(query)
         return FakeRows(self.waf if "waf_source_profile" in text else self.ips)
 
 
-def _sessionmaker(waf: Any = None, ips: Any = None) -> Any:
-    return lambda: RoutedSession(waf, ips)
+def _sessionmaker(waf: Any = None, ips: Any = None, provider: Any = None) -> Any:
+    return lambda: RoutedSession(waf, ips, provider)
 
 
 async def _run(
@@ -302,7 +313,7 @@ async def _run(
 ) -> dict[str, doctor_aql.AqlLine]:
     lines = await doctor_aql.run_aql_checks(
         settings=settings,
-        sessionmaker=_sessionmaker(waf, ips),
+        sessionmaker=_sessionmaker(waf, ips, provider),
         instances=[_console()] if instances is None else instances,
         provider_factory=lambda _instance: cast(Any, provider),
         now=NOW,
@@ -728,7 +739,7 @@ async def test_a_missing_property_fails_without_a_search(settings: Settings) -> 
 @pytest.mark.asyncio
 async def test_an_unreadable_property_catalog_warns_without_a_search(settings: Settings) -> None:
     provider = FakeProvider()
-    provider.list_custom_properties = AsyncMock(side_effect=ProviderError("boom"))  # type: ignore[method-assign]
+    provider.snapshot_status = "FAILED"
     lines = await _full(settings, provider, families=("geo_collection", "qradar_health"))
     assert {line.verdict for line in lines.values()} == {doctor_aql.WARN}
     assert provider.calls == []

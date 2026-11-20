@@ -28,6 +28,7 @@ from app.core.config import Settings
 from app.models.ariel_search import ArielSearchRun
 from app.models.instance import QRadarInstance
 from app.services import ariel_search_log as ariel_log
+from tests.integration.test_property_catalog_names import catalog_instance
 from tests.unit.test_doctor_aql import METHOD_FAMILY
 
 pytestmark = [pytest.mark.integration, pytest.mark.asyncio]
@@ -126,14 +127,10 @@ class _BrokenEngine:
 
 
 async def _seed_console(maker: async_sessionmaker[Any]) -> QRadarInstance:
-    instance = QRadarInstance(
-        id=uuid.uuid4(),
-        name="doctor-aql-recording",
-        console_host="https://fixture.invalid",
-        provider_kind="rest",
-    )
     async with maker() as session:
-        session.add(instance)
+        instance = await catalog_instance(
+            session, name="doctor-aql-recording", provider_kind="rest"
+        )
         await session.commit()
     return instance
 

@@ -454,7 +454,7 @@ async def _prepare_geo(ctx: _Context) -> Plan | Early:
     if property_mode:
         async with ctx.sessionmaker() as session:
             collector = GeoCollector(session, ctx.provider, settings=settings)
-            catalog, failure = await collector._country_catalog([direction], True)
+            catalog, failure = await collector._country_catalog(ctx.instance.id, [direction], True)
         if failure is not None:
             return Early(WARN, f"{render(failure)} Nothing was proved about the query.")
         if name not in (catalog or set()):
@@ -497,7 +497,7 @@ async def _prepare_geo(ctx: _Context) -> Plan | Early:
 async def _prepare_health(ctx: _Context) -> Plan | Early:
     async with ctx.sessionmaker() as session:
         collector = QRadarHealthCollector(session, ctx.provider, settings=ctx.settings)
-        missing = await collector._missing_properties()
+        missing = await collector._missing_properties(ctx.instance.id)
     if isinstance(missing, MessageRef):
         return Early(WARN, f"{render(missing)} Nothing was proved about the query.")
     if missing:

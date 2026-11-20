@@ -57,7 +57,6 @@ from app.models.qradar_health import (
     QRadarHealthRun,
 )
 from app.providers.base import (
-    CapabilityNotSupportedError,
     ProviderCapability,
     ProviderError,
     ProviderQueryRejectedError,
@@ -65,6 +64,7 @@ from app.providers.base import (
 )
 from app.schemas.qradar_health import QRadarHealth
 from app.services.locks import CollectorAdvisoryLock
+from app.services.property_catalog import stored_property_names
 from app.services.qradar_health import HealthReadCache, read_qradar_health
 from app.services.qradar_health_sample import make_sample_sink
 from app.services.search_cadence import SearchCadenceService, slot_start
@@ -308,7 +308,7 @@ class QRadarHealthCollector:
     async def _collect_metrics(
         self, start: datetime, end: datetime, report: QRadarHealthReport
     ) -> tuple[PartOutcome, MetricFold | None]:
-        missing = await self._missing_properties()
+        missing = await self._missing_properties(report.instance_id)
         if isinstance(missing, MessageRef):
             return PartOutcome("NOT_COLLECTED", missing), None
         if missing:
@@ -338,23 +338,24 @@ class QRadarHealthCollector:
             return PartOutcome("PARTIAL", MessageRef(_REASON + "truncated")), folded
         return PartOutcome("OK"), folded
 
-    async def _missing_properties(self) -> list[str] | MessageRef:
+    async def _missing_properties(self, instance_id: uuid.UUID) -> list[str] | MessageRef:
         """The required custom properties the console lacks, or why that is unknown.
 
-        One custom-property read per run. A missing capability and a failed read are the
-        same closed failure: no search is sent. The exception text is not logged.
+        One snapshot query per run; unreadable input never authorizes a search.
         """
         try:
-            if not self.provider.supports(ProviderCapability.CUSTOM_PROPERTY_CATALOG):
-                raise CapabilityNotSupportedError(
-                    f"{type(self.provider).__name__} does not support the custom-property catalog"
+            async with self.session.begin_nested():
+                checked = await stored_property_names(
+                    self.session, instance_id=instance_id, names=spec.REQUIRED_PROPERTIES,
+                    now=self._clock(),
+                    refresh_seconds=self.settings.qradar_property_catalog_refresh_seconds,
                 )
-            listed = await self.provider.list_custom_properties()
         except Exception as exc:
             logger.warning("qradar health property catalog unreadable (%s)", type(exc).__name__)
             return MessageRef(_REASON + "property_unreadable")
-        names = {item.name for item in listed}
-        return [name for name in spec.REQUIRED_PROPERTIES if name not in names]
+        if not checked.readable:
+            return MessageRef(_REASON + "property_unreadable")
+        return [name for name in spec.REQUIRED_PROPERTIES if not checked.present[name]]
 
     # ---------------------------------------------------------- notifications
     async def _collect_notifications(

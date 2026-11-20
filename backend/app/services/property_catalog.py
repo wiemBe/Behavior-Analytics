@@ -210,6 +210,53 @@ def get_property_catalog_service() -> PropertyCatalogService:
     return _service
 
 
+@dataclass(frozen=True)
+class CatalogNameCheck:
+    status: str
+    as_of: datetime | None
+    present: dict[str, bool | None]
+
+    @property
+    def readable(self) -> bool:
+        return self.status in {"COMPLETE", "STALE", "REFRESHING"} and self.as_of is not None
+
+
+async def stored_property_names(
+    session: AsyncSession, *, instance_id: uuid.UUID, names: Sequence[str],
+    now: datetime, refresh_seconds: int,
+) -> CatalogNameCheck:
+    """Check exact names and snapshot state in one MVCC-consistent statement.
+
+    FIX-72 retains snapshots without age expiry. STALE means a refresh interval
+    has elapsed, not that the names expired. Failed/partial refreshes cannot
+    authorize searches, even when they retained an older complete list.
+    """
+    from sqlalchemy import and_, select
+
+    from app.models.property_catalog import PropertyCatalogEntry as Entry
+    from app.models.property_catalog import PropertyCatalogState as State
+
+    rows = (await session.execute(select(State, Entry.name).outerjoin(Entry, and_(
+        Entry.instance_id == State.instance_id, Entry.name.in_(names),
+    )).where(State.instance_id == instance_id).execution_options(populate_existing=True))).all()
+    state = rows[0][0] if rows else None
+    as_of = state.as_of if state else None
+    status = state.status if state else "NEVER"
+    readable = bool(
+        as_of and state and state.applicability_complete and not state.failure
+        and status in {"COMPLETE", "REFRESHING"}
+    )
+    if (readable and status == "COMPLETE" and as_of is not None
+            and (now - as_of).total_seconds() >= refresh_seconds):
+        status = "STALE"
+    elif not readable and status in {"COMPLETE", "REFRESHING"}:
+        status = "NEVER" if as_of is None else "PARTIAL"
+    found = {row[1] for row in rows if row[1] is not None}
+    return CatalogNameCheck(status, as_of, {
+        name: (name in found if readable else None) for name in names
+    })
+
+
 async def stored_catalog(
     session: AsyncSession, *, instance_id: uuid.UUID, source_type_id: int | None,
     q: str = "", limit: int = 50, refresh: bool = False,

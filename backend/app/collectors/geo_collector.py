@@ -2,7 +2,7 @@
 
 For each configured direction (SOURCE, DESTINATION) a run collects every settled bucket
 since that direction's watermark with one keyed search over the whole estate. Property
-mode groups by the configured country property, after one custom-property read for the
+mode groups by the configured country property, after one catalog snapshot query for the
 run. Lookup mode keeps ``GEO::LOOKUP(<address>, 'country')``. A truncated search is split
 in halves of whole buckets. At one bucket a truncated result keeps its exact top and is
 a LOWER_BOUND.
@@ -54,13 +54,13 @@ from app.models.geo import GeoCountryBucket
 from app.models.instance import QRadarInstance
 from app.models.monitoring import CollectionWatermark
 from app.providers.base import (
-    CapabilityNotSupportedError,
     ProviderCapability,
     ProviderError,
     ProviderQueryRejectedError,
     QRadarProvider,
 )
 from app.services.locks import CollectorAdvisoryLock
+from app.services.property_catalog import stored_property_names
 from app.services.search_cadence import SearchCadenceService
 
 logger = logging.getLogger("app.collectors.geo")
@@ -309,7 +309,9 @@ class GeoCollector:
             if settings.geo_country_source not in ("property", "lookup"):
                 raise ValueError("GEO_COUNTRY_SOURCE is property or lookup")
             property_mode = settings.geo_country_source == "property"
-            catalog_names, catalog_failure = await self._country_catalog(directions, property_mode)
+            catalog_names, catalog_failure = await self._country_catalog(
+                instance.id, directions, property_mode
+            )
             budget = IpsSearchBudget(settings.search_cadence_max_searches_per_tick)
             rows: list[dict] = []
             replaced: dict[GeoDirection, list[datetime]] = {}
@@ -500,27 +502,27 @@ class GeoCollector:
         return out
 
     async def _country_catalog(
-        self, directions: list[GeoDirection], property_mode: bool
+        self, instance_id: uuid.UUID, directions: list[GeoDirection], property_mode: bool
     ) -> tuple[set[str] | None, MessageRef | None]:
-        """One custom-property read per run, or nothing when no property is configured.
-
-        A missing capability and a failed read are the same closed failure: no
-        search is sent. The exception text is not logged.
-        """
+        """One snapshot query per run, or nothing when no property is configured."""
         if not property_mode:
             return None, None
         if not any(self.settings.geo_property_for(direction.value) for direction in directions):
             return None, None
         try:
-            if not self.provider.supports(ProviderCapability.CUSTOM_PROPERTY_CATALOG):
-                raise CapabilityNotSupportedError(
-                    f"{type(self.provider).__name__} does not support the custom-property catalog"
+            async with self.session.begin_nested():
+                checked = await stored_property_names(
+                    self.session, instance_id=instance_id,
+                    names=[self.settings.geo_property_for(d.value) for d in directions],
+                    now=self._clock(),
+                    refresh_seconds=self.settings.qradar_property_catalog_refresh_seconds,
                 )
-            listed = await self.provider.list_custom_properties()
         except Exception as exc:
             logger.warning("geo property catalog unreadable (%s)", type(exc).__name__)
             return None, MessageRef("geo.property.unreadable")
-        return {item.name for item in listed}, None
+        if not checked.readable:
+            return None, MessageRef("geo.property.unreadable")
+        return {name for name, present in checked.present.items() if present}, None
 
     def _note_not_collected(
         self,
