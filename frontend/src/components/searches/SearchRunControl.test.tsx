@@ -131,16 +131,26 @@ describe("SearchRunControl queued runs", () => {
   });
 
   it("follows the row to running and then to the finished result, refreshing once", async () => {
+    // The read that would replace the RUNNING frame returns a promise this test
+    // resolves only after it has seen that frame: the component polls on a 10 ms
+    // timer, so a resolved read could otherwise replace RUNNING with COMPLETED
+    // before `findByText` (50 ms re-check) ever observes it, and the transient
+    // assertion would flake under load.
+    let resolveDone!: (value: SearchExecution[]) => void;
+    const donePromise = new Promise<SearchExecution[]>((resolve) => {
+      resolveDone = resolve;
+    });
     const user = userEvent.setup();
     vi.spyOn(api, "runSearch").mockResolvedValue(queuedRow());
     const list = vi
       .spyOn(api, "searchExecutions")
       .mockResolvedValueOnce([queuedRow({ status: "RUNNING", started_at: "2026-11-20T10:00:00Z" })])
-      .mockResolvedValue([execution({ status: "COMPLETED", result_count: 7 })]);
+      .mockImplementationOnce(() => donePromise);
     render(<SearchRunControl searchId="s-1" pollMs={10} />);
     await user.click(screen.getByRole("button", { name: "Run now" }));
     expect(await screen.findByText(/Running in QRadar since/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Running…" })).toBeDisabled();
+    resolveDone([execution({ status: "COMPLETED", result_count: 7 })]);
     await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("returned 7 rows"));
     expect(refresh).toHaveBeenCalledTimes(1);
     const calls = list.mock.calls.length;

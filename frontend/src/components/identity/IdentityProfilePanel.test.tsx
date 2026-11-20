@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -161,14 +161,25 @@ describe("IdentityProfilePanel: queued validation", () => {
   });
 
   it("polls a pending profile and shows the stored outcome when it clears", async () => {
+    // The read that would replace the queued frame returns a promise this test
+    // resolves only after it has seen that frame: the panel polls on a 10 ms
+    // timer, so a resolved read could otherwise replace the queued state with
+    // the finished one before `findByText` (50 ms re-check) ever observes it.
+    let resolveFinished!: (value: unknown) => void;
+    const finished = new Promise((resolve) => {
+      resolveFinished = resolve;
+    });
     const source = vi
       .spyOn(identityApi, "source")
       .mockResolvedValueOnce(detail({ ...queued() }) as never)
-      .mockResolvedValue(detail({ validation_status: "VALID" }) as never);
+      .mockReturnValueOnce(finished as never);
     render(
       <IdentityProfilePanel logSourceId={SOURCE_ID} profile={queued()} canAdmin pollMs={10} />,
     );
     expect(screen.getByText(/Queued at/)).toBeInTheDocument();
+    await act(async () => {
+      resolveFinished(detail({ validation_status: "VALID" }));
+    });
     expect(await screen.findByText("Validation finished.")).toBeInTheDocument();
     expect(screen.getByText("Valid")).toBeInTheDocument();
     expect(screen.queryByText(/Queued at/)).toBeNull();
