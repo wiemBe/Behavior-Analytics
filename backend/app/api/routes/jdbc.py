@@ -4,19 +4,33 @@ from __future__ import annotations
 
 import uuid
 from datetime import UTC, datetime
-from typing import Any
+from typing import Annotated, Any
 
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy import select
 
 from app.api.deps import EffectiveSettingsDep, SessionDep
+from app.i18n.refusal import permission_refusal
+from app.jdbc.jobs import request_and_enqueue_jdbc_run
 from app.models.enums import SearchFamily
+from app.models.instance import QRadarInstance
+from app.repositories.audit import record_audit
 from app.repositories.jdbc import JdbcQueryError, JdbcRepository
-from app.schemas.jdbc import JdbcSnapshotOut, JdbcSourceDetail, JdbcSourcePage
+from app.schemas.jdbc import JdbcSnapshotOut, JdbcSourceDetail, JdbcSourcePage, JdbcSyncQueued
+from app.security.auth import get_principal
+from app.security.rbac import PERM_ADMIN, PermissionDenied, Principal, require_permission
 from app.services.search_cadence import SearchCadenceService, bucket_seconds
 
 router = APIRouter(tags=["log-sources"])
 
+PrincipalDep = Annotated[Principal, Depends(get_principal)]
 NO_JDBC_BLOCK = "No JDBC block for this log source."
+JDBC_OFF = (
+    "JDBC collection is turned off. An administrator can turn it on under Administration "
+    "-> Features."
+)
+NO_CONSOLE = "No enabled console matches."
+QUEUE_FAILED = "the JDBC refresh could not be queued"
 
 
 async def _timing(session: SessionDep, settings: EffectiveSettingsDep) -> dict[str, Any]:
@@ -71,3 +85,60 @@ async def get_jdbc_block(
     if found is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, NO_JDBC_BLOCK)
     return found
+
+
+@router.post("/jdbc/sync", response_model=JdbcSyncQueued, status_code=status.HTTP_202_ACCEPTED)
+async def queue_jdbc_sync(
+    session: SessionDep,
+    settings: EffectiveSettingsDep,
+    principal: PrincipalDep,
+    instance_id: uuid.UUID | None = Query(default=None),
+) -> JdbcSyncQueued:
+    """Queue the JDBC parameter pass for every enabled console, or one (`admin:*`).
+
+    Only the stored lease/queue state and the Celery queue are touched; no provider is built
+    and QRadar is not called. A queued request or a live lease coalesces (`already_running`).
+    A broker failure rolls the request back, so no QUEUED row is left to block the next one.
+    One audit row per request.
+    """
+    try:
+        require_permission(principal, PERM_ADMIN)
+    except PermissionDenied as exc:
+        raise permission_refusal(exc) from exc
+    if not settings.jdbc_collection_enabled:
+        raise HTTPException(status.HTTP_409_CONFLICT, JDBC_OFF)
+    from app.workers import tasks
+
+    query = select(QRadarInstance.id).where(QRadarInstance.enabled.is_(True))
+    if instance_id is not None:
+        query = query.where(QRadarInstance.id == instance_id)
+    ids = list((await session.scalars(query.order_by(QRadarInstance.name))).all())
+    if instance_id is not None and not ids:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, NO_CONSOLE)
+
+    task_ids: list[str] = []
+    already = False
+
+    def enqueue(iid: uuid.UUID) -> None:
+        task_ids.append(str(tasks.collect_jdbc_configs_task.delay(instance_id=str(iid)).id))
+
+    for iid in ids:
+        try:
+            queued = await request_and_enqueue_jdbc_run(
+                session, iid, now=datetime.now(UTC), enqueue=enqueue)
+        except Exception as exc:
+            await session.rollback()
+            await record_audit(
+                session, action="jdbc.sync", actor=principal.subject, object_type="jdbc",
+                object_id=None, outcome="FAILURE",
+                detail={"queued": False, "error_class": type(exc).__name__},
+            )
+            await session.commit()
+            raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, QUEUE_FAILED) from exc
+        already = already or not queued
+    await record_audit(
+        session, action="jdbc.sync", actor=principal.subject, object_type="jdbc",
+        object_id=None,
+        detail={"queued": bool(task_ids), "already_running": already, "task_ids": task_ids},
+    )
+    return JdbcSyncQueued(queued=bool(task_ids), already_running=already, task_ids=task_ids)

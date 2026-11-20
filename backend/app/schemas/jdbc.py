@@ -149,3 +149,11 @@ class JdbcSourcePage(JdbcResponse):
     limit: Annotated[int, Field(ge=1)]
     offset: Count
     snapshot: JdbcSnapshotOut
+
+
+class JdbcSyncQueued(JdbcResponse):
+    """The manual refresh answer: which consoles were queued, and whether any was already owned."""
+
+    queued: bool
+    already_running: bool
+    task_ids: list[str]
