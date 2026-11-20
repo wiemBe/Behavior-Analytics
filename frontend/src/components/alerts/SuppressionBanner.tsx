@@ -157,7 +157,6 @@ export function SuppressionBanner({
             <dd>{row.reason ?? "—"}</dd>
           </div>
         </dl>
-        <p className="quiet-note">{t("banner.recordedNote")}</p>
 
         <div className="quiet-breakthrough">
           <p className="quiet-sub">{t("banner.breakthroughTitle")}</p>

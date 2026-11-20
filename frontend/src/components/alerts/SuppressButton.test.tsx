@@ -47,7 +47,7 @@ async function open() {
   await userEvent.click(screen.getByRole("button", { name: "Don't alert this again" }));
 }
 const reasonBox = () => screen.getByLabelText("Reason");
-const save = () => screen.getByRole("button", { name: "Quiet this condition" });
+const save = () => screen.getByRole("button", { name: "Quiet condition" });
 
 beforeEach(() => {
   vi.restoreAllMocks();
@@ -159,7 +159,7 @@ describe("the form", () => {
     mount(ALERT, CAN, { mismatchWith: "Volume drop" });
     await open();
     const note = screen.getByRole("note");
-    expect(note).toHaveTextContent("The alert is for Volume drop.");
+    expect(note).toHaveTextContent("Alert: Volume drop;");
     expect(note).toHaveTextContent("Volume spike on Linux audit fleet");
   });
 
@@ -180,7 +180,7 @@ describe("the form", () => {
   it("says the condition is already quiet and that saving moves the end", async () => {
     mount(ALERT, CAN, { active: row() });
     await userEvent.click(screen.getByRole("button", { name: "Change the quiet period" }));
-    expect(document.body.textContent).toContain("already quiet until 2026-11-13 07:00:00 UTC");
+    expect(document.body.textContent).toContain("Already quiet until 2026-11-13 07:00:00 UTC");
   });
 });
 
@@ -192,7 +192,7 @@ describe("saving", () => {
     await userEvent.type(reasonBox(), "ab");
     await userEvent.click(save());
     expect(spy).not.toHaveBeenCalled();
-    expect(screen.getByRole("alert")).toHaveTextContent("at least 3 characters");
+    expect(screen.getByRole("alert")).toHaveTextContent("3+ characters");
     expect(reasonBox()).toHaveAttribute("aria-invalid", "true");
   });
 
@@ -314,7 +314,7 @@ describe("saving", () => {
     await open();
     await userEvent.type(reasonBox(), "firewall change");
     await userEvent.click(save());
-    expect(await screen.findByRole("alert")).toHaveTextContent("no longer exists");
+    expect(await screen.findByRole("alert")).toHaveTextContent("Alert or anomaly gone");
     expect(screen.queryByLabelText("Reason")).toBeNull();
     await waitFor(() => expect(refresh).toHaveBeenCalledTimes(1));
   });

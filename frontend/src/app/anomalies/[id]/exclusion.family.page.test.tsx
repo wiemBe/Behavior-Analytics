@@ -131,7 +131,7 @@ describe("WAF endpoint", () => {
     await userEvent.click(within(triageSection).getByRole("button", { name: "Exclude interval from training" }));
     expect(await screen.findByLabelText("Start (UTC)")).toHaveValue("2026-10-12 09:00");
     expect(screen.getByLabelText("End (UTC, exclusive)")).toHaveValue("2026-10-12 10:00");
-    expect(screen.getByRole("form", { name: "Exclude interval from training" })).toHaveTextContent(/from this endpoint's request baseline/);
+    expect(screen.getByRole("form", { name: "Exclude interval from training" })).toHaveTextContent(/from this endpoint's baseline/);
   });
 
   it("posts to the WAF path", async () => {
@@ -161,14 +161,14 @@ describe("WAF endpoint", () => {
     expect((charts.waf as { exclusions: unknown }).exclusions).toEqual([
       { start: "2026-10-12T09:00:00Z", end: "2026-10-12T10:00:00Z" },
     ]);
-    expect(screen.getByText(/Excluded from baseline training:/)).toHaveTextContent("12 Oct 09:00–10:00 UTC");
+    expect(screen.getByText(/Excluded from training:/)).toHaveTextContent("12 Oct 09:00–10:00 UTC");
   });
 
   it("says the bucket width could not be read when the endpoint's series failed, and offers no button", async () => {
     vi.spyOn(api, "wafEndpointMetrics").mockRejectedValue(new ApiError(500, "down"));
     await renderFor(as(wafDetail(WAF_RESOLVED)));
     expect(control()).toBeNull();
-    expect(screen.getByText(/bucket width of this endpoint's source could not be read/)).toBeInTheDocument();
+    expect(screen.getByText(/Bucket width unreadable/)).toBeInTheDocument();
   });
 
   it("does not take a history bucket's width for the live one", async () => {
@@ -177,13 +177,13 @@ describe("WAF endpoint", () => {
     );
     await renderFor(as(wafDetail(WAF_RESOLVED)));
     expect(control()).toBeNull();
-    expect(screen.getByText(/bucket width of this endpoint's source could not be read/)).toBeInTheDocument();
+    expect(screen.getByText(/Bucket width unreadable/)).toBeInTheDocument();
   });
 
   it("an open anomaly says it is available once resolved", async () => {
     await renderFor(as(wafDetail()));
     expect(control()).toBeNull();
-    expect(screen.getByText("Available once the anomaly is resolved.")).toBeInTheDocument();
+    expect(screen.getByText("Available once resolved.")).toBeInTheDocument();
   });
 
   it("a read failure is its own state: the page stays, nothing claims there are none", async () => {
@@ -191,7 +191,7 @@ describe("WAF endpoint", () => {
     const { container } = await renderFor(as(wafDetail(WAF_RESOLVED)));
     expect(container.querySelector("h1")).toHaveTextContent("GET /portal/login");
     expect(screen.getAllByText(/could not be loaded/).length).toBeGreaterThan(0);
-    expect(screen.queryByText("No analyst training exclusions affect this baseline.")).toBeNull();
+    expect(screen.queryByText("No analyst exclusions.")).toBeNull();
     expect((charts.waf as { exclusions: unknown[] }).exclusions).toEqual([]);
   });
 
@@ -222,7 +222,7 @@ describe("IPS", () => {
     expect(forSubject).toHaveBeenCalledWith("entity", IPS_ENTITY_ID, "ips:entity");
     await userEvent.click(control()!);
     expect(await screen.findByLabelText("Start (UTC)")).toHaveValue("2026-10-12 09:00");
-    expect(screen.getByRole("form", { name: "Exclude interval from training" })).toHaveTextContent(/from this entity's IPS event baseline/);
+    expect(screen.getByRole("form", { name: "Exclude interval from training" })).toHaveTextContent(/from this entity's baseline/);
     expect(listHeading()).toBeInTheDocument();
     expect((charts.ips as { exclusions: unknown[] }).exclusions).toHaveLength(1);
   });
@@ -271,7 +271,7 @@ describe("property-watch value", () => {
     await userEvent.click(control()!);
     const start = (await screen.findByLabelText("Start (UTC)")) as HTMLInputElement;
     expect(Number(start.value.slice(-2)) % 5).toBe(0);
-    expect(screen.getByRole("form", { name: "Exclude interval from training" })).toHaveTextContent(/from this property value's baseline/);
+    expect(screen.getByRole("form", { name: "Exclude interval from training" })).toHaveTextContent(/from this value's baseline/);
     expect(listHeading()).toBeInTheDocument();
     expect((charts.pw as { exclusions: unknown[] }).exclusions).toHaveLength(1);
   });
@@ -318,7 +318,7 @@ describe("rule", () => {
     vi.spyOn(ruleMatchApi, "anomalies").mockRejectedValue(new ApiError(500, "down"));
     await renderFor(as(ruleDetail(RES)));
     expect(control()).toBeNull();
-    expect(screen.getByText(/match-window width of this rule could not be read/)).toBeInTheDocument();
+    expect(screen.getByText(/Match-window width unreadable/)).toBeInTheDocument();
   });
 
   it("an open rule incident makes no exclusion read at all", async () => {
@@ -326,6 +326,6 @@ describe("rule", () => {
     await renderFor(as(ruleDetail()));
     expect(forSubject).not.toHaveBeenCalled();
     expect(windows).not.toHaveBeenCalled();
-    expect(screen.getByText("Available once the anomaly is resolved.")).toBeInTheDocument();
+    expect(screen.getByText("Available once resolved.")).toBeInTheDocument();
   });
 });

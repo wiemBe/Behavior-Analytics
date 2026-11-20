@@ -109,7 +109,6 @@ export function NoiseDetectorCounts({ detail }: { detail: NoiseSourceDetail }) {
         </table>
       </TableScroll>
       {detail.detectors.length === 0 && <p className="noise-footnote">{t("noDetectors")}</p>}
-      <p className="noise-footnote">{t("countsFootnote")}</p>
     </div>
   );
 }

@@ -33,16 +33,16 @@ beforeEach(() => {
   vi.restoreAllMocks();
 });
 
-describe("the lead names the baseline", () => {
+describe("no lead line: the baseline wording is on the Guide", () => {
   it.each([
-    ["waf", WAF, /this endpoint's request baseline \(request count and every ratio\)/],
-    ["ipsEntity", { kind: "entity", id: "e", scope: "ips:entity" }, /this entity's IPS event baseline/],
+    ["waf", WAF, /this endpoint's baseline \(request count and every ratio\)/],
+    ["ipsEntity", { kind: "entity", id: "e", scope: "ips:entity" }, /this entity's baseline/],
     ["ipsSource", { kind: "source", id: "s", scope: "ips:source" }, /top-source share, block ratio and port fan-out/],
     ["pwValue", { kind: "value", id: "v", scope: "pw:value" }, /spike, drop and disappeared/],
     ["ruleStorm", RULE, /this rule's storm and silence baselines/],
   ] as const)("%s", (variant, subject, lead) => {
     mount(variant, subject, { kind: "ok", items: [] });
-    expect(screen.getByText(lead)).toBeInTheDocument();
+    expect(screen.queryByText(lead)).toBeNull();
     expect(screen.queryByText(/source's volume baseline/)).toBeNull();
   });
 });
@@ -50,7 +50,7 @@ describe("the lead names the baseline", () => {
 describe("states", () => {
   it("empty: says what is empty", () => {
     mount("waf", WAF, { kind: "ok", items: [] });
-    expect(screen.getByText("No analyst training exclusions affect this baseline.")).toBeInTheDocument();
+    expect(screen.getByText("No analyst exclusions.")).toBeInTheDocument();
     expect(screen.queryByRole("table")).toBeNull();
   });
 
@@ -60,7 +60,7 @@ describe("states", () => {
       .mockResolvedValue({ items: [exclusion({ subject_kind: "endpoint", scope_key: "waf:endpoint" })], limit: 100 });
     const forSource = vi.spyOn(trainingExclusionApi, "forSource");
     mount("waf", WAF, { kind: "error" });
-    expect(screen.getByText("Training exclusions could not be loaded.")).toBeInTheDocument();
+    expect(screen.getByText("Exclusions could not be loaded.")).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "Retry" }));
     expect(forSubject).toHaveBeenCalledWith("endpoint", "ep-1", "waf:endpoint");
     expect(forSource).not.toHaveBeenCalled();
@@ -76,7 +76,7 @@ describe("states", () => {
 
   it("forbidden: names read:anomalies", () => {
     mount("waf", WAF, { kind: "forbidden", permission: "read:anomalies" });
-    expect(screen.getByText("Reading training exclusions needs the read:anomalies permission.")).toBeInTheDocument();
+    expect(screen.getByText("Needs the read:anomalies permission.")).toBeInTheDocument();
     expect(screen.queryByText(/No analyst training exclusions/)).toBeNull();
   });
 });
@@ -96,7 +96,7 @@ describe("a rule's rows", () => {
     expect(table).toHaveTextContent("Rule storm");
     expect(table).toHaveTextContent("Rule silence");
     expect(table).toHaveTextContent("Used from the next evaluation");
-    expect(table).not.toHaveTextContent("Pending next baseline rebuild");
+    expect(table).not.toHaveTextContent("Pending rebuild");
   });
 
   it("revoking says the interval returns from the next evaluation", async () => {
@@ -106,20 +106,20 @@ describe("a rule's rows", () => {
     mount("ruleStorm", RULE, rows);
     await userEvent.click(screen.getAllByRole("button", { name: "Revoke" })[0]);
     expect(screen.getByRole("form", { name: "Revoke training exclusion" })).toHaveTextContent(
-      "returns to the rule's baseline from the next evaluation",
+      "returns to the baseline at the next evaluation",
     );
     await userEvent.type(screen.getByLabelText("Reason for revoking"), "real");
     await userEvent.click(screen.getByRole("button", { name: "Revoke exclusion" }));
     expect(
-      await screen.findByText("Exclusion revoked. The interval returns to the rule's baseline from the next evaluation."),
+      await screen.findByText("Revoked. The interval returns to the baseline at the next evaluation."),
     ).toBeInTheDocument();
   });
 
   it("another family's pending row keeps the rebuild wording and its revoke sentence", async () => {
     mount("waf", WAF, { kind: "ok", items: [exclusion({ subject_kind: "endpoint", scope_key: "waf:endpoint" })] });
-    expect(screen.getByRole("table")).toHaveTextContent("Pending next baseline rebuild");
+    expect(screen.getByRole("table")).toHaveTextContent("Pending rebuild");
     await userEvent.click(screen.getByRole("button", { name: "Revoke" }));
-    expect(screen.getByRole("form")).toHaveTextContent("returns to training at the next baseline rebuild");
+    expect(screen.getByRole("form")).toHaveTextContent("returns to training at the next rebuild");
   });
 });
 
@@ -128,6 +128,6 @@ describe("who may revoke", () => {
     mount("waf", WAF, { kind: "ok", items: [exclusion({ subject_kind: "endpoint", scope_key: "waf:endpoint" })] }, READ_ONLY);
     expect(screen.getByRole("table")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Revoke" })).toBeNull();
-    expect(screen.getByText("Revoking an exclusion needs the anomaly:triage permission.")).toBeInTheDocument();
+    expect(screen.getByText("Revoking needs the anomaly:triage permission.")).toBeInTheDocument();
   });
 });

@@ -1,59 +1,59 @@
 {
   "block": {
     "heading": "Baseline training",
-    "active": "Available once the anomaly is resolved.",
-    "notResolved": "Only a resolved anomaly can be excluded from training.",
-    "noWidth": "The bucket width of this source could not be read, so no interval can be proposed.",
+    "active": "Available once resolved.",
+    "notResolved": "Only a resolved anomaly can be excluded.",
+    "noWidth": "Bucket width unreadable; no interval can be proposed.",
     "protectionLabel": "Training protection",
-    "autoOnly": "The detected incident span is excluded from training automatically. No analyst exclusion exists for this incident.",
-    "auto": "The detected incident span is excluded from training automatically.",
-    "listUnknown": "Analyst exclusions could not be loaded for this incident.",
-    "listForbidden": "Reading analyst exclusions needs the {permission} permission.",
-    "readOnly": "Recording an exclusion needs the {permission} permission.",
+    "autoOnly": "The detected span is excluded automatically. No analyst exclusion exists.",
+    "auto": "The detected span is excluded automatically.",
+    "listUnknown": "Analyst exclusions could not be loaded.",
+    "listForbidden": "Needs the {permission} permission.",
+    "readOnly": "Excluding needs the {permission} permission.",
     "open": "Exclude interval from training"
   },
   "form": {
     "title": "Exclude interval from training",
-    "confirm": "Exclude {interval} from this source-volume baseline. The detected incident span is already excluded automatically. Extend the UTC bounds only if nearby buckets were also affected. This takes effect after the next baseline rebuild, may make the expected range unavailable, and does not change this anomaly or its alerts.",
+    "confirm": "Exclude {interval} from this volume baseline. Applied at the next rebuild; the expected range may become unavailable.",
     "start": "Start (UTC)",
     "end": "End (UTC, exclusive)",
-    "format": "Format: YYYY-MM-DD HH:MM, in UTC. Bounds align to the source's {minutes}-minute bucket width.",
-    "widenOnly": "Start can only move earlier and end only later; the detected span is {interval}. The interval can be at most {days} days.",
+    "format": "YYYY-MM-DD HH:MM UTC, {minutes}-min buckets.",
+    "widenOnly": "Widen only; detected span {interval}; at most {days} d.",
     "reason": "Reason",
-    "reasonHelp": "Required, 1 to {max} characters. It is kept with the exclusion and in the incident's activity.",
+    "reasonHelp": "Required, 1 to {max} characters.",
     "count": "{used} of {max} characters",
     "save": "Exclude interval",
     "saving": "Saving…",
     "cancel": "Cancel",
-    "needsWiden": "Widen the interval to include nearby buckets. The detected span is already excluded automatically.",
-    "needsReason": "Enter a reason of 1 to {max} characters.",
+    "needsWiden": "Widen the interval to include nearby buckets.",
+    "needsReason": "Enter a reason, 1 to {max} characters.",
     "problem": {
-      "start-unreadable": "Start is not a UTC time in the form YYYY-MM-DD HH:MM.",
-      "end-unreadable": "End is not a UTC time in the form YYYY-MM-DD HH:MM.",
-      "unaligned": "Start and end must fall on the source's {minutes}-minute bucket boundaries.",
+      "start-unreadable": "Start is not a UTC time, YYYY-MM-DD HH:MM.",
+      "end-unreadable": "End is not a UTC time, YYYY-MM-DD HH:MM.",
+      "unaligned": "Start and end must fall on {minutes}-minute boundaries.",
       "start-order": "Start must be before end.",
-      "start-later": "Start cannot be later than the detected span's start, {time}.",
-      "end-earlier": "End cannot be earlier than the detected span's end, {time}.",
-      "too-long": "The interval can be at most {days} days.",
-      "not-widened": "Widen the interval to include nearby buckets. The detected span is already excluded automatically.",
-      "unalignedFamily": "Start and end must fall on the {minutes}-minute {grid} boundaries."
+      "start-later": "Start cannot be after the detected start, {time}.",
+      "end-earlier": "End cannot be before the detected end, {time}.",
+      "too-long": "At most {days} days.",
+      "not-widened": "Widen the interval to include nearby buckets.",
+      "unalignedFamily": "Start and end must fall on {minutes}-minute {grid} boundaries."
     },
-    "forbidden": "Recording an exclusion needs the {permission} permission.",
-    "notSaved": "The exclusion was not saved. {reason}",
-    "gone": "The anomaly no longer exists. Reload the page.",
-    "confirmFamily": "Exclude {interval} from {baseline}. The detected incident span is already excluded automatically. {scopeNote} Extend the UTC bounds only if nearby intervals were also affected. {when}, may make the expected range unavailable, and does not change this anomaly or its alerts.",
-    "formatFamily": "Format: YYYY-MM-DD HH:MM, in UTC. Bounds align to the {minutes}-minute {grid} boundaries."
+    "forbidden": "Excluding needs the {permission} permission.",
+    "notSaved": "Not saved. {reason}",
+    "gone": "The anomaly no longer exists. Reload.",
+    "confirmFamily": "Exclude {interval} from {baseline}. {scopeNote} {when}.",
+    "formatFamily": "YYYY-MM-DD HH:MM UTC, {minutes}-min {grid}s."
   },
   "result": {
-    "PENDING_REBUILD": "Pending next baseline rebuild. The expected range has not changed.",
-    "APPLIED": "This exact interval was already excluded and a baseline rebuild has applied it.",
-    "OUTSIDE_LOOKBACK": "This exact interval was already excluded. It is older than the baseline lookback and changes nothing.",
-    "REVOKED": "This interval was revoked."
+    "PENDING_REBUILD": "Pending next rebuild. Expected range unchanged.",
+    "APPLIED": "Already excluded; a rebuild applied it.",
+    "OUTSIDE_LOOKBACK": "Already excluded; older than the lookback, no effect.",
+    "REVOKED": "Revoked."
   },
   "state": {
-    "PENDING_REBUILD": "Pending next baseline rebuild",
-    "APPLIED": "Applied by a baseline rebuild",
-    "OUTSIDE_LOOKBACK": "Outside the baseline lookback",
+    "PENDING_REBUILD": "Pending rebuild",
+    "APPLIED": "Applied",
+    "OUTSIDE_LOOKBACK": "Outside lookback",
     "REVOKED": "Revoked"
   },
   "scope": {
@@ -67,13 +67,13 @@
   },
   "list": {
     "heading": "Baseline training exclusions",
-    "lead": "Intervals an analyst removed from this source's volume baseline. An exclusion takes effect at the next baseline rebuild; it never overrides the automatic exclusion of detected incidents.",
-    "loading": "Loading training exclusions…",
-    "empty": "No analyst training exclusions affect this baseline.",
-    "error": "Training exclusions could not be loaded.",
+    "lead": "Intervals removed from this baseline.",
+    "loading": "Loading exclusions…",
+    "empty": "No analyst exclusions.",
+    "error": "Exclusions could not be loaded.",
     "retry": "Retry",
-    "forbidden": "Reading training exclusions needs the {permission} permission.",
-    "capped": "Showing the newest {limit} exclusions.",
+    "forbidden": "Needs the {permission} permission.",
+    "capped": "Newest {limit} shown.",
     "caption": "Analyst training exclusions",
     "interval": "Interval (UTC)",
     "scope": "Scope",
@@ -84,75 +84,75 @@
     "revokedBy": "Revoked by {actor}: {reason}",
     "revoke": "Revoke",
     "revokeTitle": "Revoke training exclusion",
-    "revokeIntro": "Revoke the exclusion of {interval}. The interval returns to training at the next baseline rebuild, except where an incident span is excluded automatically.",
+    "revokeIntro": "Revoke {interval}. It returns to training at the next rebuild.",
     "revokeReason": "Reason for revoking",
     "revokeSave": "Revoke exclusion",
     "revokeCancel": "Cancel",
-    "revoked": "Exclusion revoked. The interval returns to training at the next baseline rebuild.",
-    "revokeNotSaved": "The exclusion was not revoked. {reason}",
-    "revokeNeedsPermission": "Revoking an exclusion needs the {permission} permission.",
-    "needsReason": "Enter a reason of 1 to {max} characters.",
-    "revokeIntroRule": "Revoke the exclusion of {interval}. The interval returns to the rule's baseline from the next evaluation, except where an incident span is excluded automatically.",
-    "revokedRule": "Exclusion revoked. The interval returns to the rule's baseline from the next evaluation."
+    "revoked": "Revoked. The interval returns to training at the next rebuild.",
+    "revokeNotSaved": "Not revoked. {reason}",
+    "revokeNeedsPermission": "Revoking needs the {permission} permission.",
+    "needsReason": "Enter a reason, 1 to {max} characters.",
+    "revokeIntroRule": "Revoke {interval}. It returns to the baseline at the next evaluation.",
+    "revokedRule": "Revoked. The interval returns to the baseline at the next evaluation."
   },
   "band": {
-    "heading": "Excluded from baseline training:",
+    "heading": "Excluded from training:",
     "row": "{interval} ({state})"
   },
   "variant": {
     "waf": {
-      "baseline": "this endpoint's request baseline",
-      "scopeNote": "It applies to the request count and to every ratio of this endpoint.",
-      "when": "This takes effect after the next baseline rebuild",
+      "baseline": "this endpoint's baseline",
+      "scopeNote": "Request count and every ratio.",
+      "when": "Applied at the next rebuild",
       "grid": "bucket",
-      "noWidth": "The bucket width of this endpoint's source could not be read, so no interval can be proposed.",
-      "lead": "Intervals an analyst removed from this endpoint's request baseline (request count and every ratio). An exclusion takes effect at the next baseline rebuild; it never overrides the automatic exclusion of detected incidents."
+      "noWidth": "Bucket width unreadable; no interval can be proposed.",
+      "lead": "Intervals removed from this endpoint's baseline."
     },
     "ipsEntity": {
-      "baseline": "this entity's IPS event baseline",
-      "scopeNote": "It applies to this entity's event-rate baseline only.",
-      "when": "This takes effect after the next baseline rebuild",
+      "baseline": "this entity's baseline",
+      "scopeNote": "Event rate only.",
+      "when": "Applied at the next rebuild",
       "grid": "bucket",
-      "noWidth": "The bucket width of this entity's source could not be read, so no interval can be proposed.",
-      "lead": "Intervals an analyst removed from this entity's IPS event baseline. An exclusion takes effect at the next baseline rebuild; it never overrides the automatic exclusion of detected incidents."
+      "noWidth": "Bucket width unreadable; no interval can be proposed.",
+      "lead": "Intervals removed from this entity's baseline."
     },
     "ipsSource": {
       "baseline": "this source's IPS baseline",
-      "scopeNote": "It applies to all of this source's IPS metrics: top-source share, block ratio and port fan-out.",
-      "when": "This takes effect after the next baseline rebuild",
+      "scopeNote": "Top-source share, block ratio, port fan-out.",
+      "when": "Applied at the next rebuild",
       "grid": "bucket",
-      "noWidth": "The bucket width of this source could not be read, so no interval can be proposed.",
-      "lead": "Intervals an analyst removed from this source's IPS baselines (top-source share, block ratio and port fan-out). An exclusion takes effect at the next baseline rebuild; it never overrides the automatic exclusion of detected incidents."
+      "noWidth": "Bucket width unreadable; no interval can be proposed.",
+      "lead": "Intervals removed from this source's IPS baselines."
     },
     "pwValue": {
-      "baseline": "this property value's baseline",
-      "scopeNote": "It applies to the spike, drop and disappeared baselines of this value.",
-      "when": "This takes effect after the next baseline rebuild",
+      "baseline": "this value's baseline",
+      "scopeNote": "Spike, drop and disappeared.",
+      "when": "Applied at the next rebuild",
       "grid": "bucket",
-      "noWidth": "The bucket width of this value's watch could not be read, so no interval can be proposed.",
-      "lead": "Intervals an analyst removed from this property value's baselines (spike, drop and disappeared). An exclusion takes effect at the next baseline rebuild; it never overrides the automatic exclusion of detected incidents."
+      "noWidth": "Bucket width unreadable; no interval can be proposed.",
+      "lead": "Intervals removed from this value's baselines."
     },
     "ruleStorm": {
       "baseline": "this rule's storm baseline",
-      "scopeNote": "It applies to the storm baseline only; the rule's silence baseline is not changed.",
-      "when": "This is used from the next evaluation",
+      "scopeNote": "Storm only; silence unchanged.",
+      "when": "Used from the next evaluation",
       "grid": "match-window",
-      "noWidth": "The match-window width of this rule could not be read, so no interval can be proposed.",
-      "lead": "Intervals an analyst removed from this rule's storm and silence baselines. A rule exclusion is used from the next evaluation; it never overrides the automatic exclusion of detected incidents."
+      "noWidth": "Match-window width unreadable; no interval can be proposed.",
+      "lead": "Intervals removed from this rule's baselines."
     },
     "ruleSilence": {
       "baseline": "this rule's silence baseline",
-      "scopeNote": "It applies to the silence baseline only; the rule's storm baseline is not changed.",
-      "when": "This is used from the next evaluation",
+      "scopeNote": "Silence only; storm unchanged.",
+      "when": "Used from the next evaluation",
       "grid": "match-window",
-      "noWidth": "The match-window width of this rule could not be read, so no interval can be proposed.",
-      "lead": "Intervals an analyst removed from this rule's storm and silence baselines. A rule exclusion is used from the next evaluation; it never overrides the automatic exclusion of detected incidents."
+      "noWidth": "Match-window width unreadable; no interval can be proposed.",
+      "lead": "Intervals removed from this rule's baselines."
     }
   },
   "stateRule": {
     "PENDING_REBUILD": "Used from the next evaluation"
   },
   "resultRule": {
-    "PENDING_REBUILD": "Recorded. The rule's next evaluation uses it; the expected range has not changed yet."
+    "PENDING_REBUILD": "Recorded; used from the next evaluation."
   }
 }

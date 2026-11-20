@@ -113,10 +113,6 @@ export function ExcludeInterval({
   const minutes = bucketSeconds === null ? 0 : bucketSeconds / 60;
 
   const mine = rows.filter((r) => r.origin_anomaly_id === anomaly.id && isLive(r));
-  const baseIso = base && {
-    start: new Date(base.startMs).toISOString(),
-    end: new Date(base.endMs).toISOString(),
-  };
 
   const problem: IntervalProblem | null =
     base && bucketSeconds !== null ? intervalProblem(start, end, base, bucketSeconds) : null;
@@ -319,11 +315,7 @@ export function ExcludeInterval({
               <p className="field-hint" id={ids.hint}>
                 {family
                   ? t("form.formatFamily", { minutes, grid: t(`variant.${variant}.grid` as never) })
-                  : t("form.format", { minutes })}{" "}
-                {t("form.widenOnly", {
-                  interval: baseIso ? intervalText(baseIso.start, baseIso.end) : "—",
-                  days: MAX_DAYS,
-                })}
+                  : t("form.format", { minutes })}
               </p>
               {problem !== null && (
                 <p

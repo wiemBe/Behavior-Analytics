@@ -132,16 +132,16 @@ describe("the low-volume model section: states", () => {
     let release: (m: NoiseModel) => void = () => {};
     vi.spyOn(api, "noiseModel").mockImplementation(() => new Promise((r) => (release = r)));
     render(<NoiseModelView logSourceId={SRC} />);
-    expect(screen.getByText(/Reading the stored baseline cells/)).toBeInTheDocument();
+    expect(screen.getByText(/Reading baseline cells/)).toBeInTheDocument();
     release(model());
     expect(await screen.findByText("Scored")).toBeInTheDocument();
-    expect(screen.queryByText(/Reading the stored baseline cells/)).toBeNull();
+    expect(screen.queryByText(/Reading baseline cells/)).toBeNull();
   });
 
   it("states that it is a shadow view that opens no alert", async () => {
     await show(model());
     await screen.findByText("Scored");
-    expect(screen.getByText(/No detector uses it and it opens no alert/)).toBeInTheDocument();
+    expect(screen.getByText(/no detector uses it; no alert opens/)).toBeInTheDocument();
   });
 
   it("names the window, the bucket span in UTC, p and the shrinkage k", async () => {
@@ -164,19 +164,19 @@ describe("the low-volume model section: states", () => {
     );
     expect(await screen.findByText("Insufficient data")).toBeInTheDocument();
     expect(screen.getByText("Not judged: this source has no baseline cell.")).toBeInTheDocument();
-    expect(screen.getAllByText("The response holds no cells for this metric.")).toHaveLength(2);
+    expect(screen.getAllByText("No cells for this metric.")).toHaveLength(2);
   });
 
   it("PARTIAL names the covered span", async () => {
     await show(model({ state: "PARTIAL", covered_days: 14 }));
     expect(await screen.findByText("Partial")).toBeInTheDocument();
-    expect(screen.getByText(/14 of 28 days are stored/)).toBeInTheDocument();
+    expect(screen.getByText(/14 of 28 d stored/)).toBeInTheDocument();
   });
 
   it("is a stated condition, not an error, when the preview is switched off", async () => {
     await show(new ApiError(404, MODEL_DISABLED_DETAIL, MODEL_DISABLED_DETAIL));
     expect(
-      await screen.findByText("The low-volume model preview is switched off"),
+      await screen.findByText("Low-volume model preview is off"),
     ).toBeInTheDocument();
     expect(screen.getByText(/LOW_VOLUME_MODEL_PREVIEW_ENABLED/)).toBeInTheDocument();
     expect(screen.queryByRole("alert")).toBeNull();
@@ -185,14 +185,14 @@ describe("the low-volume model section: states", () => {
 
   it("tells an unknown source apart from the disabled setting", async () => {
     await show(new ApiError(404, "log source not found", "log source not found"));
-    expect(await screen.findByText("The model could not be read")).toBeInTheDocument();
+    expect(await screen.findByText("Model could not be read")).toBeInTheDocument();
     expect(screen.getByRole("alert")).toBeInTheDocument();
     expect(screen.queryByText(/switched off/)).toBeNull();
   });
 
   it("names the read:anomalies permission when forbidden", async () => {
     await show(new ApiError(403, "forbidden"));
-    expect(await screen.findByText("The model needs permission")).toBeInTheDocument();
+    expect(await screen.findByText("Model needs permission")).toBeInTheDocument();
     expect(screen.getByText(/read:anomalies/)).toBeInTheDocument();
   });
 
@@ -202,8 +202,8 @@ describe("the low-volume model section: states", () => {
       .mockRejectedValueOnce(new ApiError(500, "boom"))
       .mockResolvedValueOnce(model());
     render(<NoiseModelView logSourceId={SRC} />);
-    expect(await screen.findByText("The model could not be loaded")).toBeInTheDocument();
-    expect(screen.getByText(/unknown, not empty/)).toBeInTheDocument();
+    expect(await screen.findByText("Model could not be loaded")).toBeInTheDocument();
+    expect(screen.getByText(/Unknown, not empty/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
     expect(await screen.findByText("Scored")).toBeInTheDocument();
     expect(call).toHaveBeenCalledTimes(2);
@@ -227,17 +227,17 @@ describe("the grid and the selected cell", () => {
     expect(title.textContent).not.toMatch(/events per/);
     expect(
       screen.getByText(
-        "Each cell: buckets in the last 28 days below p, by weekday and UTC hour. The metric itself is measured in events per bucket.",
+        "Buckets below p, 28 d. Metric in events per bucket.",
       ),
     ).toBeInTheDocument();
-    expect(screen.getByText(/measured in events per second/)).toBeInTheDocument();
+    expect(screen.getByText(/Metric in events per second/)).toBeInTheDocument();
     expect(screen.getAllByText("UTC", { selector: "[aria-hidden]" })).toHaveLength(2);
   });
 
   it("selecting a cell shows samples, mean, dispersion, raw median, shrunk estimate with weight and tails", async () => {
     await show(model());
     await screen.findByText("Scored");
-    expect(screen.getByText("Select a cell to read its numbers.")).toBeInTheDocument();
+    expect(screen.getByText("Select a cell.")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /Event count, Sat 11:00 UTC/ }));
     const detail = screen.getByRole("heading", { name: "Event count, Sat 11:00 UTC" }).parentElement!;
     expect(within(detail).getByText("Poisson")).toBeInTheDocument();
@@ -246,12 +246,12 @@ describe("the grid and the selected cell", () => {
     expect(within(detail).getByText("Raw median").nextElementSibling).toHaveTextContent("3 events per bucket");
     expect(within(detail).getByText("1 (variance / mean)")).toBeInTheDocument();
     expect(within(detail).getByText(/3\.2 events per bucket/)).toBeInTheDocument();
-    expect(within(detail).getByText(/weight 56\s% on this cell, n = 10, k = 8, pooled median 3\.5/)).toBeInTheDocument();
+    expect(within(detail).getByText(/weight 56\s%, n = 10, k = 8, pooled 3\.5/)).toBeInTheDocument();
     expect(within(detail).getByText(/12 above the mean/)).toBeInTheDocument();
     expect(within(detail).getByText(/0 below the mean/)).toBeInTheDocument();
     expect(within(detail).getByText(/of 47 buckets scored in 28 days/)).toBeInTheDocument();
-    expect(within(detail).getByText(/Proposal only\. Nothing is written\./)).toBeInTheDocument();
-    expect(within(detail).getByText(/median is 30; the stored cell median is 3 /)).toBeInTheDocument();
+    expect(within(detail).getByText(/Proposal only\./)).toBeInTheDocument();
+    expect(within(detail).getByText(/median 30; stored 3 /)).toBeInTheDocument();
   });
 
   it("draws every null number as a dash with its reason, never as 0", async () => {
@@ -287,7 +287,7 @@ describe("the grid and the selected cell", () => {
     expect(btn).toHaveAttribute("aria-pressed", "true");
     fireEvent.click(btn);
     expect(btn).toHaveAttribute("aria-pressed", "false");
-    expect(screen.getByText("Select a cell to read its numbers.")).toBeInTheDocument();
+    expect(screen.getByText("Select a cell.")).toBeInTheDocument();
   });
 
   it("shows the tail count in a scored cell and marks a level-shift cell", async () => {
@@ -305,7 +305,7 @@ describe("level-shift proposals", () => {
     await show(model());
     await screen.findByText("Scored");
     expect(screen.getByRole("heading", { name: "1 cell proposes a new normal" })).toBeInTheDocument();
-    expect(screen.getByText("Proposals only. Nothing is written back to a baseline.")).toBeInTheDocument();
+    expect(screen.getByText("Proposals only.")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("link", { name: "Event count, Sat 11:00 UTC" }));
     expect(screen.getByRole("button", { name: /Event count, Sat 11:00 UTC/ })).toHaveAttribute("aria-pressed", "true");
   });

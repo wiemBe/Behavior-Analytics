@@ -117,7 +117,6 @@ export function QuietPeriods({
       <h2 className="section-title" id="quiet-periods">
         {t("quiet.heading")}
       </h2>
-      <p className="subtitle quiet-lead">{t("quiet.lead")}</p>
 
       {flash && (
         <div
@@ -170,7 +169,6 @@ export function QuietPeriods({
           <p>
             <strong>{t("quiet.empty")}</strong>
           </p>
-          <p>{t("quiet.emptyHelp")}</p>
         </div>
       )}
 
@@ -276,9 +274,13 @@ function QuietRow({
           {row.detector_type === null ? <span className="muted">{detector}</span> : detector}
         </td>
         <td className="nowrap">
-          <span className="pill">{t(`kind.${row.kind}` as "kind.ANALYST")}</span>
+          <span
+            className="pill"
+            title={row.read_only ? t("quiet.maintenanceNote") : undefined}
+          >
+            {t(`kind.${row.kind}` as "kind.ANALYST")}
+          </span>
           {row.reference && <span className="cell-sub">{row.reference}</span>}
-          {row.read_only && <span className="cell-sub">{t("quiet.maintenanceNote")}</span>}
         </td>
         <td>{row.owner ?? <span className="muted">—</span>}</td>
         <td className="quiet-reason-cell">{row.reason ?? <span className="muted">—</span>}</td>

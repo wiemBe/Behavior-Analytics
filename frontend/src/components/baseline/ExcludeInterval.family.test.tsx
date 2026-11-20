@@ -49,10 +49,10 @@ const PATH: Record<keyof typeof FAMILIES, string> = {
   ruleSilence: "rule",
 };
 const BASELINE: Record<keyof typeof FAMILIES, RegExp> = {
-  waf: /from this endpoint's request baseline/,
-  ipsEntity: /from this entity's IPS event baseline/,
+  waf: /from this endpoint's baseline/,
+  ipsEntity: /from this entity's baseline/,
   ipsSource: /from this source's IPS baseline/,
-  pwValue: /from this property value's baseline/,
+  pwValue: /from this value's baseline/,
   ruleStorm: /from this rule's storm baseline/,
   ruleSilence: /from this rule's silence baseline/,
 };
@@ -95,7 +95,7 @@ describe.each(names)("%s", (name) => {
   it("is not offered while the anomaly is still open", () => {
     mount({ ...FAMILIES[name], state: "OPEN", resolved_at: null });
     expect(openButton()).toBeNull();
-    expect(screen.getByText("Available once the anomaly is resolved.")).toBeInTheDocument();
+    expect(screen.getByText("Available once resolved.")).toBeInTheDocument();
   });
 
   it("proposes the incident span aligned to this family's grid, and names its baseline", async () => {
@@ -131,8 +131,8 @@ describe.each(names)("%s", (name) => {
     expect(
       await screen.findByText(
         name.startsWith("rule")
-          ? "Recorded. The rule's next evaluation uses it; the expected range has not changed yet."
-          : "Pending next baseline rebuild. The expected range has not changed.",
+          ? "Recorded; used from the next evaluation."
+          : "Pending next rebuild. Expected range unchanged.",
       ),
     ).toBeInTheDocument();
   });
@@ -140,7 +140,7 @@ describe.each(names)("%s", (name) => {
   it("does not guess a bucket width the page could not read", () => {
     mount(FAMILIES[name], { bucket: null });
     expect(openButton()).toBeNull();
-    expect(screen.getByText(/could not be read, so no interval can be proposed/)).toBeInTheDocument();
+    expect(screen.getByText(/Bucket width unreadable|Match-window width unreadable/)).toBeInTheDocument();
   });
 
   it("shows the server's own sentence when it refuses", async () => {
@@ -159,12 +159,12 @@ describe.each(names)("%s", (name) => {
 describe("what differs by family", () => {
   it("says what a WAF, source, value and rule exclusion also changes", async () => {
     const note: Record<string, RegExp> = {
-      waf: /request count and to every ratio of this endpoint/,
-      ipsEntity: /this entity's event-rate baseline only/,
-      ipsSource: /top-source share, block ratio and port fan-out/,
-      pwValue: /spike, drop and disappeared baselines of this value/,
-      ruleStorm: /storm baseline only; the rule's silence baseline is not changed/,
-      ruleSilence: /silence baseline only; the rule's storm baseline is not changed/,
+      waf: /Request count and every ratio\./,
+      ipsEntity: /Event rate only\./,
+      ipsSource: /Top-source share, block ratio, port fan-out\./,
+      pwValue: /Spike, drop and disappeared\./,
+      ruleStorm: /Storm only; silence unchanged\./,
+      ruleSilence: /Silence only; storm unchanged\./,
     };
     for (const name of names) {
       const { unmount } = mount(FAMILIES[name]);
@@ -177,22 +177,22 @@ describe("what differs by family", () => {
   it("a rule takes effect 'from the next evaluation', the others 'after the next baseline rebuild'", async () => {
     const { unmount } = mount(FAMILIES.ruleStorm, { bucket: 3600 });
     await userEvent.click(openButton()!);
-    expect(screen.getByText(/This is used from the next evaluation, may make the expected range unavailable/)).toBeInTheDocument();
+    expect(screen.getByText(/Used from the next evaluation\./)).toBeInTheDocument();
     expect(screen.queryByText(/after the next baseline rebuild/)).toBeNull();
     unmount();
     mount(FAMILIES.waf);
     await userEvent.click(openButton()!);
-    expect(screen.getByText(/This takes effect after the next baseline rebuild, may make/)).toBeInTheDocument();
+    expect(screen.getByText(/Applied at the next rebuild\./)).toBeInTheDocument();
   });
 
-  it("a rule's own pending row reads 'Used from the next evaluation', never 'Pending next baseline rebuild'", () => {
+  it("a rule's own pending row reads 'Used from the next evaluation', never 'Pending rebuild'", () => {
     mount(FAMILIES.ruleStorm, {
       bucket: 3600,
       load: { kind: "ok", items: [exclusion({ subject_kind: "rule", scope_key: "rule:storm" })] },
     });
     const list = screen.getByRole("list", { name: "Training protection" });
     expect(list).toHaveTextContent("Used from the next evaluation");
-    expect(list).not.toHaveTextContent("Pending next baseline rebuild");
+    expect(list).not.toHaveTextContent("Pending rebuild");
   });
 
   it("explains a misaligned bound with the family's grid, not the source's", async () => {

@@ -96,7 +96,7 @@ describe("the control in the triage block", () => {
   it("says the exclusion is not yet available for an anomaly that is still open", async () => {
     await renderFor(resolved({ state: "OPEN", resolved_at: null }));
     expect(control()).toBeNull();
-    expect(screen.getByText("Available once the anomaly is resolved.")).toBeInTheDocument();
+    expect(screen.getByText("Available once resolved.")).toBeInTheDocument();
   });
 
   // SOC-13f: a resolved WAF rate anomaly now carries the control (exclusion.family.page.test.tsx);
@@ -114,14 +114,14 @@ describe("the control in the triage block", () => {
     forSource.mockRejectedValue(new ApiError(500, "boom"));
     const { container } = await renderFor(resolved());
     expect(container.querySelector("h1")).toHaveTextContent("LAB Firewall");
-    expect(screen.getByText("Analyst exclusions could not be loaded for this incident.")).toBeInTheDocument();
+    expect(screen.getByText("Analyst exclusions could not be loaded.")).toBeInTheDocument();
     expect(screen.getByTestId("chart")).toHaveAttribute("data-exclusions", "[]");
   });
 
   it("names read:anomalies when the caller may not read the exclusions", async () => {
     forSource.mockRejectedValue(new ApiError(403, "forbidden"));
     await renderFor(resolved());
-    expect(screen.getByText(/Reading analyst exclusions needs the read:anomalies permission/)).toBeInTheDocument();
+    expect(screen.getByText(/Needs the read:anomalies permission/)).toBeInTheDocument();
   });
 });
 
@@ -138,13 +138,13 @@ describe("the timeline", () => {
     expect(JSON.parse(screen.getByTestId("chart").getAttribute("data-exclusions")!)).toEqual([
       { start: "2026-11-04T08:00:00Z", end: "2026-11-04T10:00:00Z" },
     ]);
-    expect(screen.getByText(/Excluded from baseline training: 04 Nov 08:00–10:00 UTC \(Pending next baseline rebuild\)/)).toBeInTheDocument();
+    expect(screen.getByText(/Excluded from training: 04 Nov 08:00–10:00 UTC \(Pending rebuild\)/)).toBeInTheDocument();
   });
 
   it("draws nothing extra when there are none", async () => {
     forSource.mockResolvedValue({ items: [], limit: 100 });
     await renderFor(resolved());
     expect(screen.getByTestId("chart")).toHaveAttribute("data-exclusions", "[]");
-    expect(screen.queryByText(/Excluded from baseline training:/)).toBeNull();
+    expect(screen.queryByText(/Excluded from training:/)).toBeNull();
   });
 });

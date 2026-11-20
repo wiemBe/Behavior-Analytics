@@ -112,7 +112,7 @@ describe("the tuning form", () => {
       },
     });
     expect(input(/^Deviation$/).value).toBe("");
-    expect(screen.getByText(/stored value "high" is not usable/)).toBeInTheDocument();
+    expect(screen.getByText(/stored "high" unusable/)).toBeInTheDocument();
     expect(previewButton()).toBeEnabled();
   });
 
@@ -120,34 +120,34 @@ describe("the tuning form", () => {
     const spy = vi.spyOn(api, "noisePreview");
     renderTuning();
     fireEvent.change(input(/^Drop ratio$/), { target: { value: "1.5" } });
-    expect(screen.getByRole("alert")).toHaveTextContent("The value must be from 0.01 to 0.99.");
+    expect(screen.getByRole("alert")).toHaveTextContent("Use 0.01 to 0.99.");
     expect(input(/^Drop ratio$/)).toHaveAttribute("aria-invalid", "true");
     expect(previewButton()).toBeDisabled();
     fireEvent.change(input(/^Open after$/), { target: { value: "2.5" } });
-    expect(screen.getByText("Enter a whole number from 1 to 10.")).toBeInTheDocument();
+    expect(screen.getByText("Enter a whole number, 1 to 10.")).toBeInTheDocument();
     expect(spy).not.toHaveBeenCalled();
   });
 
   it("says what the page can and cannot do in LAB_MODE and with per-type overrides", () => {
     renderTuning({ lab_mode: true, has_by_type: true });
-    expect(screen.getByText("In LAB_MODE criticality changes no detection threshold.")).toBeInTheDocument();
-    expect(screen.getByText(/per-type overrides/)).toBeInTheDocument();
+    expect(screen.getByText("LAB_MODE: criticality changes no threshold.")).toBeInTheDocument();
+    expect(screen.getByText(/Per-type overrides/)).toBeInTheDocument();
     expect(screen.getByRole("combobox", { name: "Criticality" })).toBeEnabled();
   });
 
   it("says nothing about LAB_MODE or per-type overrides when they do not apply", () => {
     renderTuning();
     expect(screen.queryByText(/LAB_MODE criticality/)).toBeNull();
-    expect(screen.queryByText(/per-type overrides/)).toBeNull();
+    expect(screen.queryByText(/Per-type overrides/)).toBeNull();
   });
 
   it("warns that a narrower direction closes open incidents, only when it does", () => {
     renderTuning();
-    expect(screen.queryByText(/closes this source's open incidents/)).toBeNull();
+    expect(screen.queryByText(/closes open incidents/)).toBeNull();
     fireEvent.change(screen.getByRole("combobox", { name: "Direction" }), { target: { value: "spike" } });
-    expect(screen.getByText(/closes this source's open incidents of the disabled direction/)).toBeInTheDocument();
+    expect(screen.getByText(/Saving closes open incidents of the disabled direction/)).toBeInTheDocument();
     fireEvent.change(screen.getByRole("combobox", { name: "Direction" }), { target: { value: "both" } });
-    expect(screen.queryByText(/closes this source's open incidents/)).toBeNull();
+    expect(screen.queryByText(/closes open incidents/)).toBeNull();
   });
 
   it("no longer claims a criticality change is not replayed", () => {
@@ -179,7 +179,7 @@ describe("the preview and criticality", () => {
     fireEvent.click(previewButton());
     await screen.findByRole("heading", { name: "Replay result" });
     expect(spy.mock.calls[0][1]).toMatchObject({ criticality: "LOW" });
-    expect(screen.getByText(/^Replayed with criticality Low \(stored: High\)\.$/)).toBeInTheDocument();
+    expect(screen.getByText(/^Replayed with criticality Low \(stored High\)\.$/)).toBeInTheDocument();
     expect(saveButton()).toBeEnabled();
   });
 
@@ -192,7 +192,7 @@ describe("the preview and criticality", () => {
     fireEvent.click(previewButton());
     await screen.findByRole("heading", { name: "Replay result" });
     expect(screen.queryByText(/Replayed with criticality/)).toBeNull();
-    expect(screen.getByText(/counts do not depend on the criticality change/)).toBeInTheDocument();
+    expect(screen.getByText(/counts ignore criticality/)).toBeInTheDocument();
   });
 
   it("says nothing about criticality when the answer has no effective block", async () => {
@@ -202,7 +202,7 @@ describe("the preview and criticality", () => {
     fireEvent.click(previewButton());
     await screen.findByRole("heading", { name: "Replay result" });
     expect(screen.queryByText(/Replayed with criticality/)).toBeNull();
-    expect(screen.queryByText(/do not depend on the criticality/)).toBeNull();
+    expect(screen.queryByText(/counts ignore criticality/)).toBeNull();
   });
 
   it("keeps Save off until a preview of exactly these values exists", async () => {
@@ -236,16 +236,16 @@ describe("the preview", () => {
   it("shows current M against proposed N, a total, the coverage line and the one M/N sentence", async () => {
     renderTuning();
     await runPreview();
-    const table = screen.getByRole("table", { name: /Incidents the replay would open/ });
+    const table = screen.getByRole("table", { name: /Incidents a replay opens/ });
     expect(within(table).getByRole("columnheader", { name: /Current values/ })).toHaveTextContent("M");
     expect(within(table).getByRole("columnheader", { name: /Proposed values/ })).toHaveTextContent("N");
     const total = within(table).getByRole("row", { name: /All detectors/ });
     expect(total).toHaveTextContent("39");
     expect(total).toHaveTextContent("5");
     expect(total).toHaveTextContent("−34");
-    expect(screen.getByText(/Replay of 28 days of stored buckets/)).toHaveTextContent("28 of 28 days are stored");
+    expect(screen.getByText(/28 d replayed/)).toHaveTextContent("28 of 28 d stored");
     expect(screen.getAllByText(/not a forecast/)).toHaveLength(1);
-    expect(screen.getByText(/Baseline version 42/)).toBeInTheDocument();
+    expect(screen.getByText(/Baseline v42/)).toBeInTheDocument();
   });
 
   it("writes 'not run (direction)' for an excluded detector and never a zero or a bare dash", async () => {
@@ -264,10 +264,10 @@ describe("the preview", () => {
   it("keeps the recorded history on its own labelled line, not as M", async () => {
     renderTuning();
     await runPreview();
-    const line = screen.getByText(/Recorded in the same window/);
+    const line = screen.getByText(/Recorded in this window/);
     expect(line).toHaveTextContent("41 incidents, 12 opened, 0 suppressed");
-    expect(line).toHaveTextContent("not a replay count");
-    expect(within(screen.getByRole("table", { name: /Incidents the replay/ })).queryByText("41")).toBeNull();
+    expect(line).not.toHaveTextContent("not a replay count");
+    expect(within(screen.getByRole("table", { name: /Incidents a replay/ })).queryByText("41")).toBeNull();
   });
 
   it("lists the detectors that cannot be replayed with their reasons, without the direction duplicate", async () => {
@@ -283,18 +283,18 @@ describe("the preview", () => {
     await runPreview(PARTIAL_PREVIEW);
     expect(screen.getByText("Partial window.")).toBeInTheDocument();
     expect(screen.getByText(/Counts cover 14 of 28 days\./)).toBeInTheDocument();
-    expect(screen.getByText(/14 of 28 days are stored/)).toBeInTheDocument();
-    expect(screen.getByRole("table", { name: /Incidents the replay/ })).toBeInTheDocument();
+    expect(screen.getByText(/14 of 28 d stored/)).toBeInTheDocument();
+    expect(screen.getByRole("table", { name: /Incidents a replay/ })).toBeInTheDocument();
   });
 
   it("shows INSUFFICIENT_DATA with its reason and no number from the replay", async () => {
     renderTuning();
     await runPreview(INSUFFICIENT_PREVIEW);
     expect(screen.getByText("Only 3 of 28 days are stored; a replay needs at least 7.")).toBeInTheDocument();
-    expect(screen.queryByRole("table", { name: /Incidents the replay/ })).toBeNull();
+    expect(screen.queryByRole("table", { name: /Incidents a replay/ })).toBeNull();
     expect(screen.queryByText("All detectors")).toBeNull();
     expect(screen.queryByText(/not a forecast/)).toBeNull();
-    expect(screen.getByText(/Recorded in the same window: 5 incidents/)).toBeInTheDocument();
+    expect(screen.getByText(/Recorded in this window: 5 incidents/)).toBeInTheDocument();
   });
 
   it("shows a maintenance refusal as the backend words it", async () => {
@@ -310,29 +310,29 @@ describe("the preview", () => {
       }),
     );
     expect(screen.getByText(/The source is in maintenance/)).toBeInTheDocument();
-    expect(screen.queryByRole("table", { name: /Incidents the replay/ })).toBeNull();
+    expect(screen.queryByRole("table", { name: /Incidents a replay/ })).toBeNull();
   });
 
   it("shows TOO_LARGE with no count and offers 7 days, which runs the replay", async () => {
     renderTuning();
     const spy = vi.spyOn(api, "noisePreview").mockResolvedValueOnce(TOO_LARGE_PREVIEW);
     fireEvent.click(previewButton());
-    await screen.findByText("This window is too large to replay");
-    expect(screen.queryByRole("table", { name: /Incidents the replay/ })).toBeNull();
-    expect(screen.queryByText(/Recorded in the same window/)).toBeNull();
+    await screen.findByText("Window too large to replay");
+    expect(screen.queryByRole("table", { name: /Incidents a replay/ })).toBeNull();
+    expect(screen.queryByText(/Recorded in this window/)).toBeNull();
     spy.mockResolvedValueOnce(preview({ window: { ...preview().window, days: 7 } }));
     fireEvent.click(screen.getByRole("button", { name: "Use 7 days" }));
     await waitFor(() => expect(spy).toHaveBeenCalledTimes(2));
     expect(spy).toHaveBeenLastCalledWith(SRC, { window_days: 7, thresholds: {} });
-    await screen.findByRole("table", { name: /Incidents the replay/ });
+    await screen.findByRole("table", { name: /Incidents a replay/ });
     expect(screen.getByRole("radio", { name: "7 days" })).toBeChecked();
   });
 
   it("surfaces the maintenance and unjudged counts only when they are above zero", async () => {
     renderTuning();
     await runPreview(preview({ not_judged_buckets: 3, maintenance_buckets: 2 }));
-    expect(screen.getByText(/3 buckets were not judged/)).toBeInTheDocument();
-    expect(screen.getByText(/2 buckets were recorded under a maintenance window/)).toBeInTheDocument();
+    expect(screen.getByText(/3 buckets not judged/)).toBeInTheDocument();
+    expect(screen.getByText(/2 buckets under maintenance/)).toBeInTheDocument();
   });
 
   it("prints a backend warning", async () => {
@@ -349,7 +349,7 @@ describe("the preview", () => {
     renderTuning();
     vi.spyOn(api, "noisePreview").mockRejectedValue(new ApiError(500, "boom"));
     fireEvent.click(previewButton());
-    expect(await screen.findByRole("alert")).toHaveTextContent(/could not run, and nothing was changed/);
+    expect(await screen.findByRole("alert")).toHaveTextContent(/failed; nothing changed/);
     expect(screen.queryByRole("heading", { name: "Replay result" })).toBeNull();
   });
 
@@ -417,10 +417,10 @@ describe("Save", () => {
   it("is off until a preview ran for exactly these values, and says why", async () => {
     renderTuning();
     expect(saveButton()).toBeDisabled();
-    expect(screen.getByText("Nothing differs from the saved values.")).toBeInTheDocument();
+    expect(screen.getByText("No change from saved values.")).toBeInTheDocument();
     fireEvent.change(input(/^Deviation$/), { target: { value: "5" } });
     expect(saveButton()).toBeDisabled();
-    expect(screen.getByText("Run a preview for these values to enable Save.")).toBeInTheDocument();
+    expect(screen.getByText("Preview these values to enable Save.")).toBeInTheDocument();
     await runPreview();
     expect(saveButton()).toBeEnabled();
   });
@@ -433,7 +433,7 @@ describe("Save", () => {
 
   it("is off for an account without log_source:write, names the permission, and Preview still works", async () => {
     renderTuning({}, READER);
-    expect(screen.getByText(/saving needs the log_source:write permission/)).toBeInTheDocument();
+    expect(screen.getByText(/Saving needs the log_source:write permission/)).toBeInTheDocument();
     fireEvent.change(input(/^Deviation$/), { target: { value: "5" } });
     await runPreview();
     expect(saveButton()).toBeDisabled();
@@ -520,7 +520,7 @@ describe("Save", () => {
     fireEvent.click(saveButton());
     const banner = await screen.findByText("Saved.");
     expect(banner.closest(".banner")).toHaveTextContent("deviation 3.5 to 4.5");
-    expect(banner.closest(".banner")).toHaveTextContent("The audit log keeps the preview you saw.");
+    expect(banner.closest(".banner")).toHaveTextContent("The audit log keeps the preview.");
     expect(banner.closest(".banner")).not.toHaveTextContent("closed");
     expect(screen.queryByRole("heading", { name: "Replay result" })).toBeNull();
     expect(input(/^Deviation$/).value).toBe("4.5");
@@ -547,7 +547,7 @@ describe("Save", () => {
     await runPreview();
     fireEvent.click(saveButton());
     const banner = (await screen.findByText("Saved.")).closest(".banner")!;
-    expect(banner).toHaveTextContent("could not re-read the source");
+    expect(banner).toHaveTextContent("Re-read failed");
   });
 
   it("puts a 422 next to the field it names and keeps the preview", async () => {
@@ -575,9 +575,9 @@ describe("Save", () => {
     expect(await screen.findByText(/criticality is locked/)).toBeInTheDocument();
     patch.mockRejectedValueOnce(new ApiError(403, "no"));
     fireEvent.click(saveButton());
-    expect(await screen.findByText(/Saving needs the log_source:write permission\. Nothing was changed/)).toBeInTheDocument();
+    expect(await screen.findByText(/Saving needs the log_source:write permission\. Nothing changed/)).toBeInTheDocument();
     patch.mockRejectedValueOnce(new ApiError(500, "no"));
     fireEvent.click(saveButton());
-    expect(await screen.findByText("The values were not saved and nothing was changed.")).toBeInTheDocument();
+    expect(await screen.findByText("Not saved; nothing changed.")).toBeInTheDocument();
   });
 });
