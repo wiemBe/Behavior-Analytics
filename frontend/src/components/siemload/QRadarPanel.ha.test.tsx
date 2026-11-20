@@ -68,7 +68,7 @@ describe("QRadarPanel: the managed hosts line with HA pairs", () => {
     });
     const cell = value("Managed hosts");
     expect(cell).toHaveTextContent("1 not ACTIVE");
-    expect(cell).toHaveTextContent("Each host is listed in the table below");
+    expect(cell).not.toHaveTextContent("Each host is listed in the table below");
     expect(cell).not.toHaveTextContent("ep-02");
   });
 

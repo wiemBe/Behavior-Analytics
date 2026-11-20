@@ -134,7 +134,7 @@ describe("the history backfill page: states", () => {
     view(["read:offenses"]);
     const alert = await screen.findByRole("alert");
     expect(alert).toHaveTextContent("read:history_backfill");
-    expect(alert).toHaveTextContent("Nothing was changed");
+    expect(alert).toHaveTextContent("lacks permission read:history_backfill");
     expect(screen.queryByRole("table")).not.toBeInTheDocument();
   });
 
@@ -146,7 +146,7 @@ describe("the history backfill page: states", () => {
     view();
     const alert = await screen.findByRole("alert");
     expect(alert).toHaveTextContent("could not be loaded");
-    expect(alert).toHaveTextContent("Nothing was changed");
+    expect(alert).toHaveTextContent("Check that the backend is running");
     expect(alert).toHaveTextContent(/try again/i);
     expect(alert).not.toHaveTextContent("secret stack");
     await userEvent.click(within(alert).getByRole("button", { name: "Try again" }));
@@ -160,7 +160,7 @@ describe("the history backfill page: states", () => {
     const heading = await screen.findByText("No QRadar console is enabled.");
     const status = screen.getByRole("status");
     expect(status).toContainElement(heading);
-    expect(status).toHaveTextContent("per enabled console");
+    expect(status).toHaveTextContent("Enable a console, then reload.");
     expect(screen.queryByRole("table")).not.toBeInTheDocument();
   });
 
@@ -179,7 +179,7 @@ describe("the history backfill page: the table", () => {
 
   it("has the design's columns and one row per family and scope", async () => {
     view();
-    const table = await screen.findByRole("table", { name: /What has been read from QRadar/ });
+    const table = await screen.findByRole("table", { name: /History read per family and scope/ });
     const headers = within(table)
       .getAllByRole("columnheader")
       .map((h) => (h.firstChild?.textContent ?? "").trim());
@@ -187,11 +187,11 @@ describe("the history backfill page: the table", () => {
       "Family",
       "Scope",
       "State",
-      "Window asked",
-      "Window proved",
+      "Asked (days)",
+      "Proved (floor)",
       "Read",
       "Searches",
-      "Read through",
+      "Through (UTC)",
     ]);
     // Phase A, WAF scope, WAF source without a scope row, catch-all, rule matches.
     // Each family is a metric row plus a detail row for the reason and later-yes.
@@ -258,7 +258,7 @@ describe("the history backfill page: the table", () => {
     const provedCell = within(unproved).getAllByRole("cell")[3]!;
     expect(provedCell).toHaveTextContent(/^per source$/);
     const proved = rowOf("WAF", "Log source 7");
-    expect(proved).toHaveTextContent("Window proved");
+    expect(proved).not.toHaveTextContent("Window proved");
     expect(proved).toHaveTextContent("09-21 10:00 UTC");
     expect(within(proved).getByText("09-21 10:00").closest("time")).toHaveAttribute(
       "title",
@@ -356,7 +356,7 @@ describe("the history backfill page: the table", () => {
     await screen.findByRole("table");
     const row = rowOf("Catch-all senders");
     expect(row).toHaveTextContent("Not started");
-    expect(row).toHaveTextContent("created at the family's next collection");
+    expect(row).toHaveTextContent("Created at the next collection.");
   });
 
   it("shows times with their zone, the relative age after them, and as time elements", async () => {
@@ -375,7 +375,7 @@ describe("the history backfill page: the table", () => {
   it("labels the column for what it shows: the time read through, not a step time", async () => {
     view();
     const table = await screen.findByRole("table");
-    expect(within(table).getByRole("columnheader", { name: /Read through/ })).toBeInTheDocument();
+    expect(within(table).getByRole("columnheader", { name: /Through \(UTC\)/ })).toBeInTheDocument();
     expect(within(table).queryByText(/Last step/)).not.toBeInTheDocument();
   });
 
@@ -435,7 +435,7 @@ describe("the history backfill page: the decision block", () => {
     expect(screen.queryByRole("button", { name: "Stop reading" })).not.toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "Read history now" }));
     const confirm = screen.getByRole("group", { name: "Read history now?" });
-    expect(confirm).toHaveTextContent("This records Yes for 28 days.");
+    expect(confirm).toHaveTextContent("Records Yes for 28 days.");
     expect(confirm).toHaveTextContent("Nothing old raises an alert.");
     expect(decide).not.toHaveBeenCalled();
     await userEvent.click(within(confirm).getByRole("button", { name: /Confirm/ }));
@@ -452,7 +452,7 @@ describe("the history backfill page: the decision block", () => {
     await userEvent.click(screen.getByRole("button", { name: "Stop reading" }));
     const confirm = screen.getByRole("group", { name: "Stop reading?" });
     expect(confirm).toHaveTextContent("Partial");
-    expect(confirm).toHaveTextContent("Nothing is deleted.");
+    expect(confirm).toHaveTextContent("What was read stays.");
     await userEvent.click(within(confirm).getByRole("button", { name: "Cancel" }));
     expect(stop).not.toHaveBeenCalled();
     expect(screen.queryByRole("group", { name: "Stop reading?" })).not.toBeInTheDocument();

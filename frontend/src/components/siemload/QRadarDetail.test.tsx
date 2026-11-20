@@ -161,7 +161,7 @@ describe("QRadarDetail: states", () => {
     const alerts = screen.getAllByRole("alert");
     expect(alerts).toHaveLength(3);
     expect(alerts[0]).toHaveTextContent("permission admin:*");
-    expect(alerts[0]).toHaveTextContent("Nothing was changed");
+    expect(alerts[0]).toHaveTextContent("lacks permission");
     expect(alerts[2]).toHaveTextContent("The QRadar trends could not be read.");
     expect(screen.getByRole("table", { name: "Managed hosts of qradar-lab" })).toBeInTheDocument();
   });
@@ -173,7 +173,7 @@ describe("QRadarDetail: states", () => {
     const alerts = screen.getAllByRole("alert");
     expect(alerts[0]).toHaveTextContent("QRadar's health in detail could not be read.");
     expect(alerts[0]).toHaveTextContent("The backend answered with HTTP 500.");
-    expect(alerts[0]).toHaveTextContent("Nothing was changed. Check that the backend is reachable");
+    expect(alerts[0]).toHaveTextContent("Check the backend, then try again.");
     expect(alerts[2]).toHaveTextContent("The backend did not answer.");
   });
 
@@ -181,7 +181,7 @@ describe("QRadarDetail: states", () => {
     mocks.states[LATEST] = okState(latestOf());
     mocks.states[HISTORY_24] = okState(historyOf([]));
     render(<QRadarDetail consoles={[withHosts()]} range="24h" trend="24h" />);
-    expect(screen.getByText(/This console is not in the stored health/)).toBeInTheDocument();
+    expect(screen.getByText(/Console not in the stored health/)).toBeInTheDocument();
     expect(screen.getByText("No trend was returned for this console.")).toBeInTheDocument();
   });
 
@@ -200,20 +200,20 @@ describe("QRadarDetail: states", () => {
       />,
     );
     expect(screen.getByText("QRadar did not answer the host list.")).toBeInTheDocument();
-    expect(screen.getByText(/not matched to it/)).toBeInTheDocument();
+    expect(screen.getByText(/Host list not read: hosts below are unmatched/)).toBeInTheDocument();
     expect(screen.getByRole("table", { name: "Disk, system and pipeline per host of qradar-lab" })).toBeInTheDocument();
   });
 });
 
 describe("QRadarDetail: collection switched off", () => {
-  const OFF_SENTENCE = /QRadar health collection is off \(QRADAR_HEALTH_COLLECTION_ENABLED\)/;
+  const OFF_SENTENCE = /QRadar health collection is off\./;
 
   it("says so once, with the time of the last window in UTC, and keeps the stored figures", () => {
     mocks.states[LATEST] = okState({ ...latestOf(consoleLatest()), collection_enabled: false });
     mocks.states[HISTORY_24] = okState(historyOf([consoleHistory()]));
     render(<QRadarDetail consoles={[withHosts()]} range="24h" trend="24h" />);
     const banner = screen.getByText(OFF_SENTENCE);
-    expect(banner).toHaveTextContent("Disk, system, pipeline, notifications and trends show the last window collected, at");
+    expect(banner).toHaveTextContent("Showing the last window,");
     expect(banner).toHaveTextContent("2026-11-02 10:15:00 UTC");
     const managed = screen.getByRole("heading", { name: "Managed hosts" });
     const disk = screen.getByRole("heading", { name: "Disk, system and pipeline" });
@@ -236,6 +236,6 @@ describe("QRadarDetail: collection switched off", () => {
     });
     mocks.states[HISTORY_24] = okState(historyOf([consoleHistory()]));
     render(<QRadarDetail consoles={[withHosts()]} range="24h" trend="24h" />);
-    expect(screen.getByText(/none was ever collected/)).toBeInTheDocument();
+    expect(screen.getByText(/No window was ever collected/)).toBeInTheDocument();
   });
 });

@@ -15,12 +15,12 @@ async function open(range?: string) {
 }
 
 describe("SIEM load route", () => {
-  it("has exactly one h1, a guide link, and states that times are UTC", async () => {
+  it("has exactly one h1, a guide link, and no description line", async () => {
     await open();
     const h1s = screen.getAllByRole("heading", { level: 1 });
     expect(h1s).toHaveLength(1);
     expect(h1s[0]).toHaveTextContent("SIEM load");
-    expect(screen.getByText(/Times are UTC\./)).toBeInTheDocument();
+    expect(screen.queryByText(/Times are UTC\./)).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: /guide/i })).toHaveAttribute("href", "/guide/siem-load");
     expect(document.body.textContent).not.toMatch(/real-time|\blive\b|!/i);
   });

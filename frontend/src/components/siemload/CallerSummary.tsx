@@ -141,7 +141,6 @@ function Body({ range }: { range: SummaryRangeId }) {
         <p>
           <strong>{t("emptyTitle", { range: t(RANGE_LABEL[range]) })}</strong>
         </p>
-        <p>{t("emptyHelp")}</p>
       </div>
     );
   }
@@ -221,10 +220,6 @@ function Body({ range }: { range: SummaryRangeId }) {
           </tbody>
         </table>
       </TableScroll>
-      <p className="sl-hint">{t("note")}</p>
-      {summary.callers.some((row) => row.caller === ACCESS_CHECK) ? (
-        <p className="sl-hint">{t("accessCheckNote")}</p>
-      ) : null}
     </>
   );
 }

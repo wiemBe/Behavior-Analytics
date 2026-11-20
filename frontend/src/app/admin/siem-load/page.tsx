@@ -23,11 +23,7 @@ async function Page({ searchParams }: { searchParams: Promise<Record<string, str
   const params = await searchParams;
   return (
     <>
-      <PageHeader
-        guide={guideFor("/admin/siem-load")}
-        title={t("title")}
-        description={t("description")}
-      />
+      <PageHeader guide={guideFor("/admin/siem-load")} title={t("title")} />
       <SiemLoadPage range={parseRange(params.range)} trend={parseTrend(params.trend)} />
     </>
   );

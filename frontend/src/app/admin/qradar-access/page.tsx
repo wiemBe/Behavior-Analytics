@@ -21,11 +21,7 @@ async function Page() {
   const t = await getTranslations("qradarAccess.page");
   return (
     <>
-      <PageHeader
-        guide={guideFor("/admin/qradar-access")}
-        title={t("title")}
-        description={t("description")}
-      />
+      <PageHeader guide={guideFor("/admin/qradar-access")} title={t("title")} />
       <QRadarAccessPage />
     </>
   );

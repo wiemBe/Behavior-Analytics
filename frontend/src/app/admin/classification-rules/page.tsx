@@ -43,7 +43,7 @@ async function ClassificationRulesPage() {
         title={t("title")}
         description={
           error
-            ? t("descriptionError")
+            ? undefined
             : t("description", {
                 total: plainCount(rules.length, text.locale),
                 builtIn: plainCount(builtIn, text.locale),
@@ -73,7 +73,6 @@ async function ClassificationRulesPage() {
                 </li>
               ))}
             </ol>
-            <p className="subtitle">{t("precedenceNote")}</p>
           </section>
           <RulesManager initial={rules} />
         </>

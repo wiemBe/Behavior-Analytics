@@ -473,7 +473,7 @@ describe("classification rules", () => {
       "Değiştirilmedi. Sunucu isteği tamamlayamadı. Kısa süre sonra yeniden deneyin.",
     );
     // Without a translator the English stays.
-    expect(ruleFailure(new ApiError(403, "x")).text).toMatch(/^Your role cannot change classification rules/);
+    expect(ruleFailure(new ApiError(403, "x")).text).toMatch(/^Your role lacks permission admin:classification/);
   });
 
   it("looks up kinds, levels, hints and steps; an unknown kind shows as sent, never empty", () => {
@@ -482,7 +482,7 @@ describe("classification rules", () => {
     expect(ruleKindLabel("TYPE")).toBe("Type id");
     expect(RULE_LEVELS.map((l) => ruleLevelTitle(l, text))).toEqual(["Grup kuralları", "Tür kuralları", "Ad kuralları"]);
     expect(patternHint("GROUP", text)).toBe("Sayısal bir kimlik.");
-    expect(patternHint("NAME_REGEX")).toBe("A regular expression, at most 256 characters.");
+    expect(patternHint("NAME_REGEX")).toBe("Regex, up to 256 characters.");
     expect(precedenceSteps(text)).toHaveLength(6);
     expect(precedenceSteps()[0].title).toBe("Operator override");
   });

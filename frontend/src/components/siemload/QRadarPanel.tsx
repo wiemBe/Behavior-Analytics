@@ -118,11 +118,7 @@ function Console({ health }: { health: QRadarConsoleHealth }) {
                       )}
                     </span>
                   ) : null}
-                  {tableShown ? (
-                    notActive > 0 || problem > 0 ? (
-                      <span className="sl-note">{t("hostsListed")}</span>
-                    ) : null
-                  ) : (
+                  {tableShown ? null : (
                     <>
                       {servers.not_active.length > 0 ? (
                         <ul className="sl-hosts">
@@ -183,7 +179,7 @@ function Console({ health }: { health: QRadarConsoleHealth }) {
             )}
           </FieldValue>
         </Row>
-        <Row label={t("ariel")} note={ariel.available.state === "OK" ? t("arielAvailableNote") : null}>
+        <Row label={t("ariel")}>
           <FieldValue field={ariel.available}>
             {(available) =>
               available ? (
@@ -229,10 +225,7 @@ function Console({ health }: { health: QRadarConsoleHealth }) {
             {(count) => <span className="num">{t("inFlightOurs", { count })}</span>}
           </FieldValue>
         </Row>
-        <Row
-          label={t("arielHeldLabel")}
-          note={ariel.list_probe.state === "OK" ? t("arielHeldNote") : null}
-        >
+        <Row label={t("arielHeldLabel")}>
           <FieldValue field={ariel.list_probe}>
             {(held) => (
               <span className="num">

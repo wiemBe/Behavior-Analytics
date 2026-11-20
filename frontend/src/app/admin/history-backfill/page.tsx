@@ -21,7 +21,7 @@ function Page() {
   const t = useTranslations("history.page");
   return (
     <>
-      <PageHeader guide={guideFor("/admin/history-backfill")} title={t("title")} description={t("description")} />
+      <PageHeader guide={guideFor("/admin/history-backfill")} title={t("title")} />
       <HistoryBackfillPage />
     </>
   );

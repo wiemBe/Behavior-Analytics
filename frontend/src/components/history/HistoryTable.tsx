@@ -58,7 +58,6 @@ function Proved({ row }: { row: HistoryRow }) {
     if (row.proved.floor === null) return <span className="muted">—</span>;
     return (
       <>
-        <span className="cell-sub hb-lead">{t("windowProved")}</span>
         <UtcTime value={row.proved.floor} variant="compact" wrapZone />
       </>
     );
@@ -212,11 +211,9 @@ export function HistoryTable({ console, now }: { console: HistoryConsole; now: D
             <th scope="col">{t("state")}</th>
             <th scope="col" className="num">
               {t("asked")}
-              <span className="cell-sub">{t("days")}</span>
             </th>
             <th scope="col">
               {t("proved")}
-              <span className="cell-sub">{t("floor")}</span>
             </th>
             <th scope="col" className="num">
               {t("read")}
@@ -226,7 +223,6 @@ export function HistoryTable({ console, now }: { console: HistoryConsole; now: D
             </th>
             <th scope="col" className="num">
               {t("through")}
-              <span className="cell-sub">{t("utc")}</span>
             </th>
           </tr>
         </thead>

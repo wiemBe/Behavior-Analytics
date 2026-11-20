@@ -36,12 +36,12 @@ const show = (console_ = consoleHistory(), hours: 24 | 168 = 24) =>
 const panel = (title: string) => screen.getByRole("region", { name: title });
 
 describe("TrendCharts: what is drawn", () => {
-  it("states the window once in UTC and says a break is missing data", () => {
+  it("states the window once in UTC and prints no legend sentence for a break", () => {
     show();
     const line = screen.getByText(/^From/);
     expect(line).toHaveTextContent("2026-11-01 10:16:00 UTC");
     expect(line).toHaveTextContent("2026-11-02 10:16:00 UTC");
-    expect(line).toHaveTextContent("A break in a line is a stretch with no stored window");
+    expect(line).not.toHaveTextContent("A break in a line");
   });
 
   it("offers the four charts, each under its own title", () => {
@@ -151,7 +151,7 @@ describe("TrendCharts: series that hold no figure", () => {
     );
     const reach = panel("Reachability and API latency");
     expect(reach).toHaveTextContent("Not collected");
-    expect(reach).toHaveTextContent("No health sample was stored in this range.");
+    expect(reach).toHaveTextContent("No sample in this range.");
     expect(within(reach).queryByRole("img")).not.toBeInTheDocument();
   });
 
@@ -166,7 +166,7 @@ describe("TrendCharts: series that hold no figure", () => {
       }),
     );
     const reach = panel("Reachability and API latency");
-    expect(reach).toHaveTextContent("No latency was measured in this range.");
+    expect(reach).toHaveTextContent("No latency measured.");
     expect(within(reach).getAllByRole("img")).toHaveLength(1);
   });
 
@@ -197,7 +197,7 @@ describe("TrendCharts: series that hold no figure", () => {
     show(consoleHistory({ hosts }));
     const disk = panel("Fullest mount per host");
     expect(within(disk).getAllByRole("listitem")).toHaveLength(5);
-    expect(disk).toHaveTextContent("2 more hosts are not drawn, because the chart has 5 distinct colours: h1, h0.");
+    expect(disk).toHaveTextContent("2 more hosts are not drawn (limit 5): h1, h0.");
   });
 
   it("says there is no trend when the console is not in the answer", () => {

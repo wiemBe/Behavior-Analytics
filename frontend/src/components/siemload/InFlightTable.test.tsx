@@ -39,10 +39,10 @@ describe("InFlightTable", () => {
     expect(time).toHaveAttribute("title", "2026-11-02 10:14:50 UTC");
   });
 
-  it("sets stale searches apart under a label that says why, and marks each one Stale", () => {
+  it("sets stale searches apart under a label that gives the limit, and marks each one Stale", () => {
     flight();
     const stale = screen.getByText(/Stale: older than 150 s/);
-    expect(stale).toHaveTextContent("The worker probably stopped before it recorded an end.");
+    expect(stale).not.toHaveTextContent("The worker probably stopped");
     const group = stale.closest("tbody") as HTMLElement;
     const rows = within(group).getAllByRole("row");
     expect(rows).toHaveLength(2);

@@ -196,7 +196,7 @@ describe("history backfill words in Turkish", () => {
     expect(confirmText("no", null, TR)).toContain("Hayır yanıtını kaydeder");
     expect(confirmText("start", null, TR)).toContain("yeniden okumasını ister");
     expect(confirmText("stop", null, TR)).toContain("Hiçbir şey silinmez.");
-    expect(confirmText("yes", 28)).toContain("This records Yes for 28 days.");
+    expect(confirmText("yes", 28)).toContain("Records Yes for 28 days.");
   });
 
   it("words a row's own reasons and keeps the API's reasons as sent", () => {
@@ -219,7 +219,7 @@ describe("history backfill words in Turkish", () => {
     expect(active[0].reason).toBe("Ailenin sonraki toplamasında oluşturulur.");
     expect(active[0].scope).toBe("Tüm console");
     expect(rowsOf(consoleOf({ mode: "ACTIVE" })).find((r) => r.family === "PHASE_A")!.reason).toBe(
-      "It is created at the family's next collection.",
+      "Created at the next collection.",
     );
   });
 });
@@ -252,7 +252,7 @@ describe("the history table in Turkish", () => {
     const waf = rowOf("WAF", "web-7");
     expect(within(waf).getByText("Kısmi")).toBeInTheDocument();
     expect(within(waf).getByText("28 istendi")).toBeInTheDocument();
-    expect(within(waf).getByText("Pencere kanıtlandı")).toBeInTheDocument();
+    expect(within(waf).queryByText("Pencere kanıtlandı")).not.toBeInTheDocument();
     expect(waf.textContent).toContain("19,5");
     expect(waf.textContent).toContain("1 zaman dilimi");
     expect(waf.textContent).toContain("tamamlandı");
@@ -606,7 +606,7 @@ describe("the undecided notice and the route in Turkish", () => {
     const first = render(<Page />);
     expect(await generateMetadata()).toEqual({ title: "Geçmiş veri okuma" });
     expect(screen.getByRole("heading", { level: 1, name: "Geçmiş veri okuma" })).toBeInTheDocument();
-    expect(screen.getByText(/Eski veri yalnızca öğrenme için kullanılır/)).toBeInTheDocument();
+    expect(screen.queryByText(/Eski veri yalnızca öğrenme için kullanılır/)).not.toBeInTheDocument();
     expect(document.body.textContent).not.toMatch(/canlı|gerçek zamanlı|anlık|!/);
     first.unmount();
     const reset = vi.fn();

@@ -7,13 +7,13 @@ import HistoryBackfillError from "./error";
 import { api } from "@/lib/api";
 
 describe("history backfill route", () => {
-  it("has exactly one h1 and states the window source and the time zone as facts", () => {
+  it("has exactly one h1 and no description line", () => {
     vi.spyOn(api, "historyBackfill").mockReturnValue(new Promise(() => {}));
     render(<Page />);
     const h1s = screen.getAllByRole("heading", { level: 1 });
     expect(h1s).toHaveLength(1);
     expect(h1s[0]).toHaveTextContent("History backfill");
-    expect(screen.getByText(/Times are UTC\./)).toBeInTheDocument();
+    expect(screen.queryByText(/Times are UTC\./)).not.toBeInTheDocument();
     expect(document.body.textContent).not.toMatch(/real-time|\blive\b|!/i);
   });
 

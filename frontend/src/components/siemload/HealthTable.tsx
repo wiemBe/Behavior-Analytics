@@ -306,7 +306,6 @@ export function HealthTable({
                 <tr>
                   <th scope="rowgroup" colSpan={COLUMNS} className="sl-group-label">
                     {t("unmatchedHeading")}
-                    <span className="sl-note">{t("unmatchedNote")}</span>
                   </th>
                 </tr>
                 {join.orphans.map((host) => (
