@@ -3406,3 +3406,10 @@ an existing property snapshot. Earlier committed data remains available.
 For custom network overrides, attach `celery-walker` to every QRadar egress network
 used by `celery-worker`, including `qradar_vm` on libvirt installations. Existing
 operator-owned overrides are not rewritten by upgrade.
+
+
+Before rolling back to a release that does not read runtime feature switches, run
+`docker compose run --rm --no-deps -T backend python -m app.cli.features env` on the current
+release. This prints the effective switch values as `.env` assignments. Copy the values you
+want to retain into `.env` before rollback; older releases ignore the table and use `.env`.
+Review the current values under Administration → Features. Upgrades leave the switches alone.

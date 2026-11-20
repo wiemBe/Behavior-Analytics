@@ -30,6 +30,11 @@ a disabled prerequisite; explicitly supplied values keep their existing meaning.
 `feature_switch` row takes precedence over environment values, then code defaults; a failed
 switch-table read turns every family off for that run.
 
+The `.env` family flags provide the initial defaults. A row set under **Administration →
+Features** wins until reset there. Installer questions 15 and 16 default to `defaults`, writing
+no rows; an explicit family list or alerting policy writes only effective differences.
+Upgrade does not import environment values into the switch table.
+
 ## Core and providers
 
 | Setting | Default | Meaning |
