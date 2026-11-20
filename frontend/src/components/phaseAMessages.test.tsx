@@ -7,6 +7,8 @@ import { describe, expect, it } from "vitest";
 
 import codes from "@/i18n/backendCodes.generated.json";
 import { renderBackendCode, renderBackendMessage } from "@/i18n/backendMessage";
+import { ENABLED_LOCALES } from "@/i18n/locale";
+import { FROZEN_TR_KEYS } from "@/i18n/trFrozen";
 import { createTextTranslator } from "@/i18n/textTranslator";
 import type { AnomalyDetail, AnomalyTransition, DetectionDetail } from "@/lib/api";
 
@@ -21,6 +23,10 @@ import { TechnicalDetails } from "./behavior/TechnicalDetails";
 const NBSP = " ";
 const TR = createTextTranslator("tr", tr);
 const EN = createTextTranslator("en", en);
+
+const FROZEN_CODES: ReadonlySet<string> = new Set(
+  FROZEN_TR_KEYS.filter((key) => key.startsWith("backend.")).map((key) => key.slice("backend.".length)),
+);
 
 const SPIKE_TEXT =
   "average EPS 6.00 is above the baseline median 2.00 (3.00x expected, 1200 events/bucket); " +
@@ -43,11 +49,25 @@ describe("the catalog renders every Phase A code from its sample", () => {
     expect(phaseA.length).toBeGreaterThanOrEqual(56);
   });
 
-  it.each(phaseA)("%s renders in Turkish without a fallback", (code, spec) => {
+  const frozenPhaseA = phaseA.filter(
+    ([code]) => FROZEN_CODES.has(code) || ENABLED_LOCALES.includes("tr"),
+  );
+  const nonFrozenPhaseA = phaseA.filter(
+    ([code]) => !(FROZEN_CODES.has(code) || ENABLED_LOCALES.includes("tr")),
+  );
+
+  it.each(frozenPhaseA)("%s renders in Turkish without a fallback", (code, spec) => {
     const out = renderBackendCode({ code, params: spec.sample as Record<string, unknown> }, "tr", TR);
     expect(out, code).toBeDefined();
     expect(out).not.toMatch(/\{|\}/);
     expect(out).not.toBe(spec.sample_english);
+  });
+
+  it.each(nonFrozenPhaseA)("%s renders in English from its sample", (code, spec) => {
+    const out = renderBackendCode({ code, params: spec.sample as Record<string, unknown> }, "en", EN);
+    expect(out, code).toBeDefined();
+    expect(out).not.toMatch(/\{|\}/);
+    expect(out).toBe(spec.sample_english);
   });
 });
 
