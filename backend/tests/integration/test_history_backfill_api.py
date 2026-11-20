@@ -824,7 +824,10 @@ async def test_a_family_that_is_switched_off_is_a_row_not_an_absence(  # type: i
     ).get(BASE).json()[0]
     waf = family_of(console, "WAF")
     assert waf["collection_enabled"] is False
-    assert "WAF_COLLECTION_ENABLED" in waf["collection_reason"]
+    assert waf["collection_reason"] == (
+        "WAF collection is off. An administrator can turn it on under "
+        "Administration → Features."
+    )
     assert waf["scopes"] == []
 
 
