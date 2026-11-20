@@ -255,7 +255,10 @@ async def test_the_family_gate_holds_a_pw_rule_while_collection_is_off(db_sessio
     report = await _run(db_session, pw_collection_enabled=False)
     assert report.judged_buckets == 0 and await _breaches(db_session) == []
     assert rule.last_status == "NOT_COLLECTED"
-    assert rule.last_status_reason == "pw_collection_enabled is off"
+    assert rule.last_status_reason == (
+        "Property watch collection is off. An administrator can turn it on under "
+        "Administration → Features."
+    )
     mark = (await db_session.execute(select(CustomRuleWatermark))).scalar_one()
     assert mark.evaluated_through == utc(h=10, mi=0)
 

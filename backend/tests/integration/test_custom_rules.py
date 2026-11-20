@@ -402,9 +402,15 @@ async def test_disabled_and_uncollected_rules_do_not_seed_or_judge(db_session) -
     assert disabled.consecutive_under == 2
     assert disabled.last_evaluated_bucket_start == held
     assert waf_rule.last_status == "NOT_COLLECTED"
-    assert waf_rule.last_status_reason == "waf_collection_enabled is off"
+    assert waf_rule.last_status_reason == (
+        "WAF collection is off. An administrator can turn it on under "
+        "Administration → Features."
+    )
     assert ips_rule.last_status == "NOT_COLLECTED"
-    assert ips_rule.last_status_reason == "ips_collection_enabled is off"
+    assert ips_rule.last_status_reason == (
+        "IPS collection is off. An administrator can turn it on under "
+        "Administration → Features."
+    )
     assert (await db_session.execute(select(CustomRuleWatermark))).scalars().all() == []
     assert await _breach_count(db_session) == 0
 

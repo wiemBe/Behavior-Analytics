@@ -292,7 +292,11 @@ async def test_every_kind_has_a_dispatching_loader_and_unknown_has_none(kind: st
 
 def test_the_pw_family_gate_is_off_with_the_collection_switch() -> None:
     off = engine_module._family_collected("PW_VALUE", _settings(pw_collection_enabled=False))
-    assert off == (False, "pw_collection_enabled is off")
+    assert off == (
+        False,
+        "Property watch collection is off. An administrator can turn it on under "
+        "Administration → Features.",
+    )
     on = engine_module._family_collected("PW_VALUE", _settings(pw_collection_enabled=True))
     assert on == (True, None)
 
