@@ -535,6 +535,10 @@ class Settings(BaseSettings):
     identity_validation_min_ratio: float = Field(default=0.90, gt=0, le=1)
     #: A queued validation older than this is treated as lost; a new request replaces it.
     identity_validation_pending_timeout_seconds: int = Field(default=900, ge=60)
+    #: How long a property-watch preview's result (and its requester record) stays readable
+    #: after the queued run ends. The preview persists nothing else; the result lives only in
+    #: Redis under this expiry.
+    pw_preview_result_ttl_seconds: int = Field(default=900, ge=60)
     #: How often every enabled identity profile is probed again. A finished
     #: probe writes the same outcome as ``validate``. A probe that does not
     #: finish leaves the status. At least one hour, so Ariel spend stays bounded.

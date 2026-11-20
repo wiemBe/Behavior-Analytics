@@ -20,7 +20,7 @@ from sqlalchemy import event, func, select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.pool import NullPool
 
-from app.api.routes.property_watches import get_provider_factory
+from app.api.routes.property_watches import get_preview_store_factory, get_provider_factory
 from app.core.config import get_settings
 from app.core.database import get_session
 from app.core.rate_limit import limiter
@@ -54,7 +54,9 @@ from app.services.ariel_permit import _ARIEL_PRIORITY
 from app.services.property_catalog import refresh_catalog_snapshot
 from app.services.property_watches import pinned_digest
 from app.services.seed import _ROLES
+from app.workers import tasks
 from tests.integration.factories import make_instance, make_log_source
+from tests.unit.pw_preview_fakes import make_store
 
 pytestmark = [
     pytest.mark.integration,
@@ -79,6 +81,53 @@ def _reset_rate_limit():  # type: ignore[no-untyped-def]
     limiter.reset()
     yield
     limiter.reset()
+
+
+class _Previews:
+    """Run the queued preview task the way the worker would (SCALE-2h3).
+
+    `POST .../preview` only queues; the queued (args, task id) pairs land here, and `run`
+    executes `tasks.run_property_watch_preview` against the test database with the client's
+    mock provider, settings and Redis stand-in.
+    """
+
+    def __init__(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        self.mp = monkeypatch
+        self.queued: list[tuple[list[str], str]] = []
+
+        def capture(args: list[str], task_id: str, **_kw: object) -> None:
+            self.queued.append((args, task_id))
+
+        monkeypatch.setattr(tasks.run_property_watch_preview_task, "apply_async", capture)
+
+    async def run(self, client: TestClient) -> list[dict]:
+        engine = create_async_engine(client.db_url, future=True, poolclass=NullPool)  # type: ignore[attr-defined]
+        maker = async_sessionmaker(engine, expire_on_commit=False)
+        provider = client.provider  # type: ignore[attr-defined]
+        self.mp.setattr(tasks, "get_sessionmaker", lambda: maker)
+        self.mp.setattr(tasks, "get_settings", lambda: client.settings)  # type: ignore[attr-defined]
+        self.mp.setattr(tasks, "get_preview_store", lambda _settings: client.store)  # type: ignore[attr-defined]
+        self.mp.setattr(tasks, "build_provider_for_instance", lambda _instance: provider)
+        try:
+            ran = [await tasks.run_property_watch_preview(*args) for args, _ in self.queued]
+            self.queued.clear()
+            return ran
+        finally:
+            await engine.dispose()
+
+    async def preview(self, client: TestClient, watch_id: str) -> dict:
+        """POST, run the task, GET: the finished preview as the browser reads it."""
+        queued = client.post(f"{PREFIX}/{watch_id}/preview")
+        assert queued.status_code == 202, queued.text
+        await self.run(client)
+        read = client.get(f"{PREFIX}/{watch_id}/preview/{queued.json()['preview_id']}")
+        assert read.status_code == 200, read.text
+        return read.json()
+
+
+@pytest.fixture
+def previews(monkeypatch: pytest.MonkeyPatch) -> _Previews:
+    return _Previews(monkeypatch)
 
 
 def _principal(role: str) -> Principal:
@@ -122,7 +171,15 @@ def _client(
         app.dependency_overrides[get_principal] = lambda: principal
     if provider is not None:
         app.dependency_overrides[get_provider_factory] = lambda: lambda _instance: provider
+    # SCALE-2h3: the preview is a queued task. The route's lock and record live in this
+    # stand-in for Redis, and the worker task is run by `previews.run(client)`.
+    store = make_store(settings)
+    app.dependency_overrides[get_preview_store_factory] = lambda: lambda _settings: store
     client = TestClient(app)
+    client.store = store  # type: ignore[attr-defined]
+    client.provider = provider  # type: ignore[attr-defined]
+    client.settings = settings  # type: ignore[attr-defined]
+    client.db_url = db_url  # type: ignore[attr-defined]
     client.statements = statements  # type: ignore[attr-defined]
     client.queries = queries  # type: ignore[attr-defined]
     return client
@@ -144,7 +201,7 @@ def _operations(client: TestClient) -> list[tuple[str, str]]:
     for path, operations in client.app.openapi()["paths"].items():  # type: ignore[attr-defined]
         if not path.startswith(PREFIX):
             continue
-        concrete = path.replace("{watch_id}", NIL)
+        concrete = path.replace("{watch_id}", NIL).replace("{preview_id}", NIL)
         assert "{" not in concrete, path
         for method in operations:
             if method in ("get", "post", "patch", "put", "delete"):
@@ -358,7 +415,9 @@ def test_every_property_watch_route_without_read_is_403(db_schema: str) -> None:
         assert response.json()["detail"] == "missing required permission: read:property_watches"
 
 
-async def test_each_role_reads_and_only_writers_write(db_session, db_schema: str) -> None:
+async def test_each_role_reads_and_only_writers_write(
+    db_session, db_schema: str, previews: _Previews
+) -> None:
     """Readers read everything. Only the detection engineer and admin write.
 
     The admin grant is `admin:*` alone: the role does not list `property_watch:write`.
@@ -404,7 +463,7 @@ async def test_each_role_reads_and_only_writers_write(db_session, db_schema: str
         client = _client(db_schema, _principal(role), provider=provider)
         made = client.post(PREFIX, json=_body(f"{role}-w"))
         assert made.status_code == 201, made.text
-        assert client.post(path + "/preview").status_code == 200
+        assert client.post(path + "/preview").status_code == 202
 
 
 async def test_unknown_ids_are_404_for_a_writer(db_session, db_schema: str) -> None:
@@ -854,7 +913,7 @@ async def test_pins_are_replaced_whole_and_checked_against_the_pattern(
 
 # ------------------------------------------------------------------------------ privacy
 async def test_logs_and_audit_hold_no_pinned_or_seeded_value_text(
-    db_session, db_schema: str, caplog: pytest.LogCaptureFixture
+    db_session, db_schema: str, caplog: pytest.LogCaptureFixture, previews: _Previews
 ) -> None:
     await _seed(db_session)
     caplog.set_level(logging.DEBUG)
@@ -871,11 +930,11 @@ async def test_logs_and_audit_hold_no_pinned_or_seeded_value_text(
                            json={"expected_updated_at": token,
                                  "pinned_values": [["PinnedCarol"], ["PinnedAmy"]]})
     assert updated.status_code == 200
-    previewed = client.post(f"{PREFIX}/{made['id']}/preview")
-    assert previewed.status_code == 200
+    previewed = await previews.preview(client, made["id"])
+    assert previewed["status"] == "DONE"
     # Positive control: the response does carry the value text (D-22), so the log and audit
     # checks below are not vacuous.
-    assert {r["value_key"] for r in previewed.json()["rows"]} >= {"SeededDave", "SeededErin"}
+    assert {r["value_key"] for r in previewed["result"]["rows"]} >= {"SeededDave", "SeededErin"}
 
     dump = json.dumps([r.detail for r in await _audits(db_session)])
     logged = "\n".join(
@@ -1193,7 +1252,7 @@ def _scripted(provider: MockQRadarProvider) -> MockQRadarProvider:
 
 
 async def test_the_preview_sends_exactly_two_searches_and_persists_nothing(
-    db_session, db_schema: str
+    db_session, db_schema: str, previews: _Previews
 ) -> None:
     world = await _seed(db_session)
     provider = _scripted(MockQRadarProvider(seed=1))
@@ -1207,9 +1266,9 @@ async def test_the_preview_sends_exactly_two_searches_and_persists_nothing(
     client = _client(db_schema, _principal("detection_engineer"), provider=provider)
     made = _create(client, "previewed", pinned_values=[["SeededDave"]])
     before = [await _count(db_session, m) for m in (PwBucket, PwValue, PwValueMetric, PwAnomaly)]
-    out = client.post(f"{PREFIX}/{made['id']}/preview")
-    assert out.status_code == 200, out.text
-    body = out.json()
+    read = await previews.preview(client, made["id"])
+    assert read["status"] == "DONE", read
+    body = read["result"]
     assert [(s.search, s.scope_ids) for s in provider.pw_searches] == [
         (PwSearchKind.TOTALS, (TYPE_ID,)), (PwSearchKind.GROUPED, (TYPE_ID,))
     ], "totals and grouped: two searches, never a pinned one, never a split"
@@ -1246,21 +1305,20 @@ async def test_the_preview_sends_exactly_two_searches_and_persists_nothing(
 
 
 async def test_the_preview_resolves_a_source_and_a_group_scope(
-    db_session, db_schema: str
+    db_session, db_schema: str, previews: _Previews
 ) -> None:
     world = await _seed(db_session)
     provider = _scripted(MockQRadarProvider(seed=1))
     client = _client(db_schema, _principal("detection_engineer"), provider=provider)
     by_source = _create(client, "p-source", scope_kind="LOG_SOURCE", scope_type_id=None,
                         log_source_id=str(world.other.id), properties=[USER, ACTION])
-    assert client.post(f"{PREFIX}/{by_source['id']}/preview").status_code == 200
+    assert (await previews.preview(client, by_source["id"]))["status"] == "DONE"
     assert [s.scope_ids for s in provider.pw_searches] == [(702,), (702,)]
     assert {s.scope_kind.value for s in provider.pw_searches} == {"LOG_SOURCE"}
     provider.pw_searches.clear()
     group = _create(client, "p-group", scope_kind="LOG_SOURCE_GROUP", scope_type_id=None,
                     scope_group_id=GROUP_ID)
-    out = client.post(f"{PREFIX}/{group['id']}/preview")
-    assert out.status_code == 200
+    assert (await previews.preview(client, group["id"]))["status"] == "DONE"
     assert [s.scope_ids for s in provider.pw_searches] == [(701, 702), (701, 702)]
     # The audit holds counts only, one row per preview that spent searches.
     assert len(await _audits(db_session, "property_watch.preview")) == 2
@@ -1293,13 +1351,15 @@ async def test_a_preview_that_cannot_run_is_409_and_spends_nothing(
     assert await _audits(db_session, "property_watch.preview") == []
 
 
-async def test_a_cut_search_is_not_split_and_never_a_zero(db_session, db_schema: str) -> None:
+async def test_a_cut_search_is_not_split_and_never_a_zero(
+    db_session, db_schema: str, previews: _Previews
+) -> None:
     await _seed(db_session)
     provider = _scripted(MockQRadarProvider(seed=1))
     provider.pw_force_truncated = lambda s: s.search is PwSearchKind.GROUPED
     client = _client(db_schema, _principal("detection_engineer"), provider=provider)
     made = _create(client, "cut")
-    out = client.post(f"{PREFIX}/{made['id']}/preview").json()
+    out = (await previews.preview(client, made["id"]))["result"]
     assert len(provider.pw_searches) == 2, "the budget refuses the split: two searches, no more"
     assert out["outcome"] == "NOT_MEASURED"
     assert "does not split it" in out["reason"]
@@ -1313,7 +1373,7 @@ async def test_a_cut_search_is_not_split_and_never_a_zero(db_session, db_schema:
 
 
 async def test_a_failed_search_is_unmeasured_and_leaks_no_upstream_text(
-    db_session, db_schema: str
+    db_session, db_schema: str, previews: _Previews
 ) -> None:
     await _seed(db_session)
     provider = _scripted(MockQRadarProvider(seed=1))
@@ -1322,17 +1382,19 @@ async def test_a_failed_search_is_unmeasured_and_leaks_no_upstream_text(
     )
     client = _client(db_schema, _principal("detection_engineer"), provider=provider)
     made = _create(client, "failing")
-    out = client.post(f"{PREFIX}/{made['id']}/preview")
-    assert out.status_code == 200
-    body = out.json()
+    read = await previews.preview(client, made["id"])
+    body = read["result"]
     assert body["outcome"] == "NOT_MEASURED" and "search failed" in body["reason"]
     assert body["total_events"] is None and body["rows"] == []
     assert body["property_parses"] is None
-    assert "qradar.internal" not in out.text and "SEC=" not in out.text
+    text = json.dumps(read)
+    assert "qradar.internal" not in text and "SEC=" not in text
     assert len(provider.pw_searches) == 2
 
 
-async def test_a_property_that_never_parses_says_so(db_session, db_schema: str) -> None:
+async def test_a_property_that_never_parses_says_so(
+    db_session, db_schema: str, previews: _Previews
+) -> None:
     await _seed(db_session)
     provider = MockQRadarProvider(seed=1)
     provider.pw_script = lambda key, names: [
@@ -1340,7 +1402,7 @@ async def test_a_property_that_never_parses_says_so(db_session, db_schema: str) 
     ]
     client = _client(db_schema, _principal("detection_engineer"), provider=provider)
     made = _create(client, "unparsed")
-    body = client.post(f"{PREFIX}/{made['id']}/preview").json()
+    body = (await previews.preview(client, made["id"]))["result"]
     assert body["property_parses"] is False
     assert body["total_events"] == 300 and body["parsed_events"] == 0
     assert body["unparsed_events"] == 300 and body["coverage"] == 0
@@ -1348,7 +1410,7 @@ async def test_a_property_that_never_parses_says_so(db_session, db_schema: str) 
 
 
 async def test_the_preview_is_rate_limited(
-    db_session, db_schema: str, monkeypatch: pytest.MonkeyPatch
+    db_session, db_schema: str, monkeypatch: pytest.MonkeyPatch, previews: _Previews
 ) -> None:
     await _seed(db_session)
     monkeypatch.setattr(get_settings(), "rate_limit_search_execution", "2/minute")
@@ -1356,8 +1418,11 @@ async def test_the_preview_is_rate_limited(
     client = _client(db_schema, _principal("detection_engineer"), provider=provider)
     made = _create(client, "limited")
     url = f"{PREFIX}/{made['id']}/preview"
-    assert client.post(url).status_code == 200
-    assert client.post(url).status_code == 200
+    # A queued preview holds the watch, so each one is run before the next is asked for.
+    assert client.post(url).status_code == 202
+    await previews.run(client)
+    assert client.post(url).status_code == 202
+    await previews.run(client)
     third = client.post(url)
     assert third.status_code == 429, third.text
     assert len(provider.pw_searches) == 4, "the refused call sent nothing"
@@ -1630,7 +1695,7 @@ async def test_scope_options_show_a_stale_group_without_a_count(
 
 
 async def test_the_cap_the_preview_and_the_scope_read_agree_on_the_member_count(
-    db_session, db_schema: str
+    db_session, db_schema: str, previews: _Previews
 ) -> None:
     await _seed(db_session)
     provider = MockQRadarProvider(seed=1)
@@ -1659,7 +1724,7 @@ async def test_the_cap_the_preview_and_the_scope_read_agree_on_the_member_count(
 
     # A roomy preview searches exactly the members the /scope read names.
     roomy = _client(db_schema, _principal("detection_engineer"), provider=provider)
-    assert roomy.post(f"{PREFIX}/{made['id']}/preview").status_code == 200
+    assert (await previews.preview(roomy, made["id"]))["status"] == "DONE"
     assert {i for s in provider.pw_searches for i in s.scope_ids} == {701, 702}
     assert reader.get(f"{PREFIX}/{made['id']}/scope").json()["members"] == ["fw-1", "fw-2"]
 

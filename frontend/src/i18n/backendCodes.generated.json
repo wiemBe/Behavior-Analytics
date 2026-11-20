@@ -9986,6 +9986,21 @@
     },
     "template": "the history contains {records} bucket records for {expected} expected buckets"
   },
+  "pw.preview.conflict.running": {
+    "params": {
+      "since": {
+        "kind": "text"
+      }
+    },
+    "sample": {
+      "since": "2026-11-20T10:00:00+00:00"
+    },
+    "sample_english": "a preview of this watch has been queued or running since 2026-11-20T10:00:00+00:00",
+    "sample_english_params": {
+      "since": "2026-11-20T10:00:00+00:00"
+    },
+    "template": "a preview of this watch has been queued or running since {since}"
+  },
   "pw.preview.cut_at_row_limit": {
     "params": {},
     "sample": {},
@@ -10021,6 +10036,13 @@
     "sample_english": "a bucket was cut at the row limit: its counts are lower bounds",
     "sample_english_params": {},
     "template": "a bucket was cut at the row limit: its counts are lower bounds"
+  },
+  "pw.preview.not_queued": {
+    "params": {},
+    "sample": {},
+    "sample_english": "the preview could not be queued, so nothing was sent to QRadar; try again shortly",
+    "sample_english_params": {},
+    "template": "the preview could not be queued, so nothing was sent to QRadar; try again shortly"
   },
   "pw.preview.scope_unresolved": {
     "params": {
@@ -10063,6 +10085,13 @@
     "sample_english_params": {},
     "template": "a search failed, so its buckets were not measured"
   },
+  "pw.preview.store_unreadable": {
+    "params": {},
+    "sample": {},
+    "sample_english": "the preview's state could not be read; try again shortly",
+    "sample_english_params": {},
+    "template": "the preview's state could not be read; try again shortly"
+  },
   "pw.preview.unsearchable": {
     "params": {
       "error": {
@@ -10077,6 +10106,27 @@
       "error": "unknown property reference kind"
     },
     "template": "the stored watch cannot be searched: {error}"
+  },
+  "pw.preview.watch_gone": {
+    "params": {},
+    "sample": {},
+    "sample_english": "the watch or its console no longer exists, so the preview was not run",
+    "sample_english_params": {},
+    "template": "the watch or its console no longer exists, so the preview was not run"
+  },
+  "pw.preview.worker_failed": {
+    "params": {},
+    "sample": {},
+    "sample_english": "the preview stopped because the worker failed before it finished; nothing was measured",
+    "sample_english_params": {},
+    "template": "the preview stopped because the worker failed before it finished; nothing was measured"
+  },
+  "pw.preview.worker_lost": {
+    "params": {},
+    "sample": {},
+    "sample_english": "the preview did not finish: no worker reported back in time; nothing was measured",
+    "sample_english_params": {},
+    "template": "the preview did not finish: no worker reported back in time; nothing was measured"
   },
   "pw.reference.kind_unknown": {
     "params": {},

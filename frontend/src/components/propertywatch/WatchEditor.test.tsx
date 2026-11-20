@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { StaticSession } from "@/components/auth/session";
 import { sessionHolding } from "@/components/features/sessionFixture";
-import { ApiError, api, type PwPreview } from "@/lib/api";
+import { ApiError, api, type PwPreview, type PwPreviewStatus } from "@/lib/api";
 
 import { catalog, scope, watch } from "./fixtures";
 
@@ -82,6 +82,27 @@ function preview(over: Partial<PwPreview> = {}): PwPreview {
   };
 }
 
+/** What the poll reads once the queued preview ends (SCALE-2h3). */
+function status(over: Partial<PwPreviewStatus> = {}): PwPreviewStatus {
+  return {
+    preview_id: "pv-1",
+    watch_id: watch().id,
+    status: "DONE",
+    requested_at: "2026-11-20T10:00:00+00:00",
+    result: preview(),
+    reason: null,
+    reason_code: null,
+    reason_params: null,
+    ...over,
+  };
+}
+
+const queued = () => ({
+  preview_id: "pv-1",
+  watch_id: watch().id,
+  requested_at: "2026-11-20T10:00:00+00:00",
+});
+
 beforeEach(() => {
   vi.restoreAllMocks();
   navigation.refresh.mockReset();
@@ -89,12 +110,15 @@ beforeEach(() => {
   vi.spyOn(api, "propertyWatchScope").mockResolvedValue(scope());
   vi.spyOn(api, "updatePropertyWatch").mockResolvedValue(watch());
   vi.spyOn(api, "createPropertyWatch").mockResolvedValue(watch({ enabled: false }));
-  vi.spyOn(api, "previewPropertyWatch").mockResolvedValue(preview());
+  vi.spyOn(api, "previewPropertyWatch").mockResolvedValue(queued());
+  vi.spyOn(api, "propertyWatchPreview").mockResolvedValue(status());
 });
 
 async function save() {
   fireEvent.click(screen.getByRole("button", { name: "Save as disabled and preview" }));
   await waitFor(() => expect(api.previewPropertyWatch).toHaveBeenCalled());
+  // The preview is queued: its result arrives with the first read of the poll.
+  await screen.findByText(/Last closed hour/);
 }
 
 describe("the pin sentence", () => {
@@ -186,14 +210,16 @@ describe("property-watch save and preview", () => {
   });
 
   it("shows the preview coverage, unparsed remainder, per-type reading and lower bounds", async () => {
-    vi.spyOn(api, "previewPropertyWatch").mockResolvedValue(
-      preview({
-        outcome: "PARTIAL",
-        reason: "a bucket was cut at the row limit",
-        buckets_measured: 11,
-        buckets_lower_bound: 1,
-        rows_measurement: "LOWER_BOUND",
-        unparsed_bound: "UPPER_BOUND",
+    vi.spyOn(api, "propertyWatchPreview").mockResolvedValue(
+      status({
+        result: preview({
+          outcome: "PARTIAL",
+          reason: "a bucket was cut at the row limit",
+          buckets_measured: 11,
+          buckets_lower_bound: 1,
+          rows_measurement: "LOWER_BOUND",
+          unparsed_bound: "UPPER_BOUND",
+        }),
       }),
     );
     render(<WatchEditor catalog={catalog()} mode="edit" watch={watch()} initialScope={scope()} />);
@@ -229,7 +255,9 @@ describe("property-watch save and preview", () => {
       /No bucket measured/,
     ],
   ])("designs the %s empty preview", async (_name, over, words) => {
-    vi.spyOn(api, "previewPropertyWatch").mockResolvedValue(preview(over as Partial<PwPreview>));
+    vi.spyOn(api, "propertyWatchPreview").mockResolvedValue(
+      status({ result: preview(over as Partial<PwPreview>) }),
+    );
     render(<WatchEditor catalog={catalog()} mode="edit" watch={watch()} initialScope={scope()} />);
     await save();
     expect(screen.getAllByText(words).length).toBeGreaterThan(0);
@@ -440,5 +468,168 @@ describe("property-watch editor refusals", () => {
     expect(document.body.textContent).not.toContain("PW_COLLECTION_ENABLED");
     expect(screen.getByText(/No quotes, backslashes/)).toBeInTheDocument();
     expect(screen.getByText("No preview yet.")).toBeInTheDocument();
+  });
+});
+
+describe("the queued preview (SCALE-2h3)", () => {
+  const SAVE = "Save as disabled and preview";
+  const open = (over: Partial<PwPreviewStatus> = {}) =>
+    status({ status: "QUEUED", result: null, ...over });
+
+  function renderEdit(pollMs = 15) {
+    return render(
+      <WatchEditor catalog={catalog()} mode="edit" watch={watch()} initialScope={scope()} pollMs={pollMs} />,
+    );
+  }
+  function clickSave() {
+    fireEvent.click(screen.getByRole("button", { name: SAVE }));
+  }
+
+  it("says when it was queued, in UTC, and draws no result", async () => {
+    vi.spyOn(api, "propertyWatchPreview").mockResolvedValue(open());
+    const { container } = renderEdit(60_000);
+    clickSave();
+    expect(await screen.findByText(/Preview queued at/)).toBeInTheDocument();
+    const box = container.querySelector(".pw-preview-run") as HTMLElement;
+    expect(box).toHaveTextContent("2026-11-20 10:00:00 UTC");
+    expect(box.textContent).not.toContain("2026-11-20T10:00:00");
+    expect(screen.queryByText(/Last closed hour/)).toBeNull();
+    expect(screen.queryByText("No preview yet.")).toBeNull();
+  });
+
+  it("follows queued to running to done, then stops reading", async () => {
+    const read = vi
+      .spyOn(api, "propertyWatchPreview")
+      .mockResolvedValueOnce(open())
+      .mockResolvedValueOnce(open({ status: "RUNNING" }))
+      .mockResolvedValue(status());
+    renderEdit();
+    clickSave();
+    expect(await screen.findByText(/Preview running\. Queued at/)).toBeInTheDocument();
+    expect(await screen.findByText(/Last closed hour/)).toBeInTheDocument();
+    expect(screen.queryByText(/Preview running/)).toBeNull();
+    expect(read).toHaveBeenCalledWith(watch().id, "pv-1");
+    const calls = read.mock.calls.length;
+    await new Promise((resolve) => setTimeout(resolve, 80));
+    expect(read.mock.calls.length).toBe(calls);
+  });
+
+  it("stops reading when the editor unmounts", async () => {
+    const read = vi.spyOn(api, "propertyWatchPreview").mockResolvedValue(open());
+    const view = renderEdit();
+    clickSave();
+    await screen.findByText(/Preview queued at/);
+    view.unmount();
+    const calls = read.mock.calls.length;
+    await new Promise((resolve) => setTimeout(resolve, 80));
+    expect(read.mock.calls.length).toBe(calls);
+  });
+
+  it("stops following when the draft is edited", async () => {
+    const read = vi.spyOn(api, "propertyWatchPreview").mockResolvedValue(open());
+    renderEdit();
+    clickSave();
+    await screen.findByText(/Preview queued at/);
+    fireEvent.change(screen.getByRole("textbox", { name: "Watch name" }), { target: { value: "Renamed" } });
+    expect(screen.queryByText(/Preview queued at/)).toBeNull();
+    const calls = read.mock.calls.length;
+    await new Promise((resolve) => setTimeout(resolve, 80));
+    expect(read.mock.calls.length).toBe(calls);
+  });
+
+  it("keeps following when one read fails and says so", async () => {
+    vi.spyOn(api, "propertyWatchPreview")
+      .mockResolvedValueOnce(open())
+      .mockRejectedValueOnce(new ApiError(503, "Service Unavailable"))
+      .mockResolvedValue(status());
+    renderEdit(40);
+    clickSave();
+    expect(await screen.findByText(/progress could not be read/)).toBeInTheDocument();
+    expect(await screen.findByText(/Last closed hour/)).toBeInTheDocument();
+    expect(screen.queryByText(/progress could not be read/)).toBeNull();
+  });
+
+  it("shows a failed preview with its coded reason and nothing measured", async () => {
+    vi.spyOn(api, "propertyWatchPreview").mockResolvedValue(
+      status({
+        status: "FAILED",
+        result: null,
+        reason: "the preview stopped because the worker failed before it finished; nothing was measured",
+        reason_code: "pw.preview.worker_failed",
+        reason_params: {},
+      }),
+    );
+    renderEdit();
+    clickSave();
+    const box = (await screen.findByText(/Preview did not finish/)).closest(".banner");
+    expect(box).toHaveTextContent("the worker failed before it finished");
+    expect(box).toHaveTextContent("Save again to run a new preview");
+    expect(screen.queryByText(/Last closed hour/)).toBeNull();
+  });
+
+  it("says an expired result is gone and offers a new preview", async () => {
+    vi.spyOn(api, "propertyWatchPreview").mockResolvedValue(
+      status({ status: "EXPIRED", result: null, requested_at: null }),
+    );
+    renderEdit();
+    clickSave();
+    expect(await screen.findByText("This preview's result is no longer held.")).toBeInTheDocument();
+    expect(screen.getByText(/Save again to run a new preview/)).toBeInTheDocument();
+    expect(screen.queryByText(/Last closed hour/)).toBeNull();
+  });
+
+  it("shows 409 as already running since a UTC time and keeps the saved watch", async () => {
+    const read = vi.spyOn(api, "propertyWatchPreview");
+    vi.mocked(api.previewPropertyWatch).mockRejectedValue(
+      new ApiError(
+        409,
+        "Conflict",
+        "a preview of this watch has been queued or running since 2026-11-20T09:58:30+00:00",
+        {
+          detail: "a preview of this watch has been queued or running since 2026-11-20T09:58:30+00:00",
+          detail_code: "pw.preview.conflict.running",
+          detail_params: { since: "2026-11-20T09:58:30+00:00" },
+        },
+      ),
+    );
+    renderEdit();
+    clickSave();
+    const box = await screen.findByText(/queued or running since/);
+    expect(box.closest(".banner")).toHaveTextContent("2026-11-20 09:58:30 UTC");
+    expect(box.closest(".banner")?.textContent).not.toContain("T09:58");
+    expect(screen.getByText(/Saved disabled/)).toBeInTheDocument();
+    expect(read).not.toHaveBeenCalled();
+  });
+
+  it("names the permission when the read is forbidden, and stops", async () => {
+    const read = vi
+      .spyOn(api, "propertyWatchPreview")
+      .mockRejectedValue(new ApiError(403, "Forbidden", "missing required permission: property_watch:write"));
+    renderEdit();
+    clickSave();
+    expect(await screen.findByText("The preview cannot be read with this account.")).toBeInTheDocument();
+    expect(screen.getByText(/needs the property_watch:write permission/)).toBeInTheDocument();
+    const calls = read.mock.calls.length;
+    await new Promise((resolve) => setTimeout(resolve, 80));
+    expect(read.mock.calls.length).toBe(calls);
+  });
+
+  it("says a preview of another user or watch was not found", async () => {
+    vi.spyOn(api, "propertyWatchPreview").mockRejectedValue(new ApiError(404, "Not Found", "preview not found"));
+    renderEdit();
+    clickSave();
+    expect(await screen.findByText("The preview could not be found for this account.")).toBeInTheDocument();
+  });
+
+  it("clears the previous result while the new preview is queued", async () => {
+    vi.spyOn(api, "propertyWatchPreview")
+      .mockResolvedValueOnce(status())
+      .mockResolvedValue(open({ preview_id: "pv-2" }));
+    renderEdit(60_000);
+    clickSave();
+    await screen.findByText(/Last closed hour/);
+    clickSave();
+    expect(await screen.findByText(/Preview queued at/)).toBeInTheDocument();
+    expect(screen.queryByText(/Last closed hour/)).toBeNull();
   });
 });

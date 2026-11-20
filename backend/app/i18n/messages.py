@@ -2122,6 +2122,33 @@ REGISTRY: tuple[MessageSpec, ...] = (
         "pw.preview.search_failed",
         "a search failed, so its buckets were not measured",
     ),
+    # --- SCALE-2h3: the preview is a queued task (D-87, D-92; English only, D-45) ---
+    _msg(
+        "pw.preview.conflict.running",
+        "a preview of this watch has been queued or running since {since}",
+        {"since": _TEXT},
+        {"since": "2026-11-20T10:00:00+00:00"},
+    ),
+    _fixed(
+        "pw.preview.not_queued",
+        "the preview could not be queued, so nothing was sent to QRadar; try again shortly",
+    ),
+    _fixed(
+        "pw.preview.worker_failed",
+        "the preview stopped because the worker failed before it finished; nothing was measured",
+    ),
+    _fixed(
+        "pw.preview.worker_lost",
+        "the preview did not finish: no worker reported back in time; nothing was measured",
+    ),
+    _fixed(
+        "pw.preview.store_unreadable",
+        "the preview's state could not be read; try again shortly",
+    ),
+    _fixed(
+        "pw.preview.watch_gone",
+        "the watch or its console no longer exists, so the preview was not run",
+    ),
     _msg(
         "pw.preview.cut_at_row_limit",
         "the grouped search was cut at the row limit and a preview does not split it; "

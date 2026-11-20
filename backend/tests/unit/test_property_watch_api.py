@@ -123,6 +123,7 @@ def test_the_expected_routes_exist() -> None:
         ("GET", f"{PREFIX}/{{watch_id}}/values"),
         ("GET", f"{PREFIX}/{{watch_id}}/series"),
         ("POST", f"{PREFIX}/{{watch_id}}/preview"),
+        ("GET", f"{PREFIX}/{{watch_id}}/preview/{{preview_id}}"),
         ("PUT", f"{PREFIX}/{{watch_id}}/pins"),
     }
     assert expected <= found

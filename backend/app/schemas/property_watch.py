@@ -575,6 +575,32 @@ class PreviewOut(BaseModel):
     queries: list[PreviewQueryOut]
 
 
+class PreviewQueuedOut(BaseModel):
+    """The 202 of a preview: the id to poll, never a result."""
+
+    preview_id: str
+    watch_id: uuid.UUID
+    requested_at: datetime
+
+
+class PreviewStatusOut(BaseModel):
+    """What `GET /{id}/preview/{preview_id}` says about one queued preview.
+
+    `result` is set only when `status` is DONE. FAILED carries a catalog `reason_code` and
+    the sentence rendered from it, never an exception text. EXPIRED is an id the store no
+    longer holds (or never held): the result lived only under its expiry.
+    """
+
+    preview_id: str
+    watch_id: uuid.UUID
+    status: Literal["QUEUED", "RUNNING", "DONE", "FAILED", "EXPIRED"]
+    requested_at: datetime | None = None
+    result: PreviewOut | None = None
+    reason: str | None = None
+    reason_code: str | None = None
+    reason_params: dict[str, MessageParamValue] | None = None
+
+
 class WatchAqlQueryOut(BaseModel):
     """One generated search, read-only text. Nothing here is ever accepted back."""
 

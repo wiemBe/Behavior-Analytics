@@ -8,6 +8,7 @@ import { useEffect, useId, useMemo, useRef, useState } from "react";
 
 import { CodePanel } from "@/components/ui/CodePanel";
 import {
+  ApiError,
   api,
   type PropertyWatch,
   type PropertyWatchCatalog,
@@ -19,6 +20,7 @@ import {
 } from "@/lib/api";
 import { UtcTime } from "@/components/ui/UtcTime";
 import { enumLabel } from "@/i18n/enumLabels";
+import { refusalSentences } from "@/lib/refusal";
 import { useBehaviorI18n } from "@/lib/useBehaviorI18n";
 
 import {
@@ -35,6 +37,7 @@ import {
   watchSummary,
   type WatchDraft,
 } from "./authoring";
+import { PREVIEW_POLL_MS, PreviewRunNotice, type PreviewRun } from "./PreviewRunNotice";
 import { WatchPropertyPicker, WatchScopePicker } from "./WatchPickers";
 import { latencyCadence } from "@/components/cadence/CadenceLatency";
 
@@ -176,12 +179,15 @@ export function WatchEditor({
   watch,
   initialScope = null,
   i18n: providedI18n,
+  pollMs = PREVIEW_POLL_MS,
 }: {
   catalog: PropertyWatchCatalog;
   mode: "create" | "edit";
   watch?: PropertyWatch;
   initialScope?: WatchScope | null;
   i18n?: PwI18n;
+  /** The interval of the preview progress read; a test shortens it. */
+  pollMs?: number;
 }) {
   const runtimeI18n = useBehaviorI18n();
   const i18n = providedI18n ?? runtimeI18n ?? ENGLISH_PW;
@@ -204,6 +210,9 @@ export function WatchEditor({
     draft.scopeId ? "loading" : "idle",
   );
   const [preview, setPreview] = useState<PwPreview | null>(null);
+  // The preview is a queued task: `follow` names the one being read, `run` is what it last said.
+  const [follow, setFollow] = useState<{ watchId: string; previewId: string } | null>(null);
+  const [run, setRun] = useState<PreviewRun>({ kind: "idle" });
   const [saving, setSaving] = useState(false);
   const [localReasons, setLocalReasons] = useState<string[]>([]);
   const [serverReasons, setServerReasons] = useState<string[]>([]);
@@ -247,6 +256,64 @@ export function WatchEditor({
     setFocusPropertyIndex(null);
   }, [focusPropertyIndex]);
 
+  // Follow the queued preview: one read now, then every `pollMs`, until it ends or this unmounts.
+  useEffect(() => {
+    if (follow === null) return;
+    let cancelled = false;
+    let reading = false;
+    const read = async () => {
+      if (reading) return;
+      reading = true;
+      try {
+        const status = await api.propertyWatchPreview(follow.watchId, follow.previewId);
+        if (cancelled) return;
+        if (status.status === "DONE") {
+          setPreview(status.result);
+          setRun({ kind: "idle" });
+          setFollow(null);
+        } else if (status.status === "FAILED") {
+          setRun({
+            kind: "failed",
+            reason: status.reason,
+            code: status.reason_code,
+            params: status.reason_params,
+          });
+          setFollow(null);
+        } else if (status.status === "EXPIRED") {
+          setRun({ kind: "expired" });
+          setFollow(null);
+        } else {
+          setRun({
+            kind: status.status === "RUNNING" ? "running" : "queued",
+            requestedAt: status.requested_at,
+            readFailed: false,
+          });
+        }
+      } catch (error) {
+        if (cancelled) return;
+        if (error instanceof ApiError && (error.status === 403 || error.status === 404)) {
+          setRun({ kind: error.status === 403 ? "forbidden" : "notFound" });
+          setFollow(null);
+        } else {
+          // Keep following: the last known state stays on screen and says the read failed.
+          setRun((current) =>
+            current.kind === "queued" || current.kind === "running"
+              ? { ...current, readFailed: true }
+              : current,
+          );
+        }
+      } finally {
+        reading = false;
+      }
+    };
+    void read();
+    const timer = setInterval(() => void read(), pollMs);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [follow, pollMs]);
+
   const detectors = useMemo(() => {
     const fromCatalog = catalog.detectors.filter((d): d is PwAnomalyTypeName => Object.hasOwn(DETECTORS, d));
     return fromCatalog.length > 0 ? fromCatalog : FALLBACK_DETECTORS;
@@ -255,6 +322,9 @@ export function WatchEditor({
   function patch(next: Partial<WatchDraft>) {
     setDraft((current) => ({ ...current, ...next }));
     setPreview(null);
+    // An edit makes any queued preview a reading of an older definition: stop following it.
+    setFollow(null);
+    setRun({ kind: "idle" });
     setLocalReasons([]);
     setServerReasons([]);
     setMessage(null);
@@ -300,12 +370,27 @@ export function WatchEditor({
           ? await api.createPropertyWatch(createWatchBody(shown))
           : await api.updatePropertyWatch(currentWatch.id, updateWatchBody(shown, currentWatch));
       setCurrentWatch(saved);
-      const [result, resolvedScope] = await Promise.all([
-        api.previewPropertyWatch(saved.id),
-        api.propertyWatchScope(saved.id).catch(() => null),
-      ]);
-      setPreview(result);
-      setScope(resolvedScope);
+      const scoped = api.propertyWatchScope(saved.id).catch(() => null);
+      let queued;
+      try {
+        queued = await api.previewPropertyWatch(saved.id);
+      } catch (error) {
+        // A preview of this watch already holds its lock: the watch is saved, nothing was queued.
+        const busy = error instanceof ApiError && error.status === 409 ? refusalSentences(error)[0] : null;
+        if (busy?.code !== "pw.preview.conflict.running") throw error;
+        const since = busy.params?.since;
+        setPreview(null);
+        setFollow(null);
+        setRun({ kind: "busy", since: typeof since === "string" ? since : null });
+        setScope(await scoped);
+        setMessage({ tone: "", text: t("propertyWatch.editor.saved") });
+        if (mode === "edit") router.refresh();
+        return;
+      }
+      setScope(await scoped);
+      setPreview(null);
+      setRun({ kind: "queued", requestedAt: queued.requested_at, readFailed: false });
+      setFollow({ watchId: saved.id, previewId: queued.preview_id });
       setMessage({ tone: "", text: t("propertyWatch.editor.saved") });
       if (mode === "edit") router.refresh();
     } catch (error) {
@@ -756,14 +841,15 @@ export function WatchEditor({
             </span>
           </div>
         )}
+        <PreviewRunNotice run={run} i18n={i18n} />
         {preview ? (
           <PreviewResult preview={preview} propertyOptions={propertyOptions} i18n={i18n} />
-        ) : (
+        ) : run.kind === "idle" ? (
           <div className="notice" role="status">
             <p><strong>{t("propertyWatch.editor.previewEmptyTitle")}</strong></p>
             <p>{t("propertyWatch.editor.previewEmptyBody")}</p>
           </div>
-        )}
+        ) : null}
       </aside>
     </div>
   );

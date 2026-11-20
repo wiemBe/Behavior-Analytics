@@ -522,7 +522,8 @@ All paths below are under `/property-watches`.
 | `GET /{id}/aql` | Return generated read-only AQL without running it |
 | `GET /{id}/values` | Tracked values, current reading, band and learning progress |
 | `GET /{id}/series` | Bulk series for at most twelve values |
-| `POST /{id}/preview` | Run one bounded, rate-limited Ariel preview |
+| `POST /{id}/preview` | Queue one bounded, rate-limited preview run (two Ariel searches). Answers **202** `{preview_id, watch_id, requested_at}` and builds no provider; a second preview of the same watch while one is queued or running is **409** (`pw.preview.conflict.running`, `since` = when the holder took the watch), a broker or Redis failure is a coded **503** (`pw.preview.not_queued`) |
+| `GET /{id}/preview/{preview_id}` | `property_watch:write`. `{status: QUEUED\|RUNNING\|DONE\|FAILED\|EXPIRED, requested_at, result, reason, reason_code}`. `result` (the `PreviewOut` body) only when `DONE`; `FAILED` carries a catalog code, never an exception text; an unknown or expired id is `EXPIRED`; an id of another watch or another user is 404. The result lives only in Redis for `PW_PREVIEW_RESULT_TTL_SECONDS` after the run ends |
 | `PUT /{id}/pins` | Replace pinned values and report dependent threshold rules |
 | `POST /{id}/history` | Ask for a history read of `history_days` days |
 
