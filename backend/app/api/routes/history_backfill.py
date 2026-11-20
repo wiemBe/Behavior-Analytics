@@ -19,7 +19,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
 
-from app.api.deps import SessionDep, SettingsDep, requires
+from app.api.deps import EffectiveSettingsDep, SessionDep, requires
 from app.api.request_meta import client_ip
 from app.i18n.messages import MessageRef
 from app.schemas.history_backfill import (
@@ -61,13 +61,15 @@ def _conflict(
 
 
 @router.get("", response_model=list[ConsoleOut])
-async def list_history_backfill(session: SessionDep, settings: SettingsDep) -> list[ConsoleOut]:
+async def list_history_backfill(
+    session: SessionDep, settings: EffectiveSettingsDep
+) -> list[ConsoleOut]:
     return await HistoryBackfillService(session, settings).consoles()
 
 
 @router.get("/estimate", response_model=list[ConsoleEstimateOut])
 async def history_backfill_estimate(
-    session: SessionDep, settings: SettingsDep
+    session: SessionDep, settings: EffectiveSettingsDep
 ) -> list[ConsoleEstimateOut]:
     return await HistoryBackfillService(session, settings).estimates()
 
@@ -83,7 +85,7 @@ async def decide_history_backfill(
     request: Request,
     response: Response,
     session: SessionDep,
-    settings: SettingsDep,
+    settings: EffectiveSettingsDep,
     principal: AdminPrincipalDep,
 ) -> ConsoleOut | JSONResponse:
     try:
@@ -109,7 +111,7 @@ async def _request(
     instance_id: uuid.UUID,
     request: Request,
     session: SessionDep,
-    settings: SettingsDep,
+    settings: EffectiveSettingsDep,
     principal: Principal,
 ) -> ConsoleOut | JSONResponse:
     try:
@@ -134,7 +136,7 @@ async def start_history_backfill(
     instance_id: uuid.UUID,
     request: Request,
     session: SessionDep,
-    settings: SettingsDep,
+    settings: EffectiveSettingsDep,
     principal: AdminPrincipalDep,
 ) -> ConsoleOut | JSONResponse:
     return await _request("start", instance_id, request, session, settings, principal)
@@ -149,7 +151,7 @@ async def stop_history_backfill(
     instance_id: uuid.UUID,
     request: Request,
     session: SessionDep,
-    settings: SettingsDep,
+    settings: EffectiveSettingsDep,
     principal: AdminPrincipalDep,
 ) -> ConsoleOut | JSONResponse:
     return await _request("stop", instance_id, request, session, settings, principal)

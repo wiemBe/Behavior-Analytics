@@ -381,7 +381,7 @@ def test_statement_count_is_four_for_one_parent_table_at_any_page_size(
     response = client.get(_url(instance_id, limit=200))
     assert response.status_code == 200, response.text
     assert len(response.json()["items"]) == mention_count
-    assert client.statements == 4
+    assert client.statements == 4 + 1  # +1: switch read (S3b)
 
 
 def test_truncated_cursor_pages_return_every_row_once(db_schema) -> None:
@@ -619,7 +619,7 @@ def test_disabled_and_forbidden_lanes_are_not_collected_without_zeroes_or_sql(
     sql = "\n".join(client.sql).lower()
     assert "offense_snapshot" not in sql
     assert "collection_watermark" not in sql
-    assert client.statements == 2
+    assert client.statements == 2 + 1  # +1: switch read (S3b)
 
 
 def test_dangling_parent_is_dropped_counted_and_marks_its_lane_partial(db_schema) -> None:

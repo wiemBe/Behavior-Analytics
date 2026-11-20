@@ -1015,5 +1015,7 @@ The Features API provides `GET /admin/features`, `PUT /admin/features/{key}` wit
 `{"enabled": true|false}`, and `DELETE /admin/features/{key}` to restore the environment/default.
 Writes are validated, rate limited and audited; unchanged values create no row or audit.
 The response reports `worker_switches_active: true` (the Celery tasks read these switches each run) and
-`runtime_switches_active: false` until the API routes read them too (S3b).
+`runtime_switches_active: true` (the API routes that read a switch decide from the same effective values,
+cached for 5 seconds per process; a write on a replica is visible there at once and on another within
+5 seconds; an unreadable switch table answers as if every family were off).
 The offline equivalent is `python -m app.cli.features show|set|reset|apply|env`.

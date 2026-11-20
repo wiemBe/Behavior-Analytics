@@ -59,8 +59,9 @@ START = datetime(2026, 10, 1, 0, 0, tzinfo=UTC)
 
 #: The statements one `GET /admin/history-backfill` runs, whatever the number of
 #: consoles, scopes and sources (HB-17, decision 4): the consoles, the decision,
-#: the scope rows, the two monitored sets, the names and the two source lists.
-_LIST_STATEMENTS = 8
+#: the scope rows, the two monitored sets, the names, the two source lists and the
+#: effective-settings read of the switches (S3b).
+_LIST_STATEMENTS = 9
 
 
 # --------------------------------------------------------------------------- the client

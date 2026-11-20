@@ -120,3 +120,44 @@ def test_every_task_that_reads_a_switch_gets_it_from_the_effective_settings() ->
     for fn in readers:
         assert _calls(fn, "_effective_settings"), fn.name
         assert not _calls(fn, "get_settings"), fn.name
+
+
+#: Route modules whose handlers read a switch, directly or through a service they hand
+#: `settings` to. They take `EffectiveSettingsDep`; a plain `SettingsDep` would read `.env`.
+EFFECTIVE_ROUTE_MODULES = (
+    "custom_rules", "entities", "history_backfill", "property_watches",
+    "qradar_health_detail", "rules", "search_cadence", "waf",
+)
+
+
+@pytest.mark.parametrize("module", EFFECTIVE_ROUTE_MODULES)
+def test_routes_that_read_a_switch_take_the_effective_settings(module: str) -> None:
+    tree = ast.parse((APP / "api" / "routes" / f"{module}.py").read_text())
+    names = {n.id for n in ast.walk(tree) if isinstance(n, ast.Name)}
+    assert "EffectiveSettingsDep" in names
+    assert "SettingsDep" not in names
+
+
+def test_the_anomaly_routes_that_reach_a_switch_take_the_effective_settings() -> None:
+    """Only these handlers read one (detector status, WAF collection health)."""
+    tree = ast.parse((APP / "api" / "routes" / "anomalies.py").read_text())
+    effective = {
+        fn.name
+        for fn in ast.walk(tree)
+        if isinstance(fn, ast.AsyncFunctionDef)
+        and any("EffectiveSettingsDep" in ast.unparse(a.annotation) for a in fn.args.args
+                if a.annotation is not None)
+    }
+    assert effective == {"detector_capabilities", "list_waf_sources", "get_waf_source"}
+
+
+def test_no_route_module_reads_a_switch_from_a_plain_settings_dependency() -> None:
+    """Any route module that reads a switch itself must be one of the effective ones."""
+    for path in (APP / "api" / "routes").glob("*.py"):
+        text = path.read_text()
+        tree = ast.parse(text)
+        reads = _reads_a_switch(tree)
+        uses_plain = any(
+            isinstance(n, ast.Name) and n.id == "SettingsDep" for n in ast.walk(tree)
+        )
+        assert not (reads and uses_plain), path.name

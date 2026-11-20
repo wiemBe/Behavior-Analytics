@@ -7,7 +7,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 
-from app.api.deps import SessionDep, SettingsDep, requires
+from app.api.deps import EffectiveSettingsDep, SessionDep, requires
 from app.api.request_meta import client_ip
 from app.i18n.messages import render
 from app.models.enums import SearchCadence, SearchFamily
@@ -31,7 +31,7 @@ def _as_out(
     row: SearchCadenceSetting,
     *,
     service: SearchCadenceService,
-    settings: SettingsDep,
+    settings: EffectiveSettingsDep,
     now: datetime,
 ) -> SearchCadenceOut:
     family = SearchFamily(row.family)
@@ -71,7 +71,7 @@ def _as_out(
 
 @router.get("", response_model=list[SearchCadenceOut])
 async def list_search_cadences(
-    session: SessionDep, settings: SettingsDep
+    session: SessionDep, settings: EffectiveSettingsDep
 ) -> list[SearchCadenceOut]:
     service = SearchCadenceService(session, settings)
     now = datetime.now(UTC)
@@ -87,7 +87,7 @@ async def update_search_cadence(
     payload: SearchCadenceUpdate,
     request: Request,
     session: SessionDep,
-    settings: SettingsDep,
+    settings: EffectiveSettingsDep,
     principal: AdminPrincipalDep,
 ) -> SearchCadenceOut:
     try:

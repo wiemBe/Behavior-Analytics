@@ -145,7 +145,7 @@ async def test_the_list_reads_every_reason_in_one_statement(db_session, db_schem
         assert response.status_code == 200
         assert len(response.json()["items"]) == 2
         small = len(statements)
-        assert small == 5, statements
+        assert small == 5 + 1, statements  # +1: switch read (S3b)
         small_snapshot = [s for s in statements if "rule_health_snapshot" in s]
         assert len(small_snapshot) == 1, small_snapshot
 

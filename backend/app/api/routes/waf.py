@@ -15,7 +15,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import SessionDep, SettingsDep
+from app.api.deps import EffectiveSettingsDep, SessionDep
 from app.i18n.messages import MessageRef, render
 from app.models.enums import SourceClass, WafLogicalField
 from app.models.fleet import LogSourceClassification
@@ -89,7 +89,7 @@ def _validation_out(profile: WafSourceProfile) -> WafValidationReportOut | None:
 def _profile_out(
     profile: WafSourceProfile,
     log_source: LogSource,
-    settings: SettingsDep,
+    settings: EffectiveSettingsDep,
 ) -> WafProfileOut:
     reason_message = collection_ineligibility_message(profile, log_source, settings)
     reason = render(reason_message) if reason_message is not None else None
@@ -182,7 +182,7 @@ def _input_detail(exc: WafProfileError) -> dict[str, Any]:
 
 
 @router.get("/mapping-schema", response_model=MappingSchemaOut)
-async def get_mapping_schema(settings: SettingsDep) -> MappingSchemaOut:
+async def get_mapping_schema(settings: EffectiveSettingsDep) -> MappingSchemaOut:
     defaults = {
         WafLogicalField.URL: settings.waf_url_property or None,
         WafLogicalField.METHOD: settings.waf_method_property or None,
@@ -260,7 +260,7 @@ async def list_waf_candidates(
 async def get_waf_profile(
     log_source_id: uuid.UUID,
     session: SessionDep,
-    settings: SettingsDep,
+    settings: EffectiveSettingsDep,
 ) -> WafProfileOut:
     source = await _log_source(session, log_source_id)
     profile = await _profile(session, source)
@@ -277,7 +277,7 @@ async def put_waf_profile(
     payload: WafProfileIn,
     response: Response,
     session: SessionDep,
-    settings: SettingsDep,
+    settings: EffectiveSettingsDep,
     principal: PrincipalDep,
 ) -> WafProfileOut:
     source = await _log_source(session, log_source_id, for_update=True)
@@ -337,7 +337,7 @@ async def put_waf_profile(
 async def request_waf_validation(
     log_source_id: uuid.UUID,
     session: SessionDep,
-    settings: SettingsDep,
+    settings: EffectiveSettingsDep,
     principal: PrincipalDep,
 ) -> WafProfileOut:
     source = await _log_source(session, log_source_id)
@@ -356,7 +356,7 @@ async def _set_enabled(
     log_source_id: uuid.UUID,
     enabled: bool,
     session: SessionDep,
-    settings: SettingsDep,
+    settings: EffectiveSettingsDep,
     principal: Principal,
 ) -> WafProfileOut:
     source = await _log_source(session, log_source_id)
@@ -376,7 +376,7 @@ async def _set_enabled(
 async def enable_waf_profile(
     log_source_id: uuid.UUID,
     session: SessionDep,
-    settings: SettingsDep,
+    settings: EffectiveSettingsDep,
     principal: PrincipalDep,
 ) -> WafProfileOut:
     return await _set_enabled(log_source_id, True, session, settings, principal)
@@ -386,7 +386,7 @@ async def enable_waf_profile(
 async def disable_waf_profile(
     log_source_id: uuid.UUID,
     session: SessionDep,
-    settings: SettingsDep,
+    settings: EffectiveSettingsDep,
     principal: PrincipalDep,
 ) -> WafProfileOut:
     return await _set_enabled(log_source_id, False, session, settings, principal)
@@ -396,7 +396,7 @@ async def disable_waf_profile(
 async def remove_waf_profile(
     log_source_id: uuid.UUID,
     session: SessionDep,
-    settings: SettingsDep,
+    settings: EffectiveSettingsDep,
     principal: PrincipalDep,
 ) -> Response:
     """Remove the profile, whatever the log source's or the profile's state.
@@ -488,19 +488,23 @@ async def get_waf_profile_history(
 
 
 @router.get("/sources", response_model=list[WafSourceStatusOut])
-async def list_waf_sources(session: SessionDep, settings: SettingsDep) -> list[WafSourceStatusOut]:
+async def list_waf_sources(
+    session: SessionDep, settings: EffectiveSettingsDep
+) -> list[WafSourceStatusOut]:
     return await waf_source_statuses(session, settings=settings, now=datetime.now(UTC))
 
 
 @router.get("/ariel-budget", response_model=WafArielBudgetOut)
-async def get_waf_ariel_budget(session: SessionDep, settings: SettingsDep) -> WafArielBudgetOut:
+async def get_waf_ariel_budget(
+    session: SessionDep, settings: EffectiveSettingsDep
+) -> WafArielBudgetOut:
     """Global WAF Ariel concurrency: configured limit and permits held now."""
     return await waf_ariel_budget_status(session, settings=settings)
 
 
 @router.get("/sources/{profile_id}", response_model=WafSourceStatusOut)
 async def get_waf_source(
-    profile_id: uuid.UUID, session: SessionDep, settings: SettingsDep
+    profile_id: uuid.UUID, session: SessionDep, settings: EffectiveSettingsDep
 ) -> WafSourceStatusOut:
     found = await waf_source_statuses(
         session, settings=settings, now=datetime.now(UTC), profile_id=profile_id

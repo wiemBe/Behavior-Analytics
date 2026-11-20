@@ -13,7 +13,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy import select
 
-from app.api.deps import SessionDep, SettingsDep
+from app.api.deps import EffectiveSettingsDep, SessionDep
 from app.i18n.messages import MessageRef
 from app.i18n.refusal import CodedHTTPException
 from app.models.instance import QRadarInstance
@@ -36,7 +36,7 @@ PrincipalDep = Annotated[Principal, Depends(get_principal)]
 @router.get("/timeline", response_model=EntityTimelineOut)
 async def get_entity_timeline(
     session: SessionDep,
-    settings: SettingsDep,
+    settings: EffectiveSettingsDep,
     principal: PrincipalDep,
     value: str = Query(min_length=1, max_length=255),
     kind: str | None = Query(default=None, max_length=8),

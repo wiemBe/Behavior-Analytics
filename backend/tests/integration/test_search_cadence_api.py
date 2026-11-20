@@ -8,6 +8,7 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+from sqlalchemy.pool import NullPool
 
 from app.core.config import get_settings
 from app.core.database import get_session
@@ -35,7 +36,9 @@ async def _seed(session) -> None:  # type: ignore[no-untyped-def]
 
 
 def _client(db_url: str, principal: Principal) -> TestClient:
-    engine = create_async_engine(db_url, future=True)
+    # NullPool: each TestClient call runs on its own event loop, and since S3b every request
+    # reads the switches, so a pooled connection would cross loops between two calls.
+    engine = create_async_engine(db_url, future=True, poolclass=NullPool)
     maker = async_sessionmaker(engine, expire_on_commit=False)
 
     async def session_override():  # type: ignore[no-untyped-def]

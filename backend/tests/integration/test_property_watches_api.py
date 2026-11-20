@@ -283,18 +283,19 @@ async def _bulk_tree(session, *, groups: int, sources: int, base: int):  # type:
 
 #: What a `/scope` read costs, pinned: the watch, the inventory (the group walk and its
 #: sources), the walked group names, the member names and the stored changes. Flat at any
-#: number of groups or sources (AGENTS.md rule 9).
-SCOPE_STATEMENTS = {"group": 6, "type": 4, "source": 4}
+#: number of groups or sources (AGENTS.md rule 9). Each pin counts the one feature-switch
+#: read of the effective settings (S3b): the three tables below are one higher for it.
+SCOPE_STATEMENTS = {"group": 7, "type": 5, "source": 5}
 #: What `scope-options` costs, pinned: the inventory and the resolver's one bulk read. Flat
 #: at any size. With an explicit `instance_id` there is no `_default_instance` statement.
-OPTIONS_STATEMENTS = {"group": 3, "type": 2, "source": 1}
+OPTIONS_STATEMENTS = {"group": 4, "type": 3, "source": 2}
 #: What `property-options` costs, pinned: for a group scope, the group's existence check, the
 #: resolver's two bulk reads (the walk and its sources), and the instance row; for a type
 #: scope, the instance row alone. Both add one snapshot statement. Flat at any size.
 #: With an explicit
 #: `instance_id` there is no `_default_instance` statement; the editor's call (no
 #: `instance_id`) adds one (PW-5b §5 point 4, PW-3c item 6).
-PROPERTY_OPTIONS_STATEMENTS = {"group": 5, "type": 2}
+PROPERTY_OPTIONS_STATEMENTS = {"group": 6, "type": 3}
 
 
 # ----------------------------------------------------------------------------- guards
