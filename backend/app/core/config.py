@@ -432,6 +432,11 @@ class Settings(BaseSettings):
     qradar_tls_allow_missing_aki: bool = False
 
     # --- Ariel guardrails ---------------------------------------------------
+    qradar_request_timeout_seconds: float = Field(default=60.0, gt=0, le=600)
+    qradar_connect_timeout_seconds: float = Field(default=10.0, gt=0, le=120)
+    qradar_page_size: int = Field(default=500, ge=1, le=1000)
+    qradar_max_pages: int = Field(default=200, ge=1, le=2000)
+    ariel_provider_poll_seconds: int = Field(default=120, ge=1, le=3600)
     ariel_max_concurrent_searches: int = Field(default=3, ge=1, le=20)
     ariel_default_timeout_seconds: int = Field(default=300, ge=10)
     ariel_max_timeout_seconds: int = Field(default=900, ge=10)

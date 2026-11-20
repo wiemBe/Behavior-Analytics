@@ -48,9 +48,19 @@ switch-table read turns every family off for that run.
 | `QRADAR_VERIFY_SSL` | `true` | TLS verification; `false` is refused outside development |
 | `QRADAR_CA_BUNDLE` | unset | Internal CA bundle path |
 | `QRADAR_TLS_ALLOW_MISSING_AKI` | `false` | Permit only the missing-AKI certificate condition |
+| `QRADAR_REQUEST_TIMEOUT_SECONDS` | `60.0` | REST per-attempt read/write/pool timeout; more than `0`, at most `600` seconds |
+| `QRADAR_CONNECT_TIMEOUT_SECONDS` | `10.0` | REST per-attempt connect timeout; more than `0`, at most `120` seconds |
+| `QRADAR_PAGE_SIZE` | `500` | Default REST page size; `1–1000` rows |
+| `QRADAR_MAX_PAGES` | `200` | Default REST page ceiling; `1–2000` pages; aggregate result ceiling is page size × page ceiling |
+| `ARIEL_PROVIDER_POLL_SECONDS` | `120` | Aggregate searches and property-rejection probes: `1–3600` polls with a one-second wait after each nonterminal response. HTTP attempts and retries add to this nominal seconds budget; scheduled/manual search timeouts remain separate |
 | `MCP_ENABLED` | `false` | Enable the optional MCP inventory integration |
 | `MCP_BASE_URL` | `http://qradar-mcp:5000` | Internal MCP service URL; plain HTTP on the internal network, and the backend sends the SEC token to it. The MCP container verifies the console certificate with the same CA as the backend (`/run/secrets/qradar_ca.pem`) |
 | `MCP_TIMEOUT_SECONDS` | `60` | MCP request timeout |
+
+Both REST factories apply these settings and `ARIEL_MAX_RETRIES`, `ARIEL_RETRY_BASE_SECONDS`
+and `ARIEL_RETRY_MAX_SECONDS`. Endpoint-specific page/walk budgets still take precedence.
+Transport and poll defaults are unchanged; the global factory now honours the configured
+retry maximum (`60` seconds), as the per-instance factory already did (formerly `30` globally).
 
 ## Secrets, database and queue
 
@@ -576,6 +586,18 @@ answer itself does not depend on them: recording the answer is separate from rea
 | `HISTORY_BACKFILL_MAX_LOWER_BOUND_SHARE` | `0.05` | The density gate: the share of lower-bound buckets that ends a reading `PARTIAL`. `0.0`–`1.0` |
 | `HISTORY_BACKFILL_WAF_BREAKDOWN_DAYS` | `7` | Days of WAF breakdown history (action, response code and source IP). `1`–`90`; must not exceed `HISTORY_BACKFILL_DAYS` |
 | `HISTORY_BACKFILL_BASELINE_SOURCES_PER_TICK` | `50` | Source-volume baselines rebuilt per tick after a reading. `1`–`5000` |
+
+Phase A top-ups use `HISTORY_TOPUP_SOURCE_CHUNK_SIZE = 250` (a named collector constant),
+deduplicating IDs before partitioning. Each time span costs `ceil(unique sources / 250)`
+searches without truncation; actual attempts, including splits/failures, appear in history
+progress and the tick report. For signed 64-bit source IDs, each AQL is under 6,000 characters
+and the encoded request URL under 8,192 bytes with the standard endpoint/host. The appliance
+and proxy URL limits remain unmeasured. A failed/truncated source chunk cannot complete a
+bucket from a subset. The remaining tick budget must cover every source chunk before the
+span starts; otherwise it waits. For 8,000 top-up sources, allow at least 32 history searches
+plus live work in the cadence cap, or the reading can reach its time limit without progress.
+Permit refusals send no search. If a later chunk is refused, stored reading progress stays
+unchanged and the tick report still counts the earlier searches sent before deferral.
 
 The only cross-check among them is `HISTORY_BACKFILL_WAF_BREAKDOWN_DAYS <=
 HISTORY_BACKFILL_DAYS`; a larger value is refused at startup. The bounds of the other families

@@ -103,8 +103,8 @@ TERMINAL_FAILED = (
 )
 
 #: The REST provider polls a search at most this many times, once a second,
-#: and then closes the row itself (TIMEOUT). ``qradar_rest`` loops over this
-#: same constant, so the two cannot drift.
+#: and then closes the row itself (TIMEOUT). The provider constructor defaults
+#: to this value; factories use ARIEL_PROVIDER_POLL_SECONDS.
 POLL_LIMIT = 120
 
 #: Round-trip slack on top of the longest a search can legitimately run (create,
@@ -125,7 +125,11 @@ def stale_after_seconds() -> int:
     with suppress(Exception):
         from app.core.config import get_settings
 
-        longest = max(longest, int(get_settings().ariel_max_timeout_seconds))
+        settings = get_settings()
+        longest = max(
+            longest, int(settings.ariel_max_timeout_seconds),
+            getattr(settings, "ariel_provider_poll_seconds", POLL_LIMIT),
+        )
     return longest + STALE_SLACK_SECONDS
 
 

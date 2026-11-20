@@ -107,6 +107,10 @@ HISTORY_SCOPE_KEY = ""  # Phase A has one console-wide scope
 #: from it. One source is not a fleet: its silence stays its own NO_EVENTS.
 FLEET_EMPTY_MIN_SOURCES = 2
 
+#: At most 250 signed 64-bit ids: under 6,000 AQL characters (8,192 URL bytes).
+#: This is a conservative application bound, not a measured QRadar URL limit.
+HISTORY_TOPUP_SOURCE_CHUNK_SIZE = 250
+
 logger = logging.getLogger(__name__)
 
 
@@ -392,62 +396,56 @@ class MetricCollector:
         history step raises the typed error before the planner can halve the span.
         """
         found = _WindowSearch()
+        ids = list(dict.fromkeys(qradar_ids)) if qradar_ids is not None else None
+        if ids == []:
+            raise ValueError("metric source filter is empty")
+        source_chunks = (
+            [ids[i:i + HISTORY_TOPUP_SOURCE_CHUNK_SIZE]
+             for i in range(0, len(ids), HISTORY_TOPUP_SOURCE_CHUNK_SIZE)]
+            if ids is not None else [None]
+        )
 
         async def search(first: datetime, count: int, split_depth: int) -> None:
             if found.failure is not None:
                 return
-            if found.searches >= max_searches or (
+            if found.searches + len(source_chunks) > max_searches or (
                 deadline is not None and self._clock() >= deadline
             ):
                 found.capped = True
                 return
             end = first + timedelta(seconds=interval * count)
-            found.searches += 1
             started = self._clock()
-            if count == 1:
+            buckets: dict[datetime, list[LogSourceMetricSample]] = defaultdict(list)
+            truncated = False
+            for chosen in source_chunks:
+                if deadline is not None and self._clock() >= deadline:
+                    found.capped = True
+                    return
+                found.searches += 1
                 try:
-                    if qradar_ids is None:
-                        samples = await self.provider.get_log_source_metrics(first, end)
-                    else:
-                        samples = await self.provider.get_log_source_metrics(
-                            first, end, qradar_ids=qradar_ids
+                    kwargs = {} if chosen is None else {"qradar_ids": chosen}
+                    if count == 1:
+                        buckets[first].extend(
+                            await self.provider.get_log_source_metrics(first, end, **kwargs)
                         )
+                    else:
+                        batch = await self.provider.get_log_source_metrics_bucketed(
+                            first, end, bucket_seconds=interval,
+                            max_rows=self.settings.ariel_multi_bucket_max_rows, **kwargs,
+                        )
+                        if batch.truncated:
+                            truncated = True
+                            break
+                        for at, samples in batch.buckets.items():
+                            buckets[at].extend(samples)
                 except ProviderError as exc:
+                    if isinstance(exc, ArielPermitUnavailable):
+                        found.searches -= 1  # a refused permit sent no Ariel request
                     found.failure, found.failed = exc, Span(first, end)
                     return
-                collected_at = self._clock()
-                found.completed[first] = CompletedBucket(
-                    samples=samples,
-                    search_window_start=first,
-                    search_window_end=end,
-                    search_bucket_count=1,
-                    split_depth=split_depth,
-                    duration_ms=int((collected_at - started).total_seconds() * 1000),
-                    collected_at=collected_at,
-                )
-                return
-            try:
-                if qradar_ids is None:
-                    batch = await self.provider.get_log_source_metrics_bucketed(
-                        first,
-                        end,
-                        bucket_seconds=interval,
-                        max_rows=self.settings.ariel_multi_bucket_max_rows,
-                    )
-                else:
-                    batch = await self.provider.get_log_source_metrics_bucketed(
-                        first,
-                        end,
-                        bucket_seconds=interval,
-                        max_rows=self.settings.ariel_multi_bucket_max_rows,
-                        qradar_ids=qradar_ids,
-                    )
-            except ProviderError as exc:
-                found.failure, found.failed = exc, Span(first, end)
-                return
             collected_at = self._clock()
             duration_ms = int((collected_at - started).total_seconds() * 1000)
-            if batch.truncated:
+            if truncated:
                 found.splits += 1
                 left_count = count // 2
                 await search(first, left_count, split_depth + 1)
@@ -462,7 +460,7 @@ class MetricCollector:
             for index in range(count):
                 bucket_start = first + timedelta(seconds=interval * index)
                 found.completed[bucket_start] = CompletedBucket(
-                    samples=batch.buckets.get(bucket_start, []),
+                    samples=buckets.get(bucket_start, []),
                     search_window_start=first,
                     search_window_end=end,
                     search_bucket_count=count,
@@ -474,7 +472,9 @@ class MetricCollector:
         # One row per (source, bucket). Plan fitting spans without sending a
         # parent search we already expect to discard. Unknown/new sources can
         # still exceed the estimate: the truncation split above remains authoritative.
-        sources = len(qradar_ids) if qradar_ids is not None else source_count
+        sources = (
+            min(len(ids), HISTORY_TOPUP_SOURCE_CHUNK_SIZE) if ids is not None else source_count
+        )
         span = max(1, self.settings.ariel_multi_bucket_max_rows // max(1, sources))
         for offset in range(0, bucket_count, span):
             await search(
@@ -711,10 +711,13 @@ class MetricCollector:
         the history reading. The reading itself fails closed: an unexpected state raises,
         nothing is written, and the next tick looks again.
         """
+        # Counts survive a deferred step's savepoint rollback: the console already did the work.
+        report = HistoryReport()
         try:
             async with self.session.begin_nested():
                 return await self._history_tick(
                     instance,
+                    report=report,
                     now=now,
                     live_searches=live_searches,
                     cadence_seconds=cadence_seconds,
@@ -741,7 +744,7 @@ class MetricCollector:
                         )
                     ]
                 )
-            return HistoryReport(state=HistoryState.READING.value)
+            return replace(report, state=HistoryState.READING.value)
         except Exception as exc:
             await HistoryBackfillRepository(self.session).write_step_errors(
                 instance.id,
@@ -759,12 +762,12 @@ class MetricCollector:
         self,
         instance: QRadarInstance,
         *,
+        report: HistoryReport,
         now: datetime,
         live_searches: int,
         cadence_seconds: int,
         source_count: int = 0,
     ) -> HistoryReport:
-        report = HistoryReport()
         repo = HistoryBackfillRepository(self.session)
         decision_row = (await repo.decisions([instance.id])).get(instance.id)
         decision = decision_view(decision_row)
@@ -1005,12 +1008,13 @@ class MetricCollector:
                     qradar_ids=search_ids,
                     source_count=source_count,
                 )
+            spent += found.searches
+            report.searches = spent
             if isinstance(found.failure, ArielPermitUnavailable):
                 # Before chunk_results and settle_step. Those treat a provider
                 # failure as a span to halve and a marker to write; a refusal is
                 # neither. The savepoint rolls back anything this step staged.
                 raise found.failure
-            spent += found.searches
             completed.update(found.completed)
             if report.failure is None and found.failure is not None:
                 # The planner only sees the failed span; the marker needs the failure.

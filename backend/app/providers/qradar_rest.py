@@ -435,6 +435,7 @@ class QRadarRestProvider(QRadarProvider):
         retry_max_seconds: float = 30.0,
         page_size: int = DEFAULT_PAGE_SIZE,
         max_pages: int = DEFAULT_MAX_PAGES,
+        ariel_poll_seconds: int = ariel_log.POLL_LIMIT,
         client: httpx.AsyncClient | None = None,
         rng: random.Random | None = None,
         sleep: Callable[[float], Awaitable[None]] | None = None,
@@ -458,6 +459,7 @@ class QRadarRestProvider(QRadarProvider):
         self._retry_max = retry_max_seconds
         self._page_size = max(1, page_size)
         self._max_pages = max(1, max_pages)
+        self._ariel_poll_seconds = ariel_poll_seconds
         self._rng = rng or random.Random()  # noqa: S311 - jitter, not cryptographic
         self._sleep = sleep or asyncio.sleep
         self._ariel_stop_pad_seconds = max(0, int(ariel_stop_pad_seconds))
@@ -1395,8 +1397,7 @@ class QRadarRestProvider(QRadarProvider):
         max_rows = self._page_size * self._max_pages
         async with self._search_log() as log:
             handle = await self.create_ariel_search(aql)
-            # Two minutes maximum. The task's interval is at least one minute, and
-            # a stuck appliance must never pin a worker indefinitely.
+            # The configured poll budget bounds a stuck appliance.
             results = await self._await_ariel(
                 log,
                 handle,
@@ -3113,7 +3114,7 @@ class QRadarRestProvider(QRadarProvider):
                     ))
                     continue
                 status_dto: ArielSearchStatusDTO | None = None
-                for _ in range(ariel_log.POLL_LIMIT):
+                for _ in range(self._ariel_poll_seconds):
                     status_dto = await self.get_ariel_search_status(handle.search_id)
                     await log.saw(status_dto)
                     if status_dto.is_terminal:
@@ -3164,7 +3165,7 @@ class QRadarRestProvider(QRadarProvider):
         call, so the permit is still taken once.
         """
         status: ArielSearchStatusDTO | None = None
-        for _ in range(ariel_log.POLL_LIMIT):
+        for _ in range(self._ariel_poll_seconds):
             status = await self.get_ariel_search_status(handle.search_id)
             await log.saw(status)
             if status.is_terminal:
