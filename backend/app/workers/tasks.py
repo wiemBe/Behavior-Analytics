@@ -420,6 +420,7 @@ async def sync_rule_inventory(
             "status": (
                 "skipped_locked"
                 if report.skipped_locked
+                else "partial" if report.status == "PARTIAL"
                 else "failed" if report.partial_failure else "ok"
             ),
             "rules_seen": report.rules_seen,

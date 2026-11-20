@@ -557,6 +557,10 @@ class Settings(BaseSettings):
 
     # --- Rule inventory + health (Phase 3) ----------------------------------
     rule_collection_interval_seconds: int = Field(default=3600, ge=60)
+    # Keep the existing per-request budget; bound the formerly unbounded combined walk.
+    rule_page_timeout_seconds: float = Field(default=60, gt=0, le=300)
+    rule_page_attempts: int = Field(default=4, ge=1, le=6)
+    rule_walk_max_seconds: float = Field(default=600, gt=0, le=3600)
     rule_max_pages: int = Field(default=20, ge=1, le=500)
     # Offense contribution is the only defensible rule-firing evidence exposed
     # by the lab appliance. Collection is bounded by both age and row count.
