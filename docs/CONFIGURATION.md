@@ -158,6 +158,9 @@ reference heading for them.
 | `QRADAR_ACCESS_CHECK_INTERVAL_SECONDS` | `21600` | How often every console is asked which QRadar APIs the token can reach. Minimum `300` |
 | `OFFENSE_COLLECTION_INTERVAL_SECONDS` | `300` | Offense collection interval |
 | `OFFENSE_MAX_PAGES` | `20` | Pages of offenses walked per run |
+| `OFFENSE_PAGE_TIMEOUT_SECONDS` | `30` | Timeout per REST offense page attempt; range `(0, 300]` seconds |
+| `OFFENSE_PAGE_ATTEMPTS` | `3` | Maximum attempts per page, also bounded by provider retries; range `1–6` |
+| `OFFENSE_WALK_MAX_SECONDS` | `240` | Wall-clock cap including requests, retries and backoff; range `(0, 3600]` seconds. Completed pages survive failure as PARTIAL; resume replays the final stored timestamp by subtracting 1 ms. A failed first page holds the watermark |
 | `OFFENSE_PAGE_SIZE` | `100` | Accepted. Offense collection does not read it |
 | `OFFENSE_MAX_BACKFILL_HOURS` | `168` | How far a first run or a gap-fill may reach |
 | `OFFENSE_SLA_HOURS` | `24` | Open offenses older than this count as exceeding SLA |

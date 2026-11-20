@@ -643,6 +643,9 @@ class Settings(BaseSettings):
     # Pages of offenses walked per run. Bounds a single collection cycle so a
     # large offense backlog cannot turn one tick into an unbounded crawl.
     offense_max_pages: int = Field(default=20, ge=1, le=500)
+    offense_page_timeout_seconds: float = Field(default=30, gt=0, le=300)
+    offense_page_attempts: int = Field(default=3, ge=1, le=6)
+    offense_walk_max_seconds: float = Field(default=240, gt=0, le=3600)
     offense_page_size: int = Field(default=100, ge=1, le=1000)
     # Hard ceiling on how far back a first run or a gap-fill reaches. Never
     # unlimited: a fresh install must not try to ingest years of offenses.
