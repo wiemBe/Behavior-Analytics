@@ -51,16 +51,16 @@ export function MeasurementWindow({ window: w }: { window: RuleStatisticsWindow 
               ? t("partialFallback")
               : t("insufficientFallback"))}
         </>
-      )}{" "}
+      )}
       {fromHistory > 0 && (
         <>
+          {" "}
           {t("history", {
             history: formatCount(fromHistory, locale),
             complete: formatCount(w.complete_windows, locale),
-          })}{" "}
+          })}
         </>
       )}
-      {t("utc")}
     </p>
   );
 }

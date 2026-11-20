@@ -109,7 +109,7 @@ describe("rule statistics route states", () => {
     await renderPage();
     const alert = screen.getByRole("alert");
     expect(alert).toHaveTextContent("Rule statistics could not be loaded");
-    expect(alert).toHaveTextContent(/check that it is running, then reload/i);
+    expect(alert).toHaveTextContent(/reload to retry/i);
     expect(alert).not.toHaveTextContent("secret");
   });
 
@@ -133,7 +133,7 @@ describe("rule statistics route states", () => {
     await renderPage();
     const status = screen.getByRole("status");
     expect(status).toHaveTextContent("No QRadar instance is registered");
-    expect(status).toHaveTextContent(/register the QRadar instance/i);
+    expect(status).toHaveTextContent(/register the instance/i);
     expect(screen.queryByRole("alert")).toBeNull();
   });
 });
@@ -146,7 +146,7 @@ describe("measurement honesty", () => {
     expect(region).toHaveTextContent("Complete");
     expect(region).toHaveTextContent("7 days");
     expect(region).toHaveTextContent("168 of 168 windows complete");
-    expect(region).toHaveTextContent("Times are UTC");
+    expect(region).not.toHaveTextContent("Times are UTC");
   });
 
   it("shows PARTIAL and carries the API reason verbatim", async () => {
@@ -193,7 +193,7 @@ describe("measurement honesty", () => {
     expect(screen.getByRole("region", { name: "Measurement window" })).toHaveTextContent(
       "INSUFFICIENT_DATA",
     );
-    expect(screen.getAllByText(reason)).toHaveLength(2);
+    expect(screen.getAllByText(reason)).toHaveLength(3);
     expect(screen.queryByText(/0 silent rules/i)).toBeNull();
   });
 });
@@ -255,7 +255,7 @@ describe("statistics sections", () => {
       statistics({ silent: { ...value.silent!, items: [], total: 0 } }),
     );
     await renderPage();
-    expect(screen.getByText(/No judged enabled rule was silent in the measured windows/)).toBeInTheDocument();
+    expect(screen.getByText(/No judged enabled rule was silent/)).toBeInTheDocument();
   });
 
   it("distinguishes an unmeasured top list from an empty measured list", async () => {
@@ -302,7 +302,7 @@ describe("statistics sections", () => {
     expect(mostRow.querySelectorAll(".stats-narrow-fact")).toHaveLength(1);
     expect(mostRow.querySelector(".stats-narrow-fact")).not.toHaveTextContent("lower bound");
 
-    const silent = screen.getByRole("table", { name: /Enabled rules with a measured zero/ });
+    const silent = screen.getByRole("table", { name: /Silent enabled rules, with first seen/ });
     const silentRow = within(silent).getByRole("rowheader", {
       name: /Suspicious authentication sequence/,
     }).closest("tr")!;
@@ -333,7 +333,7 @@ describe("statistics sections", () => {
     for (const label of labels) {
       expect(label).toHaveAttribute(
         "title",
-        "QRadar's building-block list does not say whether the block tests events or flows.",
+        "Events or flows not reported.",
       );
     }
   });
@@ -353,16 +353,17 @@ describe("statistics sections", () => {
       expect(within(table).getByRole("columnheader", { name: heading })).toBeInTheDocument();
     }
     expect(within(table).getAllByText(/≥/)).toHaveLength(3);
-    expect(screen.getByText(/Flow matches are not searched/)).toBeInTheDocument();
+    expect(screen.queryByText(/Flow matches are not searched/)).toBeNull();
+    expect(within(table).getAllByTitle("Flow matches are not searched; the count may undercount.")).toHaveLength(3);
   });
 
   it("uses the API's benchmark label and unit and reports missing benchmarks", async () => {
     vi.spyOn(ruleStatisticsApi, "statistics").mockResolvedValue(statistics());
     await renderPage();
-    expect(screen.getByText(/Lower is costlier to evaluate/)).toBeInTheDocument();
-    expect(screen.getByText(/This is not a firing rate/)).toBeInTheDocument();
-    expect(screen.getByText("millions of events per second (QRadar's unit)")).toBeInTheDocument();
-    expect(screen.getByText("23 enabled rules have no benchmark and are left out of this ranking.")).toBeInTheDocument();
+    expect(screen.queryByText(/Lower is costlier to evaluate/)).toBeNull();
+    expect(screen.queryByText(/This is not a firing rate/)).toBeNull();
+    expect(document.querySelector('th[title="millions of events per second (QRadar\'s unit)"]')).not.toBeNull();
+    expect(screen.getByText("23 enabled rules have no benchmark.")).toBeInTheDocument();
   });
 
   it("writes the day selection to the URL while preserving other selections", async () => {

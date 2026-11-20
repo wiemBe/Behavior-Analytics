@@ -94,13 +94,13 @@ describe("rule capacity history", () => {
     vi.spyOn(ruleStatisticsApi, "capacityHistory").mockResolvedValue([]);
     await renderPage();
     expect(screen.getByText("QRadar has not re-benchmarked this rule since collection began.")).toBeInTheDocument();
-    expect(screen.getByText(/This is not an error/)).toBeInTheDocument();
+    expect(screen.queryByText(/This is not an error/)).toBeNull();
   });
 
   it("shows newest-first samples with UTC, units and host id", async () => {
     vi.spyOn(ruleStatisticsApi, "capacityHistory").mockResolvedValue(samples);
     await renderPage();
-    const table = screen.getByRole("table", { name: /Capacity benchmarks for this rule/ });
+    const table = screen.getByRole("table", { name: /Capacity benchmarks/ });
     const rows = within(table).getAllByRole("row").slice(1);
     expect(rows[0]).toHaveTextContent("2026-10-12 09:00:00 UTC");
     expect(rows[0]).toHaveTextContent("0.75");
@@ -108,11 +108,12 @@ describe("rule capacity history", () => {
     expect(rows[0]).toHaveTextContent("53");
     expect(rows[1]).toHaveTextContent("—");
     const section = screen.getByRole("heading", { name: "Capacity history" }).closest("section")!;
-    expect(section.textContent?.split(CAPACITY_UNIT)).toHaveLength(2);
-    expect(within(table).getByRole("columnheader", { name: "Average capacity" })).toBeInTheDocument();
-    expect(within(table).getByRole("columnheader", { name: "Base capacity" })).toBeInTheDocument();
-    expect(screen.getByText(/lower figure is costlier/i)).toBeInTheDocument();
-    expect(screen.getByText(/not a firing rate/i)).toBeInTheDocument();
+    // The unit sits in the two figure headers, not in a description line.
+    expect(section.textContent?.split(CAPACITY_UNIT)).toHaveLength(3);
+    expect(within(table).getByRole("columnheader", { name: "Average capacity (M events/s)" })).toBeInTheDocument();
+    expect(within(table).getByRole("columnheader", { name: "Base capacity (M events/s)" })).toBeInTheDocument();
+    expect(screen.queryByText(/lower figure is costlier/i)).toBeNull();
+    expect(screen.queryByText(/not a firing rate/i)).toBeNull();
   });
 
   it("keeps the rule visible and explains a failed history request", async () => {
@@ -121,7 +122,7 @@ describe("rule capacity history", () => {
     expect(screen.getByRole("heading", { name: rule().name })).toBeInTheDocument();
     const alert = screen.getByRole("alert");
     expect(alert).toHaveTextContent("capacity history could not be loaded");
-    expect(alert).toHaveTextContent(/reload the page/i);
+    expect(alert).toHaveTextContent(/reload to retry/i);
     expect(alert).not.toHaveTextContent("down");
   });
 });
@@ -139,14 +140,14 @@ describe("rule detail layout and honesty", () => {
     vi.spyOn(api, "ruleHealthHistory").mockRejectedValue(new Error("down"));
     vi.spyOn(ruleStatisticsApi, "capacityHistory").mockResolvedValue([]);
     await renderPage();
-    expect(screen.getByRole("alert")).toHaveTextContent("The health history could not be loaded.");
+    expect(screen.getByRole("alert")).toHaveTextContent("Health history could not be loaded.");
     expect(screen.queryByText(/has been stored yet/)).toBeNull();
   });
 
   it("still says an empty history is empty", async () => {
     vi.spyOn(ruleStatisticsApi, "capacityHistory").mockResolvedValue([]);
     await renderPage();
-    expect(screen.getByText("No rule-health evaluation has been stored yet.")).toBeInTheDocument();
+    expect(screen.getByText("No health evaluation stored yet.")).toBeInTheDocument();
   });
 
   it("right-aligns the history figures inside a scroll region", async () => {
@@ -187,7 +188,7 @@ describe("rule detail layout and honesty", () => {
   it("gives a failed rule read an alert role", async () => {
     vi.spyOn(api, "rule").mockRejectedValue(new ApiError(500, "secret"));
     await renderPage();
-    expect(screen.getByRole("alert")).toHaveTextContent("Try again shortly.");
+    expect(screen.getByRole("alert")).toHaveTextContent("Reload to retry.");
   });
 });
 

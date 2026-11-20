@@ -596,18 +596,24 @@
       "answers": "Which analytics rules are healthy, and which are not firing?",
       "body": [
         {
-          "p": "The page heading is **Rule health**. A rule's verdict comes from what has been observed, not from its existence: **HEALTHY**, **NOISY**, **INACTIVE**, **NEVER OBSERVED**, **DISABLED**, **DEPENDENCY DEGRADED**, **INSUFFICIENT DATA** or **UNKNOWN**. **INSUFFICIENT DATA** means the rule cannot be judged; it is not a detection gap. The reason under the rule name says which cause applies."
+          "p": "The page heading is **Rule health**. A rule's verdict comes from what has been observed, not from its existence: **HEALTHY** (firing within expected bounds), **NOISY** (firing far above its expected rate), **INACTIVE** (has fired before, but not recently), **NEVER OBSERVED** (observed continuously and never seen to fire), **DISABLED** (disabled in QRadar, so it cannot contribute detection), **DEPENDENCY DEGRADED** (a building block or log source it depends on is unhealthy), **INSUFFICIENT DATA** or **UNKNOWN**. Building blocks are collected but not listed on this page."
         },
         {
-          "p": "The table shows **Rule**, **Type**, **Enabled**, **Health**, **Meaning**, **Last fired (UTC)** and **Offenses**. The detail page adds **Offense contributions**, **Event contributions**, **Health evidence**, **Building blocks**, **Telemetry requirements**, **Metadata** and **Health history**. A missing measurement is reported as unestablished, never as a detection gap."
+          "p": "**INSUFFICIENT DATA** means the rule cannot be judged: a dependency was not observed, or QRadar exposes no last-fired time for the window. It is not a detection gap. The line under the rule name gives the cause that applies. The notice above the filters counts the rules without a verdict yet. A missing measurement is reported as unestablished, never as a detection gap."
         },
         {
-          "p": "**Rule statistics** opens the fleet-wide view of composition, matching load and silence."
+          "p": "The table shows **Rule**, **Type**, **Enabled**, **Health**, **Last fired (UTC)** and **Offenses**. The detail page adds **Offense contributions**, **Event contributions**, **Health evidence**, **Building blocks**, **Telemetry requirements**, **Match anomalies**, **Metadata**, **Capacity history** and **Health history**."
+        },
+        {
+          "p": "**Match anomalies** on the detail page says whether the rule's match rate is judged and lists its open and recent incidents. Its facts name the judged window, the windows in the span and the gaps among them, the share of baseline windows with a match, and the samples, weeks and median still needed before a rate can be judged. **Lower bound** means matches are at least the figure shown; a flow rule's matches are not searched. A rule's capacity benchmark is how fast QRadar could evaluate it, so a lower figure is costlier; it is not a firing rate, and a sample is stored only when QRadar reports a new benchmark time."
+        },
+        {
+          "p": "**Rule statistics** opens the fleet-wide view of composition, matching load and silence. To collect rules from QRadar, run a rule sync (`python -m app.cli.sync rules`)."
         }
       ],
       "states": [
         {
-          "p": "**No rules collected yet.**; **No rules match these filters.**; the no-health-verdict notice; a failed health-history read."
+          "p": "**No rules collected yet.**; **No rules match these filters.**; the no-health-verdict notice; a failed health-history read (the page does not call it empty); no capacity benchmark yet, which is not an error; a failed match-anomaly read, which leaves the health card unaffected."
         }
       ]
     },
@@ -616,15 +622,21 @@
       "answers": "How is the rule inventory composed, how much does it match, and which enabled rules are silent?",
       "body": [
         {
-          "p": "**Measurement days** offers 1, 7 or 30 days. **Rule composition** splits rules and building blocks by type into enabled and disabled, for all origins or one origin. **Costliest by benchmark** orders enabled rules from the lowest capacity benchmark, which is the costliest to evaluate; it is not a firing rate. **Most matched** ranks rules by **Matched events** or **Match records** over the measured windows. **Silent enabled rules** lists rules with a measured zero over a complete span; a rule first seen recently has had little time to match."
+          "p": "**Measurement days** offers 1, 7 or 30 days. The line above the tables states whether the window is **Complete.**, **PARTIAL.** or **INSUFFICIENT_DATA.**, how much of the span was measured and how many windows were read from QRadar history rather than judged. All times are UTC. A missing ranking is not a count of zero."
         },
         {
-          "p": "The measurement line states whether the window is **Complete.**, **PARTIAL.** or **INSUFFICIENT_DATA.**. A missing ranking is not a count of zero, and the page says so."
+          "p": "**Rule composition** splits rules and building blocks by type into enabled and disabled, for all origins or one origin. **Most matched** ranks rules by **Matched events** or **Match records** over the measured windows; the match rate is matched events per second over the seconds measured. The mark ≥ means a lower bound: flow matches are not searched, so the count proves the rule fired but may undercount. **Silent enabled rules** lists rules with a measured zero over a complete span; a rule first seen recently has had little time to match. Rules that were not judged are counted with their reason and listed by type."
+        },
+        {
+          "p": "**Rule-match anomalies** lists rules whose match rate changed over the span: the detector, matched events per window observed against expected, the state and when it started. A window is one measurement slice (shown as its width) and the figures cover the last days of the selected span. When the span is not fully measured the block says so, storm rows are listed with the status of the windows behind them and silence is not judged; **Truncated** rows are lower bounds. When the list is cut, **Anomalies** filtered by Rule holds the rest."
+        },
+        {
+          "p": "**Costliest by benchmark** orders enabled rules from the lowest capacity benchmark, which is the costliest to evaluate; it is not a firing rate. The unit is millions of events per second (QRadar's unit). Enabled rules with no benchmark are counted and left out of the ranking."
         }
       ],
       "states": [
         {
-          "p": "**No QRadar instance is registered.**; **No complete window exists to measure rule matches.**; **Silence was not judged.**; a failed capacity or statistics read."
+          "p": "**No QRadar instance is registered.**, which needs the instance registered and rule inventory and rule-match collection run; **No complete window exists to measure rule matches.**, where no ranking is shown and no rule is reported quiet; **Silence was not judged.**, which is not a count of zero; **Rule-match collection has not run for this span.**, where no window was recorded and so no rule was compared with its usual rate; a failed capacity or statistics read."
         }
       ]
     },
@@ -633,18 +645,18 @@
       "answers": "Which threshold rules over stored aggregates exist, and are they firing?",
       "body": [
         {
-          "p": "A custom rule judges one collected metric for one subject over consecutive 5-minute buckets. The list shows **Name**, **Status and reason**, **Subject**, **Condition**, **Severity**, **Enabled** and **Last evaluated (UTC)**. Creating, editing, enabling and deleting need `custom_rule:write`."
+          "p": "A custom rule judges one collected metric for one subject over consecutive 5-minute buckets. Rules are judged on collected buckets, up to the family's search cadence after the events arrive (the schedule is set on **Search cadence**). This is not a seconds-level correlation engine: for alerting within seconds, use QRadar's own rules. The list shows **Name**, **Status**, **Subject**, **Condition**, **Severity**, **Enabled** and **Last evaluated (UTC)**. Creating, editing, enabling and deleting need `custom_rule:write`, held by the admin and `detection_engineer` roles."
         },
         {
-          "p": "Two banners qualify every rule: **Rule evaluation is off because `CUSTOM_RULES_ENABLED` is false. Enabled rules are not being judged.** and **Breaches are recorded and nothing pages until `CUSTOM_RULES_ALERTING_ENABLED` is on.** The second is shadow mode: breaches and rule state are written, but nothing opens, refreshes or resolves an alert."
+          "p": "Two states qualify every rule. **Rule evaluation is off; enabled rules are not judged.** appears when `CUSTOM_RULES_ENABLED` is false (the setting is under **Details**). **Shadow mode: breaches are recorded, nothing pages.** appears when `CUSTOM_RULES_ALERTING_ENABLED` is off: breaches and rule state are written, but nothing opens, refreshes or resolves an alert. When evaluation is off, only the first is shown."
         },
         {
-          "p": "The detail page shows the current state, the active breach, what the rule read, the breach history and the rule definition. **Edit rule**, **Enable**, **Disable** and **Delete** act on the rule; deleting a rule with an open alert resolves the alert before the rule and its history are removed. **New rule** opens the editor."
+          "p": "The detail page shows the current state, what the rule read, the active breach, the breach history and the rule definition. What the rule read is a chart of the stored measurements, with gaps left unconnected; a bucket that was not measured is a gap, not zero. A subject that stopped being tracked gives the rule no verdict from later buckets. **Edit rule**, **Enable**, **Disable** and **Delete** act on the rule; deleting a rule with an open alert resolves the alert before the rule and its history are removed. **New rule** opens the editor."
         }
       ],
       "states": [
         {
-          "p": "**No custom rules exist yet.**; **Never evaluated**; **No active breach is recorded for this rule.**; **Insufficient data**; **Subject retired**."
+          "p": "**No custom rules exist yet.**, which says what creating one needs; **Never evaluated**, shown as a dash in the last-evaluated cell; **No active breach.**; **Insufficient data**; **Subject retired**."
         }
       ]
     },
@@ -908,7 +920,16 @@
       "answers": "How do I get an alert when a stored measurement stays past a threshold?",
       "body": [
         {
-          "p": "A custom rule is a threshold on a measurement the platform already stores. It never runs a query of its own against QRadar: it reads stored aggregates only, so it can use only a subject the platform collects and has admitted. A condition the platform does not collect belongs in a custom search. Reading rules needs `read:custom_rules`; creating, editing, enabling and deleting need `custom_rule:write`, held by the admin and `detection_engineer` roles."
+          "p": "A custom rule is a threshold on a measurement the platform already stores. It never runs a query of its own against QRadar: it reads stored aggregates only, so it can use only a subject the platform collects and has admitted; a condition the platform does not collect belongs in a custom search. Reading rules needs `read:custom_rules`; creating, editing, enabling and deleting need `custom_rule:write`, held by the admin and `detection_engineer` roles. Rules are judged on collected 5-minute buckets, up to the family's search cadence after the events arrive (the schedule is set on **Search cadence**); this is not a seconds-level correlation engine, so for alerting within seconds use QRadar's own rules."
+        },
+        {
+          "p": "What each metric reads. **Event count** and **average EPS**: the log source's events or rate, exact only when the bucket was collected and is complete. **Fleet EPS**: the rate across the class's monitored sources, a lower bound unless every enabled source has a complete bucket, because a missing source can only add events. **request count**, **block ratio**, **5xx ratio** and **4xx ratio**: a lower bound when grouping was truncated, coverage is below the floor, or an action value or response code is unmapped. IPS **event count** is for one admitted entity (no bucket means not measured, not zero); **total event count** is exact whenever the bucket exists; **blocked share** is a lower bound when an action value is unmapped. **property-watch value events** is for one pinned value: exact when the search covered every event. A lower bound proves only a value above the threshold, and a missing or partial bucket proves nothing either way."
+        },
+        {
+          "p": "Field help. A bucket is the fixed time slice the platform collects, 5 minutes by default. A bucket that was not measured is not a zero: it counts neither as a breach nor as a recovery. **Sustain** is how many breaching buckets in a row open the rule; an unmeasured bucket does not count and does not reset the run. **Recovery** is how many measured buckets in a row, back on the right side of the threshold, close an open breach; a bucket that cannot prove the value is back to normal does not count. A share threshold is above 0 and below 1. **Window** is how many hours of stored data the preview replays, within the server's limits; it stores nothing and sends nothing to QRadar."
+        },
+        {
+          "p": "Subjects. Only admitted WAF endpoints and IPS entities can be used, because the platform stores no measurement for anything else. A property-watch value must be pinned on its watch first: automatic values are not offered, and a new pin can be used in a rule after the next property-watch collection (up to the PROPERTY_WATCH cadence after the events arrive). Saving or enabling a rule that would exceed the configured cap on enabled rules is refused."
         }
       ],
       "steps": [
@@ -918,12 +939,12 @@
         "Set **Operator** (above, at or above, below, at or below, equal to) and **Threshold**, which carries its unit.",
         "Set **Sustain (buckets)**, how many consecutive buckets must breach before the rule fires, and **Recovery (buckets)**, how many must clear before it recovers. Both default to 2 and must be at least 1. The summary line restates the rule in words.",
         "Set **Severity** (default MEDIUM) and leave **Enabled** unticked while you test; a rule is created disabled by default.",
-        "Read **Draft preview**: it replays the draft over stored aggregates for the chosen **Window** (24 hours by default, or the server's preview limit when that is shorter) and shows how often it would have fired. It stores nothing and sends nothing to QRadar. **Not measured** buckets are gaps, not zero; a **Lower bound** reading is at least the value shown; maintenance buckets do not open, refresh or resolve a breach. If most buckets were not measured, the preview says it cannot describe the period.",
+        "Read **Draft preview**: it replays the draft over stored aggregates for the chosen **Window** (24 hours by default, or the server's preview limit when that is shorter) and shows how often it would have fired. It stores nothing and sends nothing to QRadar. **Not measured** buckets are gaps, not zero; a **Lower bound** reading is at least the value shown (drawn as a diamond mark); maintenance buckets are shaded and do not open, refresh or resolve a breach. If most buckets were not measured, the preview says it cannot describe the period; if none were, no healthy verdict is implied. Choose a longer window when no bucket falls in the window.",
         "Choose **Create rule**, then **Enable** on the rule when the preview is sound. A cap on enabled rules (100 by default) refuses an enable beyond it."
       ],
       "states": [
         {
-          "p": "**Rule evaluation is off because CUSTOM_RULES_ENABLED is false**, in which case enabled rules are not judged (the default); **Breaches are recorded and nothing pages until CUSTOM_RULES_ALERTING_ENABLED is on**, the shadow mode (also the default); **Stale**, **No verdict** and **Subject retired** states on a saved rule; the write notice when the role lacks `custom_rule:write`; **Reload the current rule** after a concurrent change. Deleting a rule resolves its open alert first."
+          "p": "**Rule evaluation is off**, in which case enabled rules are not judged (the default), with `CUSTOM_RULES_ENABLED` under **Details**; **Shadow mode: breaches are recorded, nothing pages**, until `CUSTOM_RULES_ALERTING_ENABLED` is on (also the default); **Stale**, **No verdict** and **Subject retired** states on a saved rule; the write notice when the role lacks `custom_rule:write`; **Reload the current rule** after a concurrent change. Deleting a rule resolves its open alert first."
         }
       ]
     },

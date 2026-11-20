@@ -154,7 +154,7 @@ async function CustomRuleDetailPage({ params }: { params: Promise<{ id: string }
         {rule.last_status === "SUBJECT_RETIRED" && (
           <div className="banner">
             {subject.retiredAt ? (
-              <>{t("retiredAtBefore")} <UtcTime value={subject.retiredAt} />. {t("retiredAtAfter")}</>
+              <>{t("retiredAtBefore")} <UtcTime value={subject.retiredAt} /></>
             ) : (
               t("retired")
             )}

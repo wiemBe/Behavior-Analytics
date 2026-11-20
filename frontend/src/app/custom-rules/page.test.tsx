@@ -2,10 +2,8 @@ import { cleanup, render, screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import CustomRulesPage from "./page";
-import { customRuleLatency } from "@/components/customrules/authoring";
 import { catalog, reader, rule, writer } from "@/components/customrules/fixtures";
 import { resolveRuleSubjects } from "@/components/customrules/subjects";
-import { partsText } from "@/components/cadence/CadenceLatency";
 import { ApiError, api } from "@/lib/api";
 
 vi.mock("@/components/customrules/subjects", () => ({ resolveRuleSubjects: vi.fn() }));
@@ -27,16 +25,16 @@ describe("custom-rule list states", () => {
   it("says what failed and what the analyst can do", async () => {
     vi.spyOn(api, "customRules").mockRejectedValue(new ApiError(500, "secret"));
     render(await CustomRulesPage());
-    expect(screen.getByRole("alert")).toHaveTextContent("backend is reachable");
+    expect(screen.getByRole("alert")).toHaveTextContent("Reload to retry");
     expect(screen.queryByText("secret")).toBeNull();
   });
 
-  it("explains the empty state to a reader and names the granting roles", async () => {
+  it("explains the empty state to a reader and names the permission", async () => {
     vi.spyOn(api, "customRules").mockResolvedValue([]);
     render(await CustomRulesPage());
     expect(screen.getByText("No custom rules exist yet.")).toBeInTheDocument();
     expect(screen.getByText("custom_rule:write").tagName).toBe("CODE");
-    expect(screen.getByText("detection_engineer").tagName).toBe("CODE");
+    expect(screen.queryByText("detection_engineer")).toBeNull();
   });
 
   it("offers the empty-state creation path only to a writer", async () => {
@@ -57,29 +55,27 @@ describe("custom-rule list latency figure", () => {
     family, cadence_seconds: cadence, bucket_seconds: 300, settle_seconds: 120,
   });
   const sentence = () =>
-    screen.getAllByText((_, el) => el?.tagName === "P" && (el.textContent ?? "").startsWith("Rules are judged"));
+    screen.queryAllByText((_, el) => el?.tagName === "P" && (el.textContent ?? "").startsWith("Rules are judged"));
 
-  it("names each subject kind's figure from its family's cadence", async () => {
+  it("states no latency sentence whatever the catalog's cadences (the Guide holds it)", async () => {
     vi.spyOn(api, "customRuleCatalog").mockResolvedValue(
       catalog({ subject_kinds: kinds, cadences: [timing("PHASE_A_VOLUME", 900), timing("PROPERTY_WATCH", 3600)] }),
     );
     vi.spyOn(api, "customRules").mockResolvedValue([rule()]);
     render(await CustomRulesPage());
-    expect(sentence()).toHaveLength(1);
-    expect(sentence()[0]).toHaveTextContent("Log source: up to 22 min; Property watch value: up to 1 h 7 min");
+    expect(sentence()).toHaveLength(0);
   });
 
-  it("names no number when a kind's family is missing from the cadences", async () => {
+  it("states no latency sentence when a kind's family is missing from the cadences", async () => {
     vi.spyOn(api, "customRuleCatalog").mockResolvedValue(
       catalog({ subject_kinds: kinds, cadences: [timing("PHASE_A_VOLUME", 900)] }),
     );
     vi.spyOn(api, "customRules").mockResolvedValue([rule()]);
     render(await CustomRulesPage());
-    expect(sentence()[0]).toHaveTextContent("after each collection of their family");
-    expect(sentence()[0].textContent).not.toMatch(/up to \d/);
+    expect(sentence()).toHaveLength(0);
   });
 
-  it("links Search cadence only for read:search_cadence", async () => {
+  it("links no Search cadence in the list whatever the permission", async () => {
     vi.spyOn(api, "customRuleCatalog").mockResolvedValue(
       catalog({ subject_kinds: kinds, cadences: [timing("PHASE_A_VOLUME", 900), timing("PROPERTY_WATCH", 900)] }),
     );
@@ -90,19 +86,30 @@ describe("custom-rule list latency figure", () => {
     cleanup();
     vi.spyOn(api, "caller").mockResolvedValue({ ...reader, permissions: [], effective_permissions: [...reader.effective_permissions, "read:search_cadence"] });
     render(await CustomRulesPage());
-    expect(screen.getByRole("link", { name: "Search cadence" })).toHaveAttribute("href", "/admin/search-cadence");
-    expect(sentence()[0]).toHaveTextContent("collected 5-minute buckets, up to 22 min after the events arrive");
+    expect(screen.queryByRole("link", { name: "Search cadence" })).toBeNull();
+    expect(sentence()).toHaveLength(0);
   });
 });
 
 describe("custom-rule list honesty", () => {
-  it("names evaluation-off and shadow-mode settings and states latency once", async () => {
+  it("names the evaluation-off state and keeps its setting behind Details", async () => {
     vi.spyOn(api, "customRuleCatalog").mockResolvedValue(catalog({ evaluation_enabled: false, alerting_mode: "shadow" }));
     vi.spyOn(api, "customRules").mockResolvedValue([rule()]);
     render(await CustomRulesPage());
+    expect(screen.getByText("Rule evaluation is off; enabled rules are not judged.")).toBeInTheDocument();
     expect(screen.getByText("CUSTOM_RULES_ENABLED").tagName).toBe("CODE");
-    expect(screen.getByText("CUSTOM_RULES_ALERTING_ENABLED").tagName).toBe("CODE");
-    expect(screen.getAllByText((_, el) => el?.tagName === "P" && el.textContent === partsText(customRuleLatency()))).toHaveLength(1);
+    expect(screen.getByText("CUSTOM_RULES_ENABLED").closest("details")).not.toBeNull();
+    // One banner at most: with evaluation off the shadow line is not added.
+    expect(screen.queryByText(/Shadow mode/)).toBeNull();
+    expect(screen.queryByText("CUSTOM_RULES_ALERTING_ENABLED")).toBeNull();
+  });
+
+  it("says shadow mode in one plain line when evaluation is on", async () => {
+    vi.spyOn(api, "customRuleCatalog").mockResolvedValue(catalog({ evaluation_enabled: true, alerting_mode: "shadow" }));
+    vi.spyOn(api, "customRules").mockResolvedValue([rule()]);
+    render(await CustomRulesPage());
+    expect(screen.getByText("Shadow mode: breaches are recorded, nothing pages.")).toBeInTheDocument();
+    expect(screen.queryByText("Rule evaluation is off; enabled rules are not judged.")).toBeNull();
   });
 
   it("renders every evaluator status in words, with its recorded reason", async () => {
@@ -144,7 +151,9 @@ describe("custom-rule list honesty", () => {
       expect(within(table).getByText(`Reason for ${status}`)).toBeInTheDocument();
     }
     expect(within(table).queryByText("No bucket has been judged yet.")).toBeNull();
-    expect(within(table).getAllByText("Never evaluated").length).toBeGreaterThanOrEqual(2);
+    expect(within(table).getAllByText("Never evaluated").length).toBeGreaterThanOrEqual(1);
+    // The last-evaluated cell is a dash named by the honesty state, not a repeated phrase.
+    expect(within(table).getAllByLabelText("Never evaluated").length).toBeGreaterThanOrEqual(1);
   });
 
   it("omits the reason line when the engine recorded none", async () => {
@@ -171,7 +180,7 @@ describe("custom-rule list honesty", () => {
     const table = screen.getByRole("table", { name: "Custom rules" });
     expect(within(table).getAllByRole("columnheader").map((header) => header.textContent)).toEqual([
       "Name",
-      "Status and reason",
+      "Status",
       "Subject",
       "Condition",
       "Severity",

@@ -91,7 +91,7 @@ describe("the list pages' read-failure sentence", () => {
 });
 
 describe("the rules list health meaning", () => {
-  it("reads the meaning of the verdict in Turkish, and in English", async () => {
+  it("shows the verdict without a per-row meaning phrase, in Turkish and in English", async () => {
     const rule = {
       id: "r-1", qradar_id: 77, name: "Multiple login failures", enabled: true,
       is_building_block: false, rule_type: "EVENT", origin: "USER", owner: "SOC",
@@ -102,10 +102,12 @@ describe("the rules list health meaning", () => {
     vi.spyOn(api, "rules").mockResolvedValue({ items: [rule], total: 1, limit: 25, offset: 0 });
     vi.spyOn(api, "ruleHealthSummary").mockResolvedValue([]);
     const { unmount } = render(await RulesPage({ searchParams: Promise.resolve({}) }));
-    expect(screen.getByText("Beklenen sınırlar içinde tetikleniyor.")).toBeInTheDocument();
+    expect(screen.queryByText("Beklenen sınırlar içinde tetikleniyor.")).toBeNull();
     unmount();
     setTestLocale("en");
     render(await RulesPage({ searchParams: Promise.resolve({}) }));
-    expect(screen.getByText("Firing within expected bounds.")).toBeInTheDocument();
+    // The per-row meaning column is gone (the Guide holds the meanings); the verdict pill stays.
+    expect(screen.queryByText("Firing within expected bounds.")).toBeNull();
+    expect(screen.getByText("HEALTHY")).toBeInTheDocument();
   });
 });

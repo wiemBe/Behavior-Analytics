@@ -22,7 +22,6 @@ export function CostliestRules({ cost }: { cost: CostSection }) {
   const say = asTextTranslator(useTranslations());
   const locale = useLocale() as Locale;
   const backend = useBackendMessage();
-  const label = backend({ text: cost.label, code: cost.label_code, params: cost.label_params });
   const unit = backend({ text: cost.unit, code: cost.unit_code, params: cost.unit_params });
   return (
     <section aria-labelledby="stats-cost">
@@ -31,14 +30,12 @@ export function CostliestRules({ cost }: { cost: CostSection }) {
           {t("heading")}
         </h2>
       </div>
-      <p className="subtitle">{label}</p>
 
       {cost.items.length === 0 ? (
         <div className="notice">
           <p>
             <strong>{t("emptyTitle")}</strong>
           </p>
-          <p>{t("emptyHelp")}</p>
         </div>
       ) : (
         <TableScroll label={t("label")}>
@@ -49,9 +46,8 @@ export function CostliestRules({ cost }: { cost: CostSection }) {
             <thead>
               <tr>
                 <th scope="col">{t("rule")}</th>
-                <th scope="col" className="num">
-                  {t("average")}
-                  <span className="cell-sub">{unit}</span>
+                <th scope="col" className="num" title={unit}>
+                  {t("average")} ({say("rules.capacity.unit")})
                 </th>
               </tr>
             </thead>

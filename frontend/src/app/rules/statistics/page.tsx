@@ -90,7 +90,6 @@ async function RuleStatisticsPage({
       <PageHeader
         guide={guideFor("/rules/statistics")}
         title={t("title")}
-        description={t("description")}
         actions={daySelector}
       />
 

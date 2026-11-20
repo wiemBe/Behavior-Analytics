@@ -268,21 +268,17 @@ describe("CostliestRules label and unit", () => {
   it("renders the benchmark label and unit in Turkish", () => {
     setTestLocale("tr");
     render(<CostliestRules cost={cost()} />);
-    expect(
-      screen.getByText(
-        "QRadar kapasite ölçütü: kuralın ne kadar hızlı değerlendirilebileceği. Düşük değer, " +
-          "değerlendirmenin daha maliyetli olduğunu gösterir. Bu bir tetiklenme hızı değildir.",
-      ),
-    ).toBeInTheDocument();
-    expect(screen.getAllByText("saniyede milyon olay (QRadar birimi)").length).toBeGreaterThan(0);
+    expect(screen.queryByText(/QRadar kapasite ölçütü/)).toBeNull();
+    expect(document.querySelector('th[title="saniyede milyon olay (QRadar birimi)"]')).not.toBeNull();
+    expect(screen.getByRole("table").querySelector("caption")).toHaveTextContent("saniyede milyon olay (QRadar birimi)");
     expect(screen.queryByText(/millions of events per second/)).toBeNull();
   });
 
   it("keeps the API's text in English and for an uncoded label", () => {
     setTestLocale("en");
     const { unmount } = render(<CostliestRules cost={cost()} />);
-    expect(screen.getByText(/QRadar capacity benchmark: how fast/)).toBeInTheDocument();
-    expect(screen.getAllByText("millions of events per second (QRadar's unit)").length).toBeGreaterThan(0);
+    expect(screen.queryByText(/QRadar capacity benchmark: how fast/)).toBeNull();
+    expect(document.querySelector('th[title="millions of events per second (QRadar\'s unit)"]')).not.toBeNull();
     unmount();
     setTestLocale("tr");
     render(
@@ -290,6 +286,7 @@ describe("CostliestRules label and unit", () => {
         cost={cost({ label_code: null, label_params: null, unit_code: null, unit_params: null })}
       />,
     );
-    expect(screen.getByText(/QRadar capacity benchmark: how fast/)).toBeInTheDocument();
+    expect(screen.queryByText(/QRadar capacity benchmark: how fast/)).toBeNull();
+    expect(document.querySelector('th[title="millions of events per second (QRadar\'s unit)"]')).not.toBeNull();
   });
 });

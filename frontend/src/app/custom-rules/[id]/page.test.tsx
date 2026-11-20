@@ -40,17 +40,17 @@ describe("custom-rule detail states", () => {
   it("says what failed without exposing the backend response", async () => {
     vi.spyOn(api, "customRule").mockRejectedValue(new ApiError(500, "secret"));
     await renderPage();
-    expect(screen.getByRole("alert")).toHaveTextContent("Reload the page");
+    expect(screen.getByRole("alert")).toHaveTextContent("Reload to retry");
     expect(screen.queryByText("secret")).toBeNull();
   });
 
-  it("hides write actions and editor from a reader and names granting roles", async () => {
+  it("hides write actions and editor from a reader and names the permission", async () => {
     vi.spyOn(api, "caller").mockResolvedValue(reader);
     await renderPage();
     expect(screen.queryByRole("button", { name: "Disable" })).toBeNull();
     expect(screen.queryByLabelText("custom rule editor")).toBeNull();
     expect(screen.getByText("custom_rule:write").tagName).toBe("CODE");
-    expect(screen.getByText("detection_engineer").tagName).toBe("CODE");
+    expect(screen.queryByText("detection_engineer")).toBeNull();
   });
 
   it("states subject retirement and its UTC time", async () => {
@@ -62,7 +62,7 @@ describe("custom-rule detail states", () => {
     expect(screen.getByText("Subject retired")).toBeInTheDocument();
     expect(screen.queryByText("SUBJECT_RETIRED")).toBeNull();
     expect(screen.getByText(/stopped being tracked/)).toHaveTextContent(
-      "This subject stopped being tracked at 2026-10-15 06:00:00 UTC. The rule draws no verdict from later buckets.",
+      "Subject stopped being tracked at 2026-10-15 06:00:00 UTC",
     );
   });
 });
@@ -82,7 +82,7 @@ describe("custom-rule detail evidence", () => {
     expect(within(active).getByText("at least 19 events/s")).toBeInTheDocument();
     expect(within(active).getByText("14 events/s")).toBeInTheDocument();
     expect(within(active).getByText("2 buckets")).toBeInTheDocument();
-    expect(within(active).getByText(/Nothing paged/)).toBeInTheDocument();
+    expect(within(active).getByText("Shadow mode: nothing paged.")).toBeInTheDocument();
   });
 
   it("links an alerting-mode breach to Alerts", async () => {

@@ -9,17 +9,17 @@ function show(data: Parameters<typeof RuleMatchBlock>[0]["data"], failed = false
 }
 
 describe("the rule-match block", () => {
-  it("asks its question and lists a row with every column the design names", () => {
+  it("lists a row with every column the design names, with no question line", () => {
     show(block());
     expect(screen.getByRole("heading", { name: "Rule-match anomalies" })).toBeInTheDocument();
-    expect(screen.getByText("Which rules changed match rate this span?")).toBeInTheDocument();
+    expect(screen.queryByText("Which rules changed match rate this span?")).toBeNull();
     const table = screen.getByRole("table");
     const heads = within(table).getAllByRole("columnheader").map((h) => h.textContent?.trim());
     expect(heads).toEqual([
       "Rule",
       "Detector",
-      "Observed (matches / window)",
-      "Expected (matches / window)",
+      "Observed (per window)",
+      "Expected (per window)",
       "State",
       "Started (UTC)",
       "Incident",
@@ -42,9 +42,9 @@ describe("the rule-match block", () => {
     );
   });
 
-  it("states the window width and the span in the note", () => {
+  it("states no window-width note (the Guide holds it)", () => {
     show(block());
-    expect(screen.getByText(/A window is 1 h long/)).toHaveTextContent("last 7 days");
+    expect(screen.queryByText(/A window is 1 h long/)).toBeNull();
   });
 
   it("marks a building block on the rule cell", () => {
@@ -71,7 +71,7 @@ describe("the rule-match block", () => {
     );
     expect(screen.getByText("Rule-match collection has not run for this span.")).toBeInTheDocument();
     expect(screen.getByText("Rule-match collection is off.")).toBeInTheDocument();
-    expect(screen.getByRole("status")).toHaveTextContent("This is not a count of zero");
+    expect(screen.getByRole("status")).not.toHaveTextContent("This is not a count of zero");
     expect(screen.queryByRole("table")).toBeNull();
     expect(screen.queryByText("No rule-match anomalies in this span.")).toBeNull();
   });
@@ -97,7 +97,7 @@ describe("the rule-match block", () => {
     expect(screen.getByText("Match rates were not fully measured over this span.")).toBeInTheDocument();
     expect(screen.getByText(SPAN_REASON)).toBeInTheDocument();
     expect(
-      screen.getByText("Windows in the span: 168 expected, 162 complete, 3 missing, 2 truncated, 1 failed."),
+      screen.getByText("Windows: 168 expected, 162 complete, 3 missing, 2 truncated, 1 failed."),
     ).toBeInTheDocument();
     const r = within(screen.getByRole("table")).getAllByRole("row")[1];
     expect(r).toHaveTextContent("Rule storm");
@@ -114,7 +114,7 @@ describe("the rule-match block", () => {
         total: 0,
       }),
     );
-    expect(screen.getByText("No storm was found in the windows that were measured. Silence was not judged.")).toBeInTheDocument();
+    expect(screen.getByText("No storm in measured windows; silence not judged.")).toBeInTheDocument();
     expect(screen.queryByText("No rule-match anomalies in this span.")).toBeNull();
   });
 
@@ -122,7 +122,7 @@ describe("the rule-match block", () => {
     show(block({ items: [row({ row_state: "TRUNCATED", observed: 10000 })] }));
     const r = within(screen.getByRole("table")).getAllByRole("row")[1];
     expect(r).toHaveTextContent("≥ 10,000");
-    expect(r).toHaveTextContent("Truncated window: at least this many matches, not an exact count.");
+    expect(r).toHaveTextContent("Truncated window: lower bound");
   });
 
   it("does not mark a row OK as truncated", () => {
@@ -133,12 +133,12 @@ describe("the rule-match block", () => {
 
   it("says the list is cut and how many incidents there are in total", () => {
     show(block({ items_truncated: true, total: 83, items: [row(), row({ anomaly_id: "b", rule_id: "c" })] }));
-    expect(screen.getByText(/Showing 2 of 83 incidents in this span/)).toBeInTheDocument();
+    expect(screen.getByText(/Showing 2 of 83 incidents/)).toBeInTheDocument();
   });
 
   it("counts the incidents when the list is whole", () => {
     show(block({ total: 1 }));
-    expect(screen.getByText("1 rule-match incident in this span.")).toBeInTheDocument();
+    expect(screen.getByText("1 incident in this span.")).toBeInTheDocument();
   });
 
   it("draws a missing observed or expected count as the dash, never 0", () => {
@@ -161,7 +161,7 @@ describe("the rule-match block", () => {
     show(null, true);
     const alert = screen.getByRole("alert");
     expect(alert).toHaveTextContent("Match anomalies could not be loaded.");
-    expect(alert).toHaveTextContent("The other blocks on this page are not affected.");
+    expect(alert).toHaveTextContent("Reload to retry.");
     expect(screen.queryByRole("table")).toBeNull();
   });
 

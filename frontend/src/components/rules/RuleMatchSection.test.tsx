@@ -11,19 +11,19 @@ function show(s: Parameters<typeof RuleMatchSectionView>[0]["section"], failed =
 const status = () => document.querySelector(".match-status") as HTMLElement;
 
 describe("the rule match-anomaly section", () => {
-  it("asks its question under the heading", () => {
+  it("has the heading and no question line under it", () => {
     show(section());
     expect(screen.getByRole("heading", { name: "Match anomalies" })).toBeInTheDocument();
     expect(
-      screen.getByText("Is this rule's match rate being judged, and is there an open change?"),
-    ).toBeInTheDocument();
+      screen.queryByText("Is this rule's match rate being judged, and is there an open change?"),
+    ).toBeNull();
   });
 
   it("error says what failed and does not render a state", () => {
     show(null, true);
     const alert = screen.getByRole("alert");
     expect(alert).toHaveTextContent("Match anomalies could not be loaded.");
-    expect(alert).toHaveTextContent("The health card above is not affected.");
+    expect(alert).toHaveTextContent("Reload to retry.");
     expect(document.querySelector(".match-status")).toBeNull();
   });
 
@@ -64,7 +64,7 @@ describe("the rule match-anomaly section", () => {
     );
     expect(status()).toHaveTextContent("Not provable");
     expect(status()).toHaveTextContent("(LOWER_BOUND)");
-    expect(screen.getByText("Lower bound (matches are at least this)")).toBeInTheDocument();
+    expect(screen.getByText("Lower bound")).toBeInTheDocument();
   });
 
   it("NOT_EVENT, not measured", () => {
@@ -133,17 +133,17 @@ describe("the rule match-anomaly section", () => {
     );
     expect(status()).toHaveTextContent("Insufficient data");
     expect(status()).toHaveTextContent("The 7-day span is not fully measured");
-    expect(screen.getByText("Windows in the span").nextElementSibling).toHaveTextContent("162 of 168 complete");
-    expect(screen.getByText("Missing, truncated, failed windows").nextElementSibling).toHaveTextContent(
+    expect(screen.getByText("Windows").nextElementSibling).toHaveTextContent("162 of 168 complete");
+    expect(screen.getByText("Window gaps").nextElementSibling).toHaveTextContent(
       "3 missing, 2 truncated, 1 failed",
     );
     expect(screen.getByText("Judged window").nextElementSibling).toHaveTextContent(
       "2026-11-09 09:00:00 UTC to 2026-11-09 10:00:00 UTC",
     );
-    expect(screen.getByText("Windows with a match").nextElementSibling).toHaveTextContent(
-      "62.0 % of baseline windows; at least 80.0 % needed",
+    expect(screen.getByText("Match presence").nextElementSibling).toHaveTextContent(
+      "62.0 %; needs 80.0 %",
     );
-    expect(screen.queryByText("Windows of another width")).toBeNull();
+    expect(screen.queryByText("Other-width windows")).toBeNull();
   });
 
   it("INSUFFICIENT_DATA for a learning storm cell shows samples and weeks, never a rate", () => {
@@ -154,9 +154,9 @@ describe("the rule match-anomaly section", () => {
         counts: { sample_count: 3, minimum_samples: 8, visits: 2, minimum_visits: 4, median: null, median_minimum: null },
       }),
     );
-    expect(screen.getByText("Samples in the cell").nextElementSibling).toHaveTextContent("3 of 8 needed");
-    expect(screen.getByText("Weeks sampled").nextElementSibling).toHaveTextContent("2 of 4 needed");
-    expect(screen.queryByText("Median")).toBeNull();
+    expect(screen.getByText("Samples").nextElementSibling).toHaveTextContent("3 of 8");
+    expect(screen.getByText("Weeks sampled").nextElementSibling).toHaveTextContent("2 of 4");
+    expect(screen.queryByText("Median (per window)")).toBeNull();
   });
 
   it("INSUFFICIENT_DATA never draws an absent count as 0", () => {
@@ -167,8 +167,8 @@ describe("the rule match-anomaly section", () => {
         counts: { expected_windows: 168, complete_windows: 100, missing_windows: null, truncated_windows: 0, failed_windows: null },
       }),
     );
-    expect(screen.getByText("Windows in the span").nextElementSibling).toHaveTextContent("100 of 168 complete");
-    expect(screen.queryByText("Missing, truncated, failed windows")).toBeNull();
+    expect(screen.getByText("Windows").nextElementSibling).toHaveTextContent("100 of 168 complete");
+    expect(screen.queryByText("Window gaps")).toBeNull();
     expect(screen.queryByText(/missing/)).toBeNull();
   });
 
@@ -188,7 +188,7 @@ describe("the rule match-anomaly section", () => {
     expect(status()).toHaveTextContent("Judged");
     expect(status()).toHaveTextContent("Judged through 2026-11-09 10:00 UTC. No open match anomaly.");
     expect(screen.queryByText("Judged through")).toBeNull();
-    expect(screen.getByText("No open or recent match anomaly is stored for this rule.")).toBeInTheDocument();
+    expect(screen.getByText("No open or recent incident.")).toBeInTheDocument();
     expect(screen.queryByRole("table")).toBeNull();
   });
 
@@ -262,8 +262,8 @@ describe("the rule match-anomaly section", () => {
 
   it("with no incident under a state that is not judged, says that is not a judgment", () => {
     show(section({ state: "DISABLED", reason: "Disabled in the inventory sync.", incidents: [] }));
-    expect(screen.getByText(/That is not a judgment/)).toBeInTheDocument();
-    expect(screen.queryByText("No open or recent match anomaly is stored for this rule.")).toBeNull();
+    expect(screen.getByText("No incident stored; match rate not judged.")).toBeInTheDocument();
+    expect(screen.queryByText("No open or recent incident.")).toBeNull();
   });
 
   it("falls back to a stated gap when the API gave no reason", () => {

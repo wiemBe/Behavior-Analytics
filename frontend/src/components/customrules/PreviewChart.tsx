@@ -264,7 +264,6 @@ export function PreviewChart({ preview, subjectLabel }: { preview: CustomRulePre
     return (
       <div className="notice">
         <p><strong>{t("emptyTitle")}</strong></p>
-        <p>{t("emptyHelp")}</p>
       </div>
     );
   }
@@ -294,8 +293,6 @@ export function PreviewSummary({ preview }: { preview: CustomRulePreview }) {
       </dl>
       {majority && <p className="cr-honesty">{t("majority")}</p>}
       {preview.measured_count === 0 && <p className="cr-honesty">{t("noneMeasured")}</p>}
-      {lowerBounds.length > 0 && <p className="cr-honesty">{t("lowerHelp")}</p>}
-      {maintenance > 0 && <p className="cr-honesty">{t("maintenanceHelp")}</p>}
     </div>
   );
 }

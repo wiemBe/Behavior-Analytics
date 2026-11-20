@@ -108,8 +108,8 @@ describe("custom-rule preview in Turkish", () => {
     );
     render(<PreviewSummary preview={preview()} />);
     expect(screen.getByLabelText("Önizleme özeti")).toHaveTextContent("Ölçülen1 zaman dilimi");
-    expect(screen.getByText(/Elmas işaretleri alt sınırdır/)).toBeInTheDocument();
-    expect(screen.getByText(/Bakım zaman dilimleri gölgelenir/)).toBeInTheDocument();
+    expect(screen.queryByText(/Elmas işaretleri alt sınırdır/)).toBeNull();
+    expect(screen.queryByText(/Bakım zaman dilimleri gölgelenir/)).toBeNull();
   });
 
   it("hands the chart the Turkish axis name and sentence through the mounted component", () => {
@@ -125,7 +125,7 @@ describe("custom-rule preview in Turkish", () => {
   it("designs the empty preview in Turkish", () => {
     render(<PreviewChart preview={preview({ buckets: [] })} subjectLabel="edge-waf" />);
     expect(screen.getByText("Bu önizleme penceresine düşen zaman dilimi yok.")).toBeInTheDocument();
-    expect(screen.getByText(/Daha uzun bir pencere seçin/)).toBeInTheDocument();
+    expect(screen.queryByText(/Daha uzun bir pencere seçin/)).toBeNull();
   });
 });
 
@@ -154,10 +154,10 @@ describe("custom-rule status and write states in Turkish", () => {
     ))).toBeInTheDocument();
   });
 
-  it("names the write permission and granting role as code", () => {
+  it("names the write permission as code, without the granting role", () => {
     render(<CustomRuleWriteNotice />);
     expect(screen.getByText("Kural düzenleyici gizlendi.")).toBeInTheDocument();
     expect(screen.getByText("custom_rule:write").tagName).toBe("CODE");
-    expect(screen.getByText("detection_engineer").tagName).toBe("CODE");
+    expect(screen.queryByText("detection_engineer")).toBeNull();
   });
 });

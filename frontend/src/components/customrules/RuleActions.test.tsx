@@ -27,7 +27,7 @@ describe("custom-rule write actions", () => {
     render(<RuleActions rule={rule()} />);
     fireEvent.click(screen.getByRole("button", { name: "Delete" }));
     expect(screen.getByRole("alert")).toHaveTextContent("open alert");
-    expect(screen.getByRole("alert")).toHaveTextContent("resolved before");
+    expect(screen.getByRole("alert")).toHaveTextContent("is resolved first");
     fireEvent.click(screen.getByRole("button", { name: "Delete rule" }));
     await screen.findByText(/open alert/);
     expect(api.deleteCustomRule).toHaveBeenCalledWith("rule-1");
@@ -38,6 +38,6 @@ describe("custom-rule write actions", () => {
     vi.spyOn(api, "updateCustomRule").mockRejectedValue(new Error("down"));
     render(<RuleActions rule={rule()} />);
     fireEvent.click(screen.getByRole("button", { name: "Disable" }));
-    expect(await screen.findByRole("alert")).toHaveTextContent("Reload it and try again");
+    expect(await screen.findByRole("alert")).toHaveTextContent("Reload to retry");
   });
 });

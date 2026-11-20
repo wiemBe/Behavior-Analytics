@@ -40,7 +40,6 @@ export function StoredRulePreview({
   return (
     <div className="cr-stored-preview panel">
       <div className="cr-preview-head">
-        <p>{t("description")}</p>
         <div className="actions">
           <label htmlFor={hoursId}>
             {t("window")}

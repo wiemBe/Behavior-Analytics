@@ -66,9 +66,11 @@ describe("custom-rule preview honesty", () => {
     }
   });
 
-  it("labels lower-bound and maintenance buckets beside the chart", () => {
+  it("counts lower-bound and maintenance buckets in the summary without a prose legend", () => {
     render(<PreviewSummary preview={preview()} />);
-    expect(screen.getByText(/Diamond marks are lower bounds/)).toBeInTheDocument();
-    expect(screen.getByText(/Maintenance buckets are shaded/)).toBeInTheDocument();
+    expect(screen.getByText("Lower bound")).toBeInTheDocument();
+    expect(screen.getByText("Maintenance")).toBeInTheDocument();
+    expect(screen.queryByText(/Diamond marks are lower bounds/)).toBeNull();
+    expect(screen.queryByText(/Maintenance buckets are shaded/)).toBeNull();
   });
 });
