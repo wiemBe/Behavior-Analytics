@@ -193,11 +193,14 @@
         },
         {
           "p": "The banner above the worklist names sources with no adequate baseline. They are not judged, so no anomaly count on this page includes them."
+        },
+        {
+          "p": "The worklist ranks the most recent active anomalies (up to 200); the link under it opens the full list. The sources in the **Insufficient data** banner are excluded from every anomaly count above it. The page covers log sources only; WAF, IPS and property-watch anomalies have their own pages."
         }
       ],
       "states": [
         {
-          "p": "The no-adequate-baseline banner; **Nothing is currently anomalous, deviating materially from its baseline, or waiting on a baseline.**; the active list failed to load."
+          "p": "The no-adequate-baseline banner; **Nothing is anomalous, deviating, or waiting on a baseline.**; the active list failed to load."
         }
       ]
     },
@@ -271,11 +274,17 @@
         },
         {
           "p": "The Low-volume model is a shadow view: no detector uses it and it opens no alert. Each cell shows how many buckets of the last 28 days fell below the tail threshold p (p = 0.001: a bucket counts when its count is at least that unlikely under the fitted model). A thin cell's median is pulled toward the source's pooled median with k = 8, so the weight on the cell is n / (n + k). A cell proposes a new normal when the last 7 days' median leaves its own 5th to 95th percentile range with at least 8 samples on both sides; proposals are never written back. Calibration counts the replayed flags that fall on incidents closed as NOISE; it is evidence for a later model, not a verdict. A missing bucket is a gap, not a zero."
+        },
+        {
+          "p": "On the detail page, **Observed EPS** is the most recent collected interval, **Expected EPS** is the seasonal baseline for this weekday and hour, **Deviation** is observed against expected, and **Last event** is the most recent event observed. A bucket that was only partly collected is an undercount and never enters a baseline or drives a verdict; a bucket that was not collected says nothing about whether the source was sending. Gaps in the observed line are intervals that were not fully collected; they are not zero traffic."
+        },
+        {
+          "p": "The state line under the header: a candidate is one abnormal interval and becomes an incident after consecutive abnormal intervals; a recovering incident is back inside the band and stays open until enough consecutive normal intervals confirm it; a suppressed one was detected during maintenance and is recorded but never notified. A baseline with zero variability (most samples identical, normal for a steady low-volume source) cannot support a z-score; the deterministic expected-band test judges instead, which is sound but weaker evidence. A bucket with no verdict after repeated failed evaluations is given up and counted as not judged; the next attempt runs at the next evaluation tick."
         }
       ],
       "states": [
         {
-          "p": "NONE, DELAYED, PARTIAL or CURRENT collection; **No metric buckets were collected for this window. This is an absence of collection, not an observation of zero traffic.**; a failed metric or anomaly read."
+          "p": "NONE, DELAYED, PARTIAL or CURRENT collection; **No metric buckets collected in this window; not zero traffic.**; a failed metric or anomaly read."
         }
       ]
     },
@@ -436,12 +445,15 @@
           "p": "The page heading is **Log-source fleet**. **Window** offers **1 hour**, **24 hours** and **7 days**. The class table gives **Class**, **Events**, **Mean EPS**, **Expected EPS**, **Window completeness**, **Open incidents** and **Top sources by events**. Events and mean EPS count complete buckets only. **Expected EPS** is the sum of the sources that have a reliable baseline; a source counts only when every seasonal cell the window spans is reliable. Where the window is incomplete, the row says how many buckets are partial or missing."
         },
         {
-          "p": "**QRadar internal sources** are counted apart from the classes and carry no volume figure. **Review queue** counts new sources, sources with a conflicting class and unclassified sources; it opens **Fleet sources**. The page note explains that complete buckets are the basis of every volume figure."
+          "p": "**QRadar internal sources** are counted apart from the classes and carry no volume figure. **Review queue** counts new sources, sources with a conflicting class and unclassified sources; it opens **Fleet sources**."
+        },
+        {
+          "p": "A class row's expected figure names how many of its sources have a baseline (for example 2 of 4 sources); a class covered in part says so. A line such as 768 of 1,152 from QRadar history, not judged, counts complete buckets that were read back from QRadar history instead of collected live. The page covers the last window only; the review queue counts are taken now."
         }
       ],
       "states": [
         {
-          "p": "**Not measured**; **No source has a baseline yet.**; **Incomplete**; **No complete bucket in the window.**; the forbidden notice."
+          "p": "**Not measured**; **No baseline yet**; **Incomplete**; **No complete bucket.**; the forbidden notice."
         }
       ]
     },
@@ -477,6 +489,9 @@
         },
         {
           "p": "**Volume by source** charts one source over **6 hours**, **24 hours** or **7 days**, with **What admission did** and **Top senders in this bucket**. Shaded buckets were not measured."
+        },
+        {
+          "p": "A bucket's admission lines say how many new senders were admitted and are tracked by name, how many were below the admission threshold and only counted, how many were refused because the new-sender quota was full, and how many are not tracked by name. Refused and invalid senders are counted and never stored by name, so they cannot appear in the top senders. A reviewed or dismissed sender leaves the New queue when the list is reloaded. Click a bar in the chart to select its bucket."
         }
       ],
       "states": [
@@ -701,6 +716,9 @@
         },
         {
           "p": "The detail page, **Log Source Detail**, shows the type, criticality and owner, then **Configuration**: description, business hours, expected interval, last event and QRadar status. It links to the source's behavior page for the EPS trend, anomaly timeline and baseline overlay. An empty inventory says to run an inventory sync; the platform does not invent a source list."
+        },
+        {
+          "p": "A source in maintenance shows **maint** beside its name. **Status** is the status QRadar reports for the source; **Anomalies** counts its open anomalies."
         }
       ],
       "states": [
@@ -828,7 +846,7 @@
       ],
       "states": [
         {
-          "p": "**Not measured** and **No source has a baseline yet.** on the fleet view; **No anomalies match these filters.**; **No events were observed for this source.** when the baseline has no expectation; an incomplete bucket; **Source is currently silent** beside a collecting source; **Last event: never**; the forbidden notice on a page whose read permission the role lacks."
+          "p": "**Not measured** and **No baseline yet** on the fleet view; **No anomalies match these filters.**; **No events were observed for this source.** when the baseline has no expectation; an incomplete bucket; **Source is currently silent** beside a collecting source; **Last event: never**; the forbidden notice on a page whose read permission the role lacks."
         }
       ],
       "permission": "`read:anomalies` (`read:fleet` and `read:log_sources` on their pages)"

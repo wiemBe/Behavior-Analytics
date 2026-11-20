@@ -76,7 +76,7 @@ describe("/log-sources in Turkish", () => {
     vi.spyOn(api, "logSources").mockResolvedValue(many);
     render(await LogSourcesPage());
     expect(screen.getByRole("heading", { level: 1, name: "Log source'lar" })).toBeInTheDocument();
-    expect(screen.getByText(/^1\.204 kaynak\. QRadar'a ait alanlar eşitlemede yenilenir/)).toBeInTheDocument();
+    expect(screen.getByText(/^1\.204 kaynak\.$/)).toBeInTheDocument();
     const table = screen.getByRole("table", { name: "Log source'lar" });
     for (const name of ["Ad", "Tür", "Kritiklik", "Durum", "Anomaliler", "Son olay"]) {
       expect(within(table).getByRole("columnheader", { name })).toBeInTheDocument();
@@ -103,7 +103,7 @@ describe("/log-sources in Turkish", () => {
     vi.spyOn(api, "logSources").mockRejectedValueOnce(new ApiError(500, "x"));
     render(await LogSourcesPage());
     expect(screen.getByRole("alert")).toBeInTheDocument();
-    expect(screen.getByText(/^QRadar'a ait alanlar eşitlemede yenilenir/)).toBeInTheDocument();
+    expect(screen.queryByText(/^QRadar'a ait alanlar eşitlemede yenilenir/)).toBeNull();
     expect(screen.queryByText(/kaynak\. QRadar/)).toBeNull();
   });
 

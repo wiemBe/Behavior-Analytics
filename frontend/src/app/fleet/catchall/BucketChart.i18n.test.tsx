@@ -100,7 +100,7 @@ describe("BucketChart in Turkish", () => {
     setTestLocale("en");
     const tip = draw();
     expect(tip(3)).toContain("Events: at least 900 events / 5 min");
-    expect(tip(1)).toContain("Not measured (no row was stored for this bucket)");
+    expect(tip(1)).toContain("Not measured (no row stored)");
     expect(option().yAxis.name).toBe("Volume (events / 5 min)");
     expect(option().yAxis.axisLabel.formatter).toBeUndefined();
   });

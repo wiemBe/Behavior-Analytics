@@ -134,10 +134,7 @@ async function BehaviorPage() {
       <PageHeader
         guide={guideFor("/behavior")}
         title={t("title")}
-        description={t.rich("description", {
-          shown: count(summary.monitored_sources),
-          utc: (chunks) => <span className="when-utc">{chunks}</span>,
-        })}
+        description={t("description", { shown: count(summary.monitored_sources) })}
       />
 
       {/* --- level 1: the four counters that decide whether to keep reading -- */}
@@ -156,7 +153,6 @@ async function BehaviorPage() {
           label={t("stats.highDeviation")}
           value={count(highDeviation)}
           tone={highDeviation > 0 ? "warn" : undefined}
-          note={t("stats.highDeviationNote")}
         />
         {/* Neutral tone, never green: this is an observability gap, and
             colouring it as healthy is the failure mode this card exists to

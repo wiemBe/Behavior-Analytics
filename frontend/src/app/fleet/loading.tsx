@@ -9,7 +9,6 @@ export default function Loading() {
     <BoundaryLoading
       title={t("title")}
       what={t("loadingWhat")}
-      description={t("description")}
       actions={<WindowSwitch active="24h" />}
     />
   );

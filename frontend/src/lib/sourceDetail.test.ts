@@ -166,7 +166,7 @@ describe("baselineQuality", () => {
   it("explains a zero MAD as a property, not as an error", () => {
     const q = baselineQuality(source(), [cell({ mad: 0, sample_count: 9 })]);
     expect(q.status).toBe("DEGENERATE");
-    expect(q.explanation).toContain("normal for a steady low-volume source");
+    expect(q.explanation).toContain("most of the 9 samples are identical");
     expect(q.explanation).toContain("deterministic expected-band test");
   });
 
@@ -177,7 +177,7 @@ describe("baselineQuality", () => {
 
   it("states the cell's completeness in the shared percent spelling", () => {
     const q = baselineQuality(source(), [cell({ is_reliable: false, completeness: 0.9 })]);
-    expect(q.explanation).toContain("at 90.0\u00A0% collection completeness");
+    expect(q.explanation).toContain("at 90.0\u00A0% completeness");
     expect(q.explanation).not.toMatch(/\d%/);
   });
 });
@@ -213,13 +213,13 @@ describe("collectionHealth", () => {
   it("calls a stale watermark delayed without calling the source silent", () => {
     const h = collectionHealth(fullWindow(1), "2026-07-20T09:00:00Z", 3600, now);
     expect(h.status).toBe("DELAYED");
-    expect(h.explanation).toContain("says nothing about whether it is sending events");
+    expect(h.explanation).toContain("Recent volume is unknown");
   });
 
   it("reports no collection as an absence, not as zero traffic", () => {
     const h = collectionHealth([], null, 3600, now);
     expect(h.status).toBe("NONE");
-    expect(h.explanation).toContain("not an observation that the source is silent");
+    expect(h.explanation).toContain("not a silent source");
   });
 
   it("never reports a collection failure it has not observed", () => {

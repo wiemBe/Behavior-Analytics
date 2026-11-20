@@ -111,7 +111,7 @@ describe("/fleet in Turkish", () => {
     expect(screen.getByText("İnceleme kuyruğu:")).toBeInTheDocument();
     expect(screen.getByText("4 etkin, 1 devre dışı. Yukarıdaki sınıflardan ayrı sayılırlar ve burada hacim değeri taşımazlar.")).toBeInTheDocument();
     expect(screen.getByRole("heading", { level: 2, name: "QRadar dahili kaynakları" })).toBeInTheDocument();
-    expect(screen.getByText(/Beklenen EPS, baseline'ı olan kaynaklar/)).toBeInTheDocument();
+    expect(screen.queryByText(/Beklenen EPS, baseline'ı olan kaynaklar/)).toBeNull();
   });
 
   it("says what is empty and why when no class is returned", async () => {
@@ -178,7 +178,7 @@ describe("the class table in Turkish", () => {
     expect(row.textContent).toContain(`1.234,50${NB}EPS`);
     expect(row.textContent).toContain(`1.500,00${NB}EPS`);
     expect(row.textContent).toContain(`Baseline'ı olan kaynaklar: 2${NB}/${NB}4.`);
-    expect(row).toHaveTextContent("Sınıfın yalnızca bir bölümünü kapsar.");
+    expect(row).not.toHaveTextContent("Sınıfın yalnızca bir bölümünü kapsar.");
     expect(row).toHaveTextContent("yalnızca tamamlanmış zaman dilimleri");
     expect(row).toHaveTextContent("Eksik");
     expect(row.textContent).toContain(`270${NB}/${NB}288 zaman dilimi tamamlandı`);

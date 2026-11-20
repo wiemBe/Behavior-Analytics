@@ -41,7 +41,6 @@ import {
   statusTone,
   type StatusFilter,
 } from "./catchall";
-import { unitGap } from "@/i18n/measures";
 
 import "@/components/ui/controls.css";
 
@@ -142,13 +141,7 @@ function SenderRow({
         {sender.events_24h == null ? (
           <span className="muted">{formatEvents24h(null, text)}</span>
         ) : (
-          <>
-            {formatEvents24h(sender.events_24h, text)}
-            <span className="unit">
-              {unitGap(text.locale)}
-              {t("eventsUnit")}
-            </span>
-          </>
+formatEvents24h(sender.events_24h, text)
         )}
       </td>
       <td>
@@ -510,14 +503,6 @@ export function SendersQueue({
                     </tbody>
                   </table>
                 </TableScroll>
-                <ul className="table-notes">
-                  <li>
-                    {t.rich("note", {
-                      b: (chunks) => <strong>{chunks}</strong>,
-                      i: (chunks) => <em>{chunks}</em>,
-                    })}
-                  </li>
-                </ul>
                 {rows.length < total && (
                   <div className="load-more">
                     <button

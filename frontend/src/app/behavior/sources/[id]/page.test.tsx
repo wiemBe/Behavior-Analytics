@@ -600,7 +600,7 @@ describe("anomalies", () => {
     );
 
     expect(screen.getByRole("alert")).toHaveTextContent(
-      /Whether an incident is currently open, a candidate, or recovering is unknown/,
+      /open status is unknown/,
     );
     expect(screen.queryByText(/No incident is currently open/)).toBeNull();
   });
@@ -633,10 +633,8 @@ describe("baseline quality", () => {
   it("explains zero variability without presenting it as an error", async () => {
     await renderPage({ cells: [cell({ mad: 0, sample_count: 9 })] });
     expect(screen.getByText("Zero variability")).toBeInTheDocument();
-    expect(
-      screen.getByText(/normal for a steady low-volume source/i),
-    ).toBeInTheDocument();
-    expect(screen.getByText(/deterministic expected-band test/i)).toBeInTheDocument();
+    expect(screen.getByText(/most of the \d+ samples are identical/i)).toBeInTheDocument();
+    expect(screen.getByText(/expected-band test judges instead/i)).toBeInTheDocument();
     // Once in the notes line under the metrics, once in the full explanation.
     expect(screen.getAllByText(/Baseline variability is zero/).length).toBeGreaterThan(1);
   });
@@ -699,7 +697,7 @@ describe("collection health", () => {
     });
     expect(screen.getByText("Delayed")).toBeInTheDocument();
     expect(
-      screen.getByText(/says nothing about whether it is sending events/i),
+      screen.getByText(/Recent volume is unknown/i),
     ).toBeInTheDocument();
   });
 
@@ -768,13 +766,13 @@ describe("time range", () => {
 
   it("says a 7-day widget was narrowed to 24 hours", async () => {
     await renderPage({ params: { range: "24", from: "7d" } });
-    expect(screen.getByText(/longest window this page can show/)).toBeInTheDocument();
+    expect(screen.getByText(/longest window here/)).toBeInTheDocument();
     expect(screen.getByText(/7 days/)).toBeInTheDocument();
   });
 
   it("does not show the 7-day note on an ordinary range", async () => {
     await renderPage({ params: { range: "6" } });
-    expect(screen.queryByText(/longest window this page can show/)).toBeNull();
+    expect(screen.queryByText(/longest window here/)).toBeNull();
   });
 
   it("offers the range as keyboard-operable links", async () => {

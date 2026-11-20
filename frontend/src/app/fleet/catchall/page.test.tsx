@@ -17,14 +17,13 @@ async function renderPage() {
 beforeEach(() => vi.restoreAllMocks());
 
 describe("CatchallPage", () => {
-  it("keeps the time zone and the lower-bound rules after the d40 text cut", async () => {
+  it("states no zone sentence or footnote; the unknown figure keeps its lower-bound title", async () => {
     vi.spyOn(catchallApi, "sources").mockResolvedValue(sources());
     vi.spyOn(catchallApi, "senders").mockResolvedValue({ items: [sender()], total: 1, limit: 50, offset: 0 });
     await renderPage();
-    expect(document.body.textContent).toContain("Times are UTC.");
-    expect(document.body.textContent).toContain(
-      "24 h events is a lower bound; unknown means no stored list named the sender, not zero.",
-    );
+    expect(document.body.textContent).not.toContain("Times are UTC.");
+    expect(document.body.textContent).not.toContain("is a lower bound; unknown means");
+    expect(screen.getAllByTitle(/Lower bound from stored top-sender lists/).length).toBeGreaterThan(0);
   });
 
   it("opens with the queue, then the volume, under one h1", async () => {
@@ -38,8 +37,8 @@ describe("CatchallPage", () => {
     const h2 = screen.getAllByRole("heading", { level: 2 }).map((h) => h.textContent);
     expect(h2).toEqual(["Senders queue"]);
     expect(screen.getByRole("region", { name: "volume stub" })).toBeInTheDocument();
-    // What a sender is, said once.
-    expect(screen.getAllByText(/a candidate unconfigured device, not a verdict/)).toHaveLength(1);
+    // What a sender is lives in the Guide, not on the page.
+    expect(screen.queryByText(/a candidate unconfigured device, not a verdict/)).toBeNull();
   });
 
   it("names the catch-all types when the inventory holds no catch-all source", async () => {

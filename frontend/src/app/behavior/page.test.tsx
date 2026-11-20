@@ -227,7 +227,7 @@ describe("needs attention", () => {
     await renderPage();
 
     expect(
-      screen.getByText(/Sources that are simply normal are not listed here/i),
+      screen.getByText(/Nothing is anomalous, deviating, or waiting on a baseline/i),
     ).toBeInTheDocument();
   });
 
@@ -291,7 +291,7 @@ describe("insufficient data", () => {
 
     expect(screen.getByText(/7 of 12 monitored sources/i)).toBeInTheDocument();
     expect(
-      screen.getByText(/not being judged, so no anomaly count above covers them/i),
+      screen.getByText(/Anomaly counts above exclude them/i),
     ).toBeInTheDocument();
   });
 
@@ -308,7 +308,7 @@ describe("insufficient data", () => {
     await renderPage();
 
     expect(
-      screen.getByText("Not being judged — a zero above does not cover these."),
+      screen.getByText("Not judged."),
     ).toBeInTheDocument();
   });
 
@@ -341,7 +341,7 @@ describe("recently resolved", () => {
     mockApi();
     await renderPage();
 
-    expect(screen.getByText(/No anomalies have been resolved yet/i)).toBeInTheDocument();
+    expect(screen.getByText(/No anomalies resolved yet/i)).toBeInTheDocument();
   });
 
   it("uses the true 24-hour count and states when the table is capped", async () => {
@@ -355,7 +355,7 @@ describe("recently resolved", () => {
 
     expect(screen.getByText("Resolved, 24 h").nextSibling).toHaveTextContent("14");
     expect(
-      screen.getByText("Latest 6 of the 10 most recently resolved anomalies."),
+      screen.getByText("Latest 6 of 10."),
     ).toBeInTheDocument();
     expect(
       within(screen.getByRole("region", { name: "Recently resolved anomalies" }))
@@ -454,8 +454,8 @@ describe("error states", () => {
     await renderPage();
 
     expect(screen.queryByText(/Nothing is currently anomalous/)).toBeNull();
-    expect(screen.getByText(/2 active anomalies could not be matched/)).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "View all active anomalies" })).toHaveAttribute(
+    expect(screen.getByText(/2 active anomalies not matched to a row/)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "View all anomalies" })).toHaveAttribute(
       "href",
       "/anomalies?active_only=true",
     );
@@ -491,9 +491,9 @@ describe("active anomaly cap", () => {
     await renderPage();
 
     expect(
-      screen.getByText(/Ranked from the 200 most recent of 237 active anomalies/),
+      screen.getByText(/Ranked from 200 of 237 active anomalies/),
     ).toBeInTheDocument();
-    expect(screen.getAllByRole("link", { name: "View all active anomalies" })[0]).toHaveAttribute(
+    expect(screen.getAllByRole("link", { name: "View all anomalies" })[0]).toHaveAttribute(
       "href",
       "/anomalies?active_only=true",
     );

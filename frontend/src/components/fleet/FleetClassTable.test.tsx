@@ -69,7 +69,7 @@ describe("FleetClassTable", () => {
     const r = row("Windows");
     expect(within(r).getAllByText("Not measured")).toHaveLength(2);
     // The reason is stated once, under Events, not repeated under Mean EPS.
-    expect(within(r).getAllByText("No complete bucket in the window.")).toHaveLength(1);
+    expect(within(r).getAllByText("No complete bucket.")).toHaveLength(1);
     expect(within(r).queryByText(/^0(\.00)?$/)).toBeNull();
     expect(within(r).getByText("Incomplete")).toBeInTheDocument();
   });
@@ -90,7 +90,7 @@ describe("FleetClassTable", () => {
     );
     const r = row("WAF");
     expect(within(r).getByLabelText("No expectation")).toHaveTextContent("—");
-    expect(within(r).getByText(/no source has a baseline/i)).toBeInTheDocument();
+    expect(within(r).getByText(/no baseline yet/i)).toBeInTheDocument();
   });
 
   it("states the basis of a partial expectation", () => {
@@ -100,8 +100,8 @@ describe("FleetClassTable", () => {
         windowName="24 hours"
       />,
     );
-    expect(screen.getByText(/3 of 6 sources with a baseline/)).toBeInTheDocument();
-    expect(screen.getByText(/covers part of the class only/i)).toBeInTheDocument();
+    expect(screen.getByText("3 of 6 sources")).toBeInTheDocument();
+    expect(screen.queryByText(/covers part of the class only/i)).toBeNull();
   });
 
   it("shows the incomplete window next to the figures it qualifies", () => {
@@ -125,12 +125,12 @@ describe("FleetClassTable", () => {
     expect(within(r).getByText("Incomplete")).toBeInTheDocument();
     expect(within(r).getByText("80 of 100 buckets complete")).toBeInTheDocument();
     expect(within(r).getByText("12 partial, 8 missing")).toBeInTheDocument();
-    expect(within(r).getByText("complete buckets only")).toBeInTheDocument();
+    expect(within(r).getByText("complete only")).toBeInTheDocument();
   });
 
   it("adds the history share only when complete buckets came from history", () => {
     const live = render(<FleetClassTable classes={[cls()]} windowName="24 hours" />);
-    expect(screen.queryByText(/complete buckets were read from QRadar history/)).toBeNull();
+    expect(screen.queryByText(/from QRadar history/)).toBeNull();
     live.unmount();
 
     render(
@@ -151,7 +151,7 @@ describe("FleetClassTable", () => {
     );
     expect(
       screen.getByText(
-        "864 of 1,152 complete buckets were read from QRadar history, not judged.",
+        "864 of 1,152 from QRadar history, not judged.",
       ),
     ).toBeInTheDocument();
   });

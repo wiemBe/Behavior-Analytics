@@ -79,9 +79,10 @@ describe("the worklist's observed / expected cell", () => {
 });
 
 describe("the header", () => {
-  it("keeps 'Times are UTC.' together so the zone never sits alone on a line", async () => {
+  it("states the monitored count and no longer repeats that times are UTC", async () => {
     await renderOverview([unbaselined()]);
-    expect(screen.getByText("Times are UTC.")).toHaveClass("when-utc");
+    expect(screen.queryByText("Times are UTC.")).toBeNull();
+    expect(screen.getByText(/monitored sources$/)).toBeInTheDocument();
   });
 });
 

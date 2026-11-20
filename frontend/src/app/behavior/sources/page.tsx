@@ -109,11 +109,7 @@ async function SourcesIndexPage({
 
   return (
     <>
-      <PageHeader
-        guide={guideFor("/behavior/sources")}
-        title={t("title")}
-        description={t("description")}
-      />
+      <PageHeader guide={guideFor("/behavior/sources")} title={t("title")} />
 
       <SourceFilters query={query} />
 

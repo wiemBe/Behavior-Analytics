@@ -58,11 +58,7 @@ async function CatchallPage() {
 
   return (
     <>
-      <PageHeader
-        guide={guideFor("/fleet/catchall")}
-        title={t("title")}
-        description={t("description")}
-      />
+      <PageHeader guide={guideFor("/fleet/catchall")} title={t("title")} />
       {error ? (
         <div className="notice" role="alert">
           <p>

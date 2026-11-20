@@ -273,7 +273,6 @@ export function SourceVolume({ sources, now }: { sources: CatchallSourceList; no
             >
               {t("later")}
             </button>
-            <span className="muted">{t("orClick")}</span>
           </div>
 
           {slot && (
@@ -349,7 +348,6 @@ export function SourceVolume({ sources, now }: { sources: CatchallSourceList; no
                         <li key={line}>{line}</li>
                       ))}
                     </ul>
-                    <p className="muted">{text.say("catchall.admission.refusedNote")}</p>
                   </div>
 
                   <div className="bucket-top">

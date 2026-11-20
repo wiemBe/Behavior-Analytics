@@ -112,7 +112,7 @@ describe("override", () => {
     await userEvent.click(screen.getByRole("button", { name: "Apply" }));
     const alert = await screen.findByRole("alert");
     expect(alert).toHaveTextContent("log_source:write");
-    expect(alert).toHaveTextContent("Nothing was changed");
+    expect(alert).toHaveTextContent(/cannot change a source's classification/);
     expect(screen.getByText("Name rule")).toBeInTheDocument();
   });
 

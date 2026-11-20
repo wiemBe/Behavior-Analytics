@@ -35,9 +35,10 @@ describe("D40-2 page text keeps the facts the analyst acts on", () => {
     expect(((en as unknown as Tree).qradarAccess as Tree).page).not.toHaveProperty("description");
   });
 
-  it("keeps the time zone on the pages whose description still carries a fact", () => {
-    expect(get("behavior", "overview.description")).toContain("Times are UTC.");
-    expect(get("catchall", "page.description")).toContain("Times are UTC.");
+  it("drops 'Times are UTC.' from the overview description and the catch-all header (UIQ-8h1)", () => {
+    expect(get("behavior", "overview.description")).not.toContain("Times are UTC.");
+    expect(get("behavior", "overview.description")).toContain("{shown} monitored sources");
+    expect(get("catchall", "page.description")).not.toContain("Times are UTC.");
   });
 
   it("SIEM load keeps the stale threshold on the page and the dash rule and refused meaning in the guide", async () => {
@@ -50,7 +51,7 @@ describe("D40-2 page text keeps the facts the analyst acts on", () => {
 
   it("behavior banner keeps INSUFFICIENT_DATA and drops the third statement", () => {
     expect(get("behavior", "overview.banner.lead")).toContain("no adequate baseline");
-    expect(get("behavior", "overview.banner.rest")).toContain("not being judged, so no anomaly count above covers");
+    expect(get("behavior", "overview.banner.rest")).toContain("Anomaly counts above exclude");
     expect(get("behavior", "overview.banner.rest")).not.toContain("clean bill of health");
   });
 

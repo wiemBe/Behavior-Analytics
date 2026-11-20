@@ -65,7 +65,6 @@ async function FleetPage({
       <PageHeader
         guide={guideFor("/fleet")}
         title={t("title")}
-        description={t("description")}
         actions={<WindowSwitch active={window} />}
       />
 
@@ -121,11 +120,6 @@ async function FleetPage({
           ) : (
             <FleetClassTable classes={summary.classes} windowName={windowName(window, text)} />
           )}
-
-          <ul className="table-notes">
-            <li>{t("noteEvents")}</li>
-            <li>{t("noteExpected")}</li>
-          </ul>
 
           <section aria-labelledby="fleet-internal">
             <h2 className="section-title" id="fleet-internal">
