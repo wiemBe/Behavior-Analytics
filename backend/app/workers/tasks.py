@@ -53,7 +53,7 @@ from app.identity.collector import IdentityCollector
 from app.identity.profiles import IdentityProfileError, IdentityProfileService
 from app.identity.retention import IdentityRetention
 from app.identity.revalidation import IdentityRevalidator, failure_token
-from app.jdbc.jobs import request_and_enqueue_jdbc_run, run_jdbc_collection
+from app.jdbc.jobs import request_jdbc_run, run_jdbc_collection
 from app.log_source_policy import active_source, source_pause_enabled
 from app.models.enums import AlertDigestState, EvidenceStatus, ExecutionStatus, Severity
 from app.models.identity_detection import IdentitySourceProfile
@@ -444,15 +444,21 @@ async def sync_log_sources(
         assert provider is not None
         report = await LogSourceCollector(session, provider, settings=settings).sync(instance)
         if report.status in ("COMPLETE", "PARTIAL") and jdbc_collection_enabled:
+            queued = False
             try:
-                await request_and_enqueue_jdbc_run(
-                    session, instance.id, now=datetime.now(UTC),
-                    enqueue=lambda iid: collect_jdbc_configs_task.delay(str(iid)),
-                )
+                # A savepoint: a failed request rolls back only itself, so the
+                # inventory pass above still commits.
+                async with session.begin_nested():
+                    queued = await request_jdbc_run(session, instance.id, now=datetime.now(UTC))
             except Exception:
-                # A broker failure must neither fail the inventory pass nor lose
-                # the QUEUED row: the next beat tick claims it and retries the walk.
-                logger.warning("jdbc inventory kick could not enqueue its task")
+                logger.warning("jdbc inventory kick could not request its pass")
+            if queued:
+                try:
+                    collect_jdbc_configs_task.delay(instance_id=str(instance.id))
+                except Exception:
+                    # A broker failure must neither fail the inventory pass nor lose
+                    # the QUEUED row: the next beat tick claims it and retries the walk.
+                    logger.warning("jdbc inventory kick could not enqueue its task")
         return {
             "status": (
                 "skipped_locked"
@@ -476,7 +482,9 @@ async def sync_log_sources(
     )
 
 
-async def collect_jdbc_configs(instance_name: str | None = None) -> dict:
+async def collect_jdbc_configs(
+    instance_name: str | None = None, *, instance_id: str | None = None
+) -> dict:
     """Walk JDBC protocol-8 configuration for every enabled console, inert while off.
 
     One effective-settings read decides from the feature switches. With the switch
@@ -515,7 +523,10 @@ async def collect_jdbc_configs(instance_name: str | None = None) -> dict:
             "failed_page": outcome.failed_page,
         }
 
-    return await _for_each_instance(run, instance_name, provider_settings=settings)
+    return await _for_each_instance(
+        run, instance_name, instance_id=_parse_instance_id(instance_id),
+        provider_settings=settings,
+    )
 
 
 async def check_qradar_access(instance_name: str | None = None, claimed: bool = False) -> dict:
@@ -2842,8 +2853,10 @@ def sync_log_sources_task(instance_name: str | None = None) -> dict:
 @celery_app.task(
     name="collect_jdbc_configs", base=WalkTask, **walk_time_limits("collect_jdbc_configs")
 )
-def collect_jdbc_configs_task(instance_name: str | None = None) -> dict:
-    return _run(collect_jdbc_configs(instance_name))
+def collect_jdbc_configs_task(
+    instance_name: str | None = None, *, instance_id: str | None = None
+) -> dict:
+    return _run(collect_jdbc_configs(instance_name, instance_id=instance_id))
 
 
 @celery_app.task(name="check_qradar_access")

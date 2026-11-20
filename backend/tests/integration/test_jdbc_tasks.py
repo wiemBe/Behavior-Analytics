@@ -197,7 +197,7 @@ async def test_post_inventory_kick_coalesces(
     rig.base(jdbc_collection_enabled=True)
     enqueued: list[str] = []
     monkeypatch.setattr(
-        tasks.collect_jdbc_configs_task, "delay", lambda iid: enqueued.append(iid)
+        tasks.collect_jdbc_configs_task, "delay", lambda instance_id: enqueued.append(instance_id)
     )
 
     holder = {"status": "COMPLETE"}
