@@ -29,11 +29,8 @@ from app.models.identity_detection import (
     IdentitySourceProfile,
     IdentityTopUsername,
 )
-from app.models.instance import QRadarInstance
 from app.models.log_source import LogSource
 from app.models.monitoring import CollectionWatermark
-from app.providers.base import ProviderCapability, ProviderError
-from app.providers.factory import build_provider_for_instance
 from app.schemas.identity import (
     IdentityBucketSummaryOut,
     IdentityCollectionOut,
@@ -94,6 +91,9 @@ def _profile_out(profile: IdentitySourceProfile, source: LogSource) -> IdentityP
         validated_profile_version=profile.validated_profile_version,
         validated_at=profile.validated_at,
         validation_report=report,
+        validation_pending=profile.validation_requested_at is not None,
+        validation_requested_at=profile.validation_requested_at,
+        validation_requested_by=profile.validation_requested_by,
     )
 
 
@@ -295,42 +295,33 @@ async def put_identity_profile(
     return _profile_out(profile, source)
 
 
-@router.post("/sources/{log_source_id}/validate", response_model=IdentityProfileOut)
+@router.post(
+    "/sources/{log_source_id}/validate",
+    response_model=IdentityProfileOut,
+    status_code=202,
+)
 async def validate_identity_profile(
     log_source_id: uuid.UUID,
     session: SessionDep,
     principal: AdminDep,
 ) -> IdentityProfileOut:
+    """Queue the probe. The four searches run in a worker, never in this request."""
     source = await _source(session, log_source_id)
-    profile = await _profile(session, source)
-    instance = await session.get(QRadarInstance, source.instance_id)
-    if instance is None:
-        raise CodedHTTPException(404, _SOURCE_NOT_FOUND)
+    profile = await session.scalar(
+        select(IdentitySourceProfile)
+        .where(IdentitySourceProfile.log_source_id == source.id)
+        .with_for_update()
+    )
+    if profile is None:
+        raise CodedHTTPException(404, _PROFILE_NOT_FOUND)
     try:
-        provider = build_provider_for_instance(instance)
-    except ValueError as exc:
-        logger.warning(
-            "identity validation provider was not built",
-            extra={"error_class": type(exc).__name__},
+        await IdentityProfileService(session).request_validation(
+            profile, actor=principal.subject
         )
-        raise CodedHTTPException(422, _PROFILE_INVALID) from exc
-    try:
-        if not provider.supports(ProviderCapability.AQL_EXECUTION):
-            raise CodedHTTPException(422, MessageRef("identity.provider.unsupported"))
-        try:
-            await IdentityProfileService(session).validate(
-                profile, provider, actor=principal.subject
-            )
-        except IdentityProfileError as exc:
+    except IdentityProfileError as exc:
+        if exc.ref is None:
             raise _invalid(exc) from exc
-        except ProviderError as exc:
-            logger.warning(
-                "identity validation probe failed",
-                extra={"error_class": type(exc).__name__},
-            )
-            raise CodedHTTPException(422, _PROFILE_INVALID) from exc
-    finally:
-        await provider.aclose()
+        raise CodedHTTPException(409, exc.ref) from exc
     return _profile_out(profile, source)
 
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 import uuid
@@ -30,8 +31,9 @@ from app.models.instance import QRadarInstance
 from app.models.monitoring import CollectionWatermark
 from app.providers.mock import MockQRadarProvider
 from app.security.rbac import Principal
+from app.workers import tasks
 from tests.integration.factories import make_instance, make_log_source
-from tests.integration.test_fleet_api import Client, run
+from tests.integration.test_fleet_api import Client, _maker, run
 
 pytestmark = [
     pytest.mark.integration,
@@ -70,6 +72,42 @@ def _source(log_source_id: uuid.UUID) -> str:
 
 def _profile(log_source_id: uuid.UUID) -> str:
     return f"{_source(log_source_id)}/profile"
+
+
+def _validate_queued(client, source_id, monkeypatch):  # type: ignore[no-untyped-def]
+    """POST validate (202), then run the queued task the way the worker would."""
+    queued: list[str] = []
+    monkeypatch.setattr(tasks.validate_identity_profile_task, "delay", queued.append)
+    response = client.post(f"{_source(source_id)}/validate")
+    assert response.status_code == 202, response.text
+    assert response.json()["validation_pending"] is True
+    assert len(queued) == 1
+
+    async def work():  # type: ignore[no-untyped-def]
+        engine, maker = _maker()
+        monkeypatch.setattr(tasks, "get_sessionmaker", lambda: maker)
+        try:
+            return await tasks.validate_identity_profile(queued[0], enqueue=lambda *_: None)
+        finally:
+            await engine.dispose()
+
+
+    return response, asyncio.run(work())
+
+
+def _stored(source_id):  # type: ignore[no-untyped-def]
+    async def read(session):  # type: ignore[no-untyped-def]
+        row = await session.scalar(
+            select(IdentitySourceProfile).where(IdentitySourceProfile.log_source_id == source_id)
+        )
+        return {
+            "status": row.validation_status,
+            "version": row.validated_profile_version,
+            "pending": row.validation_requested_at,
+            "report": row.validation_report,
+        }
+
+    return run(read)
 
 
 def test_reads_and_writes_follow_read_identity_and_admin_identity(db_schema) -> None:  # type: ignore[no-untyped-def]
@@ -114,7 +152,9 @@ def test_reads_and_writes_follow_read_identity_and_admin_identity(db_schema) -> 
     assert no_profile.json()["detail_code"] == "identity.source.not_found"
 
 
-def test_a_refused_property_is_not_echoed_and_audit_omits_the_username(db_schema) -> None:  # type: ignore[no-untyped-def]
+def test_a_refused_property_is_not_echoed_and_audit_omits_the_username(  # type: ignore[no-untyped-def]
+    db_schema, monkeypatch
+) -> None:  # type: ignore[no-untyped-def]
     async def seed(session):  # type: ignore[no-untyped-def]
         instance = await make_instance(session)
         source = await make_log_source(session, instance, qradar_id=1003, name="dc01")
@@ -145,9 +185,9 @@ def test_a_refused_property_is_not_echoed_and_audit_omits_the_username(db_schema
 
     saved = client.request("PUT", _profile(source_id), json=BODY)
     assert saved.status_code == 200, saved.text
-    validated = client.post(f"{_source(source_id)}/validate")
-    assert validated.status_code == 200, validated.text
-    assert validated.json()["validation_status"] == "VALID"
+    validated, outcome = _validate_queued(client, source_id, monkeypatch)
+    assert outcome["validation_status"] == "VALID"
+    assert _stored(source_id)["status"] == "VALID"
     assert "secret-user" not in validated.text
     enabled = client.post(f"{_source(source_id)}/enable")
     assert enabled.status_code == 200, enabled.text
@@ -164,7 +204,9 @@ def test_a_refused_property_is_not_echoed_and_audit_omits_the_username(db_schema
     assert "identity.profile.enabled" in blob
 
 
-def test_enable_disable_and_a_version_mismatch_never_collects(db_schema) -> None:  # type: ignore[no-untyped-def]
+def test_enable_disable_and_a_version_mismatch_never_collects(  # type: ignore[no-untyped-def]
+    db_schema, monkeypatch
+) -> None:
     async def seed(session):  # type: ignore[no-untyped-def]
         instance = await make_instance(session)
         source = await make_log_source(session, instance, qradar_id=1003, name="dc01")
@@ -178,7 +220,8 @@ def test_enable_disable_and_a_version_mismatch_never_collects(db_schema) -> None
     assert early.json()["detail_code"] == "identity.profile.enable_refused"
     assert "UNVALIDATED" in early.json()["detail"]
 
-    assert client.post(f"{_source(source_id)}/validate").json()["validation_status"] == "VALID"
+    _validate_queued(client, source_id, monkeypatch)
+    assert _stored(source_id)["status"] == "VALID"
     assert client.post(f"{_source(source_id)}/enable").json()["enabled"] is True
 
     changed = client.request(
@@ -226,7 +269,9 @@ def test_enable_disable_and_a_version_mismatch_never_collects(db_schema) -> None
     assert details == [{"profile_version": 2}]
 
 
-def test_an_unsupported_provider_is_a_coded_refusal(db_schema) -> None:  # type: ignore[no-untyped-def]
+def test_an_unsupported_provider_is_stored_as_a_failed_validation(  # type: ignore[no-untyped-def]
+    db_schema, monkeypatch
+) -> None:
     async def seed(session):  # type: ignore[no-untyped-def]
         instance = await make_instance(session)
         instance.provider_kind = "mcp"
@@ -237,10 +282,15 @@ def test_an_unsupported_provider_is_a_coded_refusal(db_schema) -> None:  # type:
     source_id = run(seed)
     client = Client(ADMIN)
     assert client.request("PUT", _profile(source_id), json=BODY).status_code == 200
-    refused = client.post(f"{_source(source_id)}/validate")
-    assert refused.status_code == 422
-    assert refused.json()["detail_code"] == "identity.provider.unsupported"
-    assert "probe-token" not in refused.text
+    queued, outcome = _validate_queued(client, source_id, monkeypatch)
+    assert outcome["status"] == "failed"
+    assert outcome["error_class"] == "provider_unsupported"
+    stored = _stored(source_id)
+    assert stored["status"] == "UNVALIDATED"
+    assert stored["pending"] is None
+    assert stored["report"]["validation_error"] == "provider_unsupported"
+    assert "probe-token" not in queued.text
+    assert "probe-token" not in json.dumps(stored["report"], default=str)
 
 
 def test_the_source_list_reports_nulls_and_a_constant_statement_count(db_schema) -> None:  # type: ignore[no-untyped-def]

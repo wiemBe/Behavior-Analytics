@@ -215,6 +215,18 @@
     "enabling": "Enabling",
     "saved": "Mapping saved. Validate it before enabling.",
     "validated": "Validation finished.",
+    "queued": "Validation queued",
+    "queuedAt": "Queued at",
+    "queuedNote": ". The probe runs in the background; this updates when it finishes.",
+    "reason": {
+      "error": "The probe did not finish ({reason}). The stored status is unchanged.",
+      "rejected": "QRadar refused a mapped property, so the mapping cannot be searched.",
+      "noOverlap": "None of the enabled event IDs appeared in the probe window.",
+      "lowRatio": "Too few events carry the mapped event ID or username in the probe window.",
+      "probeError": "A probe search failed, so the mapping could not be judged.",
+      "truncated": "A probe search was cut, so the mapping could not be judged.",
+      "noEvents": "The probe window held no events, so the mapping could not be judged."
+    },
     "disabled": "Collection disabled.",
     "enabled": "Collection enabled.",
     "disableNote": "Disable stops collection. Stored buckets stay.",

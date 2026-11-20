@@ -4859,6 +4859,10 @@ export interface IdentityProfile {
   validated_profile_version: number | null;
   validated_at: string | null;
   validation_report: Record<string, unknown>;
+  // A queued validation: set by the request, cleared by the worker when it stores an outcome.
+  validation_pending: boolean;
+  validation_requested_at: string | null;
+  validation_requested_by: string | null;
 }
 
 export interface IdentityCollection {
@@ -4925,6 +4929,7 @@ export const identityApi = {
       method: "PUT",
       body: JSON.stringify(body),
     }),
+  // Answers 202 with the profile marked pending; the probe runs in a worker.
   validate: (logSourceId: string) =>
     request<IdentityProfile>(`/identity/sources/${logSourceId}/validate`, { method: "POST" }),
   enable: (logSourceId: string) =>

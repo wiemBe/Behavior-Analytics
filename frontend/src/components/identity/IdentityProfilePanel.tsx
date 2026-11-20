@@ -8,8 +8,11 @@
 // worded it (a coded sentence in the interface language); the operator's own text is never echoed
 // back by the server, so none is here either. Without the grant the profile is read-only and the
 // panel names the permission.
+//
+// Validate is queued: the server answers 202 with the profile marked pending, a worker runs the
+// probe, and a pending profile is polled every five seconds until the stored outcome arrives.
 
-import { useId, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { useTranslations } from "next-intl";
 
 import { UtcTime } from "@/components/ui/UtcTime";
@@ -23,6 +26,25 @@ import { ADMIN_PERMISSION, IDENTITY_EVENTS, eventKey, notCollectedWhy } from "./
 
 import "@/components/ui/controls.css";
 import "./identity.css";
+
+// What the stored report says went wrong, as a message key. Only counts and roles are in the
+// report, never a property name, so nothing here echoes operator text.
+function reasonOf(profile: IdentityProfile): string | null {
+  const report = profile.validation_report;
+  if (typeof report.validation_error === "string") return "error";
+  if (profile.validation_status === "INVALID") {
+    if (report.event_id_rejected || report.username_rejected) return "rejected";
+    if (report.catalog_overlap === 0) return "noOverlap";
+    return "lowRatio";
+  }
+  if (profile.validation_status === "INCONCLUSIVE") {
+    if (report.error || report.event_id_error || report.username_error) return "probeError";
+    if (report.truncated) return "truncated";
+    if (report.total_events === 0) return "noEvents";
+    return "probeError";
+  }
+  return null;
+}
 
 type Busy = "save" | "validate" | "enable" | "disable" | null;
 type Msg = { tone: "ok" | "crit" | "warn"; text: string } | null;
@@ -49,10 +71,12 @@ export function IdentityProfilePanel({
   logSourceId,
   profile: initial,
   canAdmin,
+  pollMs = 5000,
 }: {
   logSourceId: string;
   profile: IdentityProfile | null;
   canAdmin: boolean;
+  pollMs?: number;
 }) {
   const t = useTranslations("identity.profile");
   const events = useTranslations("identity.events");
@@ -71,6 +95,28 @@ export function IdentityProfilePanel({
     label: `${base}-label`,
     events: `${base}-events`,
   };
+
+  const pending = profile?.validation_pending ?? false;
+  useEffect(() => {
+    if (!pending) return;
+    let cancelled = false;
+    const timer = setInterval(() => {
+      void (async () => {
+        try {
+          const next = (await identityApi.source(logSourceId)).profile;
+          if (cancelled) return;
+          setProfile(next);
+          if (!next.validation_pending) setMsg({ tone: "ok", text: t("validated") });
+        } catch {
+          /* keep polling; the last known state stays on screen */
+        }
+      })();
+    }, pollMs);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [pending, pollMs, logSourceId, t]);
 
   const fail = (err: unknown) => {
     if (err instanceof ApiError && err.status === 403) {
@@ -93,15 +139,28 @@ export function IdentityProfilePanel({
       setProfile(next);
       setDraft(draftOf(next));
       setEditing(false);
-      setMsg({ tone: "ok", text: done });
+      setMsg(next.validation_pending ? null : { tone: "ok", text: done });
     } catch (err) {
       fail(err);
+      // A refused second request means one is already queued: show it and follow it.
+      if (kind === "validate" && err instanceof ApiError && err.status === 409) {
+        try {
+          setProfile((await identityApi.source(logSourceId)).profile);
+        } catch {
+          /* the refusal sentence stays; the next visit shows the pending state */
+        }
+      }
     } finally {
       setBusy(null);
     }
   }
 
   const why = profile ? notCollectedWhy(profile) : null;
+  const reason = profile && !pending ? reasonOf(profile) : null;
+  const failedReason =
+    profile && typeof profile.validation_report.validation_error === "string"
+      ? profile.validation_report.validation_error
+      : null;
   // Enable needs the current version validated, whatever else `why` leads with.
   const valid =
     profile !== null &&
@@ -146,7 +205,24 @@ export function IdentityProfilePanel({
             <tr>
               <th scope="row">{t("validation")}</th>
               <td>
-                {t(`status.${profile.validation_status}` as never)}
+                {pending ? (
+                  <span className="pill pill-strong warn">{t("queued")}</span>
+                ) : (
+                  t(`status.${profile.validation_status}` as never)
+                )}
+                {pending && profile.validation_requested_at && (
+                  <span className="cell-sub">
+                    {t("queuedAt")} <UtcTime value={profile.validation_requested_at} />
+                    {t("queuedNote")}
+                  </span>
+                )}
+                {reason && (
+                  <span className="cell-sub">
+                    {reason === "error"
+                      ? t("reason.error", { reason: failedReason ?? "" })
+                      : t(`reason.${reason}` as never)}
+                  </span>
+                )}
                 <span className="cell-sub">
                   {profile.validated_profile_version === null
                     ? t("neverValidated", { version: profile.profile_version })
@@ -323,12 +399,12 @@ export function IdentityProfilePanel({
               <button
                 type="button"
                 className="action secondary"
-                disabled={busy !== null}
+                disabled={busy !== null || pending}
                 onClick={() =>
                   void run("validate", () => identityApi.validate(logSourceId), t("validated"))
                 }
               >
-                {busy === "validate" ? t("validating") : t("validate")}
+                {busy === "validate" ? t("validating") : pending ? t("queued") : t("validate")}
               </button>
               {profile.enabled ? (
                 <button
