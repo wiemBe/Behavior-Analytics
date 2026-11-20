@@ -6,14 +6,14 @@ import asyncio
 import gc
 import json
 import logging
-import time
 import traceback
 import weakref
 from collections.abc import Callable
-from dataclasses import asdict
+from dataclasses import asdict, dataclass
 
 import httpx
 import pytest
+import pytest_asyncio
 
 from app.jdbc.dto import (
     ConfigState,
@@ -27,6 +27,26 @@ from app.providers.qradar_rest import LOG_SOURCE_LIST_FIELDS, QRadarRestProvider
 PATH = "/api/config/event_sources/log_source_management/log_sources"
 FIELDS = "id,protocol_type_id,protocol_parameters"
 CANARY = "DENIED-JDBC-PASSWORD-CANARY"
+
+
+@dataclass
+class LoopClock:
+    now: float
+
+    def time(self) -> float:
+        return self.now
+
+    def advance(self, seconds: float) -> None:
+        self.now += seconds
+
+
+@pytest_asyncio.fixture
+async def loop_clock(monkeypatch: pytest.MonkeyPatch) -> LoopClock:
+    """Freeze both the walk's checks and asyncio's timeout scheduling until advanced."""
+    loop = asyncio.get_running_loop()
+    clock = LoopClock(loop.time())
+    monkeypatch.setattr(loop, "time", clock.time)
+    return clock
 
 
 def provider(
@@ -280,6 +300,7 @@ async def test_partial_keeps_safe_pages() -> None:
 ])
 async def test_auth_three_failures_wall_ceiling(
     failure: int | str, code: JdbcWalkFailure, gets: int, failed: int,
+    loop_clock: LoopClock,
 ) -> None:
     seen: list[httpx.Request] = []
 
@@ -304,7 +325,7 @@ async def test_auth_three_failures_wall_ceiling(
 @pytest.mark.asyncio
 @pytest.mark.parametrize("failure", ["retry_after", "backoff", "request"])
 async def test_remaining_deadline_includes_retry_sleep(
-    failure: str, monkeypatch: pytest.MonkeyPatch,
+    failure: str, monkeypatch: pytest.MonkeyPatch, loop_clock: LoopClock,
 ) -> None:
     seen: list[str] = []
     sleeps: list[float] = []
@@ -321,7 +342,8 @@ async def test_remaining_deadline_includes_retry_sleep(
     async def pause() -> None:
         nonlocal cancelled
         try:
-            await asyncio.sleep(10)
+            loop_clock.advance(0.75)
+            await asyncio.Future()
         except asyncio.CancelledError:
             cancelled = True
             raise
@@ -329,7 +351,7 @@ async def test_remaining_deadline_includes_retry_sleep(
     async def handler(request: httpx.Request) -> httpx.Response:
         seen.append(request.headers["Range"])
         if len(seen) == 1:
-            await asyncio.sleep(0.02)
+            loop_clock.advance(0.25)
             return httpx.Response(200, json=page(request, 200))
         if failure == "request":
             await pause()
@@ -347,12 +369,12 @@ async def test_remaining_deadline_includes_retry_sleep(
     walker = QRadarRestProvider(
         base_url="https://qradar.example", sec_token="t", client=client, sleep=sleep,
     )
-    started = time.monotonic()
+    started = loop_clock.time()
     try:
-        result = await asyncio.wait_for(walker.walk_jdbc_configs(wall_seconds=0.1), timeout=2)
+        result = await asyncio.wait_for(walker.walk_jdbc_configs(wall_seconds=1), timeout=2)
     finally:
         await walker.aclose()
-    assert cancelled and time.monotonic() - started < 2
+    assert cancelled and loop_clock.time() - started < 2
     assert result.state is JdbcWalkState.PARTIAL and len(result.configs) == 100
     assert result.failure_code is JdbcWalkFailure.TIMEOUT and result.pages_failed == 1
     assert seen == ["items=0-99", "items=100-199"]
@@ -524,7 +546,9 @@ async def test_raw_canaries_never_escape(
 
 
 @pytest.mark.asyncio
-async def test_default_budget_and_not_collected_result(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_default_budget_and_not_collected_result(
+    monkeypatch: pytest.MonkeyPatch, loop_clock: LoopClock,
+) -> None:
     result = JdbcConfigWalk([])
     assert result.state is JdbcWalkState.NOT_COLLECTED and not result.complete
     assert result.failure_code is None and result.rejected_rows == {}
@@ -625,19 +649,21 @@ async def test_rejected_raw_page_is_released_before_next_request(
 
 
 @pytest.mark.asyncio
-async def test_expired_during_projection_never_completes(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_expired_during_projection_never_completes(
+    monkeypatch: pytest.MonkeyPatch, loop_clock: LoopClock,
+) -> None:
     from app.providers import qradar_rest
 
     project = qradar_rest.project_jdbc_config
 
-    def slow_project(**kwargs: object):  # type: ignore[no-untyped-def]
-        time.sleep(0.02)
+    def expire_project(**kwargs: object):  # type: ignore[no-untyped-def]
+        loop_clock.advance(1)
         return project(**kwargs)
 
-    monkeypatch.setattr(qradar_rest, "project_jdbc_config", slow_project)
+    monkeypatch.setattr(qradar_rest, "project_jdbc_config", expire_project)
     walker = provider(lambda request: httpx.Response(200, json=[row(1)]))
     try:
-        result = await walker.walk_jdbc_configs(wall_seconds=0.01)
+        result = await walker.walk_jdbc_configs(wall_seconds=1)
     finally:
         await walker.aclose()
     assert result.state is JdbcWalkState.PARTIAL and not result.complete
@@ -713,7 +739,7 @@ async def test_process_control_exceptions_propagate(signal: type[BaseException])
 ])
 async def test_terminal_failure_overrides_earlier_upstream(
     terminal: int | str, code: JdbcWalkFailure, failed: int, read: int, rows: int,
-    caplog: pytest.LogCaptureFixture,
+    caplog: pytest.LogCaptureFixture, loop_clock: LoopClock,
 ) -> None:
     ranges: list[str] = []
 
@@ -725,7 +751,8 @@ async def test_terminal_failure_overrides_earlier_upstream(
             if isinstance(terminal, int):
                 return httpx.Response(terminal, text=CANARY)
             if terminal == "deadline":
-                await asyncio.sleep(10)
+                loop_clock.advance(1)
+                await asyncio.Future()
             if terminal == "malformed":
                 raise RuntimeError(CANARY)
         return httpx.Response(200, json=page(request, 500))
@@ -738,7 +765,7 @@ async def test_terminal_failure_overrides_earlier_upstream(
         max_retries=0, max_pages=3,
     )
     try:
-        result = await walker.walk_jdbc_configs(wall_seconds=0.2 if terminal == "deadline" else 600)
+        result = await walker.walk_jdbc_configs(wall_seconds=1 if terminal == "deadline" else 600)
     finally:
         await walker.aclose()
     assert result.state is JdbcWalkState.PARTIAL and result.failure_code is code
@@ -823,18 +850,18 @@ async def test_invalid_json_response_released_without_cyclic_gc(
 @pytest.mark.asyncio
 @pytest.mark.parametrize("stop", ["empty", "ceiling", "wall", "projection"])
 async def test_non_request_stops_do_not_invent_failed_pages(
-    stop: str, monkeypatch: pytest.MonkeyPatch,
+    stop: str, monkeypatch: pytest.MonkeyPatch, loop_clock: LoopClock,
 ) -> None:
     from app.providers import qradar_rest
 
     project = qradar_rest.project_jdbc_config
 
-    def slow_project(**kwargs: object):  # type: ignore[no-untyped-def]
-        time.sleep(0.02)
+    def expire_project(**kwargs: object):  # type: ignore[no-untyped-def]
+        loop_clock.advance(1)
         return project(**kwargs)
 
     if stop == "projection":
-        monkeypatch.setattr(qradar_rest, "project_jdbc_config", slow_project)
+        monkeypatch.setattr(qradar_rest, "project_jdbc_config", expire_project)
     calls = 0
 
     def handler(request: httpx.Request) -> httpx.Response:
@@ -846,7 +873,7 @@ async def test_non_request_stops_do_not_invent_failed_pages(
     walker = provider(handler, max_pages=1)
     try:
         result = await walker.walk_jdbc_configs(
-            wall_seconds=0 if stop == "wall" else 0.01 if stop == "projection" else 600,
+            wall_seconds=0 if stop == "wall" else 1 if stop == "projection" else 600,
         )
     finally:
         await walker.aclose()
@@ -996,7 +1023,7 @@ async def test_rate_limited_pages_keep_retry_after_behavior() -> None:
 @pytest.mark.asyncio
 @pytest.mark.parametrize("expiry", ["failed_request", "consumed_page"])
 async def test_deadline_after_earlier_failure_has_honest_counts(
-    expiry: str, monkeypatch: pytest.MonkeyPatch,
+    expiry: str, monkeypatch: pytest.MonkeyPatch, loop_clock: LoopClock,
 ) -> None:
     from app.providers import qradar_rest
     from app.providers.base import ProviderError
@@ -1004,9 +1031,9 @@ async def test_deadline_after_earlier_failure_has_honest_counts(
     calls = 0
     project = qradar_rest.project_jdbc_config
 
-    def slow_project(**kwargs: object):  # type: ignore[no-untyped-def]
+    def expire_project(**kwargs: object):  # type: ignore[no-untyped-def]
         if kwargs["qradar_id"] == 200:
-            time.sleep(0.1)
+            loop_clock.advance(1)
         return project(**kwargs)
 
     def handler(request: httpx.Request) -> httpx.Response:
@@ -1024,13 +1051,13 @@ async def test_deadline_after_earlier_failure_has_honest_counts(
             return await original_request(*args, **kwargs)
         except ProviderError:
             if calls == 3:
-                time.sleep(0.1)
+                loop_clock.advance(1)
             raise
 
     monkeypatch.setattr(walker, "_request", request)
-    monkeypatch.setattr(qradar_rest, "project_jdbc_config", slow_project)
+    monkeypatch.setattr(qradar_rest, "project_jdbc_config", expire_project)
     try:
-        result = await walker.walk_jdbc_configs(wall_seconds=0.05)
+        result = await walker.walk_jdbc_configs(wall_seconds=1)
     finally:
         await walker.aclose()
     assert result.state is JdbcWalkState.PARTIAL and result.failure_code is JdbcWalkFailure.TIMEOUT
