@@ -6,6 +6,7 @@ input-free repr and validation errors, so no raw parameter can leak.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from enum import StrEnum
 from typing import Any
 
@@ -92,3 +93,17 @@ class JdbcConfigDTO(BaseModel):
             f"JdbcConfigDTO(qradar_id={self.qradar_id}, protocol_type_id={self.protocol_type_id}, "
             f"config_state={self.config_state.value}, allowlist_version={self.allowlist_version})"
         )
+
+
+@dataclass(frozen=True)
+class JdbcConfigWalk:
+    """Safe configs and received list-page counts, including an empty terminator.
+
+    Only a short page proves ``complete``; a failed page or a full page at the
+    ceiling does not. Per-config field availability is independent of this flag.
+    """
+
+    configs: list[JdbcConfigDTO]
+    pages_read: int = 0
+    rows_read: int = 0
+    complete: bool = False

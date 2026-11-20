@@ -55,6 +55,8 @@ from app.ips.keyed_rows import (
     validate_ips_fields,
     validate_ips_sources,
 )
+from app.jdbc.dto import JdbcConfigDTO, JdbcConfigWalk
+from app.jdbc.parameters import project_jdbc_config
 from app.models.enums import IpsDimension, PwScopeKind
 from app.providers.base import (
     FAILURE_AUTH,
@@ -193,6 +195,9 @@ LOG_SOURCE_LIST_FIELDS = (
 #: between two pages shifts the rows and one is read twice or never. QRadar's `sort=+id` is
 #: the ascending sort every list endpoint accepts (the offense walk uses `+last_persisted_time`).
 LOG_SOURCE_LIST_SORT = "+id"
+
+JDBC_LIST_FIELDS = "id,protocol_type_id,protocol_parameters"
+JDBC_PAGE_SIZE = 100
 
 #: Exactly the keys read by `_to_rule`, shared by rules and building blocks.
 RULE_LIST_FIELDS = (
@@ -685,8 +690,13 @@ class QRadarRestProvider(QRadarProvider):
         max_pages: int | None = None,
         inventory_walk: PageWalkBudget | None = None,
         row_validator: Callable[[dict], object] | None = None,
+        page_consumer: Callable[[list], None] | None = None,
     ) -> _PageWalk:
-        """`_paginate`, plus whether the walk stopped on a full page at the ceiling."""
+        """`_paginate`, plus whether the walk stopped on a full page at the ceiling.
+
+        A page consumer replaces raw-row accumulation, for reads that must project
+        and discard credential-bearing rows before requesting the next page.
+        """
         if inventory_walk and inventory_walk.failure_kind == FAILURE_AUTH:
             return _PageWalk([], True)
         size = page_size or self._page_size
@@ -709,7 +719,7 @@ class QRadarRestProvider(QRadarProvider):
                         max_attempts=inventory_walk.page_attempts if inventory_walk else None,
                     )
                 if body is None:
-                    if inventory_walk:
+                    if inventory_walk or page_consumer:
                         raise MalformedUpstreamResponse("QRadar returned no inventory body")
                     break
                 if not isinstance(body, list):
@@ -731,9 +741,14 @@ class QRadarRestProvider(QRadarProvider):
                 return _PageWalk(collected, True)
             if inventory_walk:
                 inventory_walk.pages_done += 1
-            # Drop non-object entries rather than failing the whole page.
-            collected.extend(item for item in body if isinstance(item, dict))
-            if len(body) < size:
+            if page_consumer is not None:
+                page_consumer(body)
+            else:
+                # Drop non-object entries rather than failing the whole page.
+                collected.extend(item for item in body if isinstance(item, dict))
+            ended_short = len(body) < size
+            del body
+            if ended_short:
                 break
         else:
             logger.warning(
@@ -968,6 +983,48 @@ class QRadarRestProvider(QRadarProvider):
             params={"fields": LOG_SOURCE_LIST_FIELDS, "sort": LOG_SOURCE_LIST_SORT},
         )
         return [dto for dto in (self._to_log_source(r) for r in rows) if dto is not None]
+
+    async def walk_jdbc_configs(self) -> JdbcConfigWalk:
+        """Read only protocol-8 parameters, projecting and discarding each raw page.
+
+        The first failed page ends this skeleton incomplete. Deadline and failure
+        policy are added by J1b2 before any dispatcher can call it.
+        """
+        configs: list[JdbcConfigDTO] = []
+        pages_read = rows_read = 0
+
+        def consume(body: list) -> None:
+            nonlocal pages_read, rows_read
+            pages_read += 1
+            rows_read += len(body)
+            projected: list[JdbcConfigDTO] = []
+            for row in body:
+                if (
+                    not isinstance(row, dict)
+                    or type(row.get("id")) is not int
+                    or type(row.get("protocol_type_id")) is not int
+                ):
+                    raise MalformedUpstreamResponse("QRadar returned a malformed JDBC row")
+                projected.append(project_jdbc_config(
+                    qradar_id=row["id"], protocol_type_id=row["protocol_type_id"],
+                    protocol_parameters=row.get("protocol_parameters"),
+                ))
+            configs.extend(projected)
+
+        complete = False
+        try:
+            walk = await self._walk_pages(
+                "/config/event_sources/log_source_management/log_sources",
+                category=EndpointCategory.LOG_SOURCE_LIST,
+                params={"fields": JDBC_LIST_FIELDS, "sort": LOG_SOURCE_LIST_SORT,
+                        "filter": "protocol_type_id=8"},
+                page_size=JDBC_PAGE_SIZE,
+                page_consumer=consume,
+            )
+            complete = not walk.truncated
+        except ProviderError:
+            pass  # No raw page or upstream exception leaves this boundary.
+        return JdbcConfigWalk(configs, pages_read, rows_read, complete)
 
     async def walk_log_sources(
         self,
