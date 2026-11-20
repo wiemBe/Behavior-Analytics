@@ -371,7 +371,7 @@ async def scope_options(
     settings: EffectiveSettingsDep,
     kind: PwScopeKind,
     q: Annotated[str | None, Query(max_length=100)] = None,
-    limit: Annotated[int, Query(ge=1, le=10_000)] = 50,
+    limit: Annotated[int, Query(ge=1, le=1000)] = 50,
     instance_id: uuid.UUID | None = None,
 ) -> list[ScopeOptionOut]:
     """Search the synced inventory for sources, types or groups.
@@ -566,7 +566,7 @@ async def property_options(
 async def list_watches(
     session: SessionDep,
     settings: EffectiveSettingsDep,
-    limit: Annotated[int, Query(ge=1, le=10_000)] = 200,
+    limit: Annotated[int, Query(ge=1, le=1000)] = 200,
     offset: Annotated[int, Query(ge=0)] = 0,
 ) -> list[PropertyWatchOut]:
     rows = list(
@@ -1070,7 +1070,7 @@ async def list_values(
     settings: EffectiveSettingsDep,
     hours: HoursQuery = svc.HOURS_DEFAULT,
     sort: Literal["events", "value", "first_seen"] = "events",
-    limit: Annotated[int, Query(ge=1, le=10_000)] = 50,
+    limit: Annotated[int, Query(ge=1, le=1000)] = 50,
     offset: Annotated[int, Query(ge=0)] = 0,
 ) -> PagedWatchValues:
     """Tracked values of the current version, pinned first. Addressed by id, never in a URL."""

@@ -11,9 +11,12 @@ import uuid
 from datetime import UTC, datetime, timedelta
 
 import pytest
+from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
+from app.api.deps import get_effective_settings
 from app.core.config import get_settings
+from app.core.database import get_session
 from app.main import create_app
 from app.models.enums import PwAnomalyType, PwScopeKind
 from app.models.fleet import LogSourceGroup
@@ -27,6 +30,7 @@ from app.schemas.property_watch import (
     ScopeSummaryOut,
     WatchScopeOut,
 )
+from app.security.auth import get_principal
 from app.security.rbac import (
     PERM_PROPERTY_WATCH_READ,
     PERM_PROPERTY_WATCH_WRITE,
@@ -129,6 +133,31 @@ def test_static_routes_precede_the_watch_id_route() -> None:
     paths = [r.path for r in _watch_routes() if "GET" in r.methods]
     for static in ("catalog", "scope-options", "property-options"):
         assert paths.index(f"{PREFIX}/{static}") < paths.index(f"{PREFIX}/{{watch_id}}")
+
+
+@pytest.mark.parametrize("path,params", [
+    ("/scope-options", {"kind": "LOG_SOURCE"}),
+    ("", {}),
+    ("/00000000-0000-0000-0000-000000000000/values", {}),
+])
+@pytest.mark.parametrize("limit", [0, 1001, 10_000])
+def test_list_limit_validation_matches_fleet(path: str, params: dict, limit: int) -> None:
+    async def no_session():  # type: ignore[no-untyped-def]
+        yield None
+
+    settings = get_settings().model_copy(update={"api_max_page_size": 200})
+    app = create_app()
+    app.dependency_overrides[get_session] = no_session
+    app.dependency_overrides[get_settings] = lambda: settings
+    app.dependency_overrides[get_effective_settings] = lambda: settings
+    app.dependency_overrides[get_principal] = lambda: Principal(
+        subject="reader", permissions=frozenset({"read:*"})
+    )
+    client = TestClient(app)
+    response = client.get(f"{PREFIX}{path}", params={**params, "limit": limit})
+    sibling = client.get("/api/v1/fleet/sources", params={"limit": limit})
+    assert response.status_code == sibling.status_code == 422
+    assert response.json() == sibling.json()
 
 
 # ------------------------------------------------------------------------------ schemas

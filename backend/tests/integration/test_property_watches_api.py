@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import uuid
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
@@ -214,6 +215,46 @@ async def _row(session, watch_id: str) -> PropertyWatch:  # type: ignore[no-unty
     """The stored row, read fresh: what the route's transaction left behind."""
     session.expire_all()
     return await session.get(PropertyWatch, uuid.UUID(watch_id))
+
+
+@pytest.mark.parametrize("cap", [2, 200, 1000])
+async def test_three_list_routes_accept_the_cap_and_clamp_like_fleet(
+    db_session, db_schema: str, cap: int,
+) -> None:
+    rig = await _seed(db_session)
+    writer = _client(db_schema, _principal("detection_engineer"))
+    made = [_create(writer, f"bounded-{n}") for n in range(3)]
+    watch_id = uuid.UUID(made[0]["id"])
+    db_session.add_all([
+        PwValue(watch_id=watch_id, watch_version=1, value_key=f"bounded-{n}")
+        for n in range(3)
+    ])
+    await make_log_source(db_session, rig.instance, qradar_id=703, name="fw-3")
+    await db_session.commit()
+    reader = _client(db_schema, _principal("viewer"), api_max_page_size=cap)
+    for requested in dict.fromkeys((cap, min(cap + 1, 1000), 1000)):
+        scope = reader.get(f"{PREFIX}/scope-options", params={
+            "kind": "LOG_SOURCE", "limit": requested,
+        })
+        watches = reader.get(PREFIX, params={"limit": requested})
+        values = reader.get(f"{PREFIX}/{watch_id}/values", params={"limit": requested})
+        for response in (scope, watches, values):
+            assert response.status_code == 200, response.text
+        expected = min(3, cap)
+        assert len(scope.json()) == len(watches.json()) == expected
+        assert len(values.json()["items"]) == expected
+        assert values.json()["limit"] == cap
+        assert values.json()["total"] == 3
+        # Inspect the actual SQL LIMITs too: a short result alone cannot prove the cap.
+        for table in ("log_source", "property_watch", "pw_value"):
+            pages = [
+                params[int(match[1]) - 1]
+                for sql, params in reader.queries  # type: ignore[attr-defined]
+                if f"FROM {table} " in sql and (match := re.search(r"\bLIMIT \$(\d+)", sql))
+            ]
+            assert pages, table
+            assert all(limit == cap for limit in pages), (table, pages)
+        reader.queries.clear()  # type: ignore[attr-defined]
 
 
 async def _count(session, model) -> int:  # type: ignore[no-untyped-def]
