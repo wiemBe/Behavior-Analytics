@@ -21,11 +21,12 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from enum import StrEnum
-from typing import TYPE_CHECKING, NoReturn
+from typing import TYPE_CHECKING
 
 # Re-exported: the pattern lives in a leaf module so ``app.core.config`` can import it
 # without loading this package (which imports the settings).
 from app.core.patterns import PROPERTY_NAME_PATTERN as PROPERTY_NAME_PATTERN
+from app.jdbc.dto import JdbcConfigWalk
 from app.models.enums import IpsDimension, PwScopeKind
 from app.providers.dto import (
     AnalyticsRuleDTO,
@@ -299,7 +300,7 @@ class QRadarProvider(ABC):
         """
         return LogSourceWalk(sources=await self.list_log_sources(), complete=True)
 
-    async def walk_jdbc_configs(self) -> NoReturn:
+    async def walk_jdbc_configs(self) -> JdbcConfigWalk:
         """Read protocol-8 JDBC configuration rows. The REST provider implements
         this (J1b); every other backend fails closed, with no MCP fallback and no
         empty success that could be mistaken for "no JDBC sources".
