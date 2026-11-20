@@ -1217,12 +1217,18 @@
     },
     "enabled_cap": "the limit is {limit} enabled searches",
     "run": {
+      "abandoned": "the run was abandoned: no worker finished it within the search timeout",
       "capacity": "No Ariel permit became available within {waited} seconds (per-console cap {instance_cap}, global cap {global_cap})",
+      "conflict": {
+        "running": "a manual run of this search has been queued or running since {since}"
+      },
       "failed": "Ariel search failed",
       "no_aql_execution": "configured provider cannot execute AQL",
+      "not_queued": "the run could not be queued, so nothing was sent to QRadar; try again shortly",
       "parse_failed": "failed to fetch/parse results: {detail}",
       "timeout": "search exceeded timeout of {timeout}s",
-      "validation": "{reasons}"
+      "validation": "{reasons}",
+      "worker_failed": "the run stopped because the worker failed before it finished"
     },
     "threshold": {
       "unreachable": "threshold {operator} {threshold} can never be reached: a run counts at most max_result_rows ({max_result_rows}) rows; raise max_result_rows above the threshold or lower the threshold"

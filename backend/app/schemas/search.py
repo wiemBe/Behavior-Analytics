@@ -311,6 +311,8 @@ class ExecutionOut(BaseModel):
     status: str
     trigger: str
     triggered_by: str | None
+    #: When the row was created: for a manual run, when it was queued.
+    created_at: datetime
     ariel_search_id: str | None
     ariel_status: str | None
     started_at: datetime | None

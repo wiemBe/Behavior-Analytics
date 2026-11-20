@@ -97,7 +97,17 @@
     "runNow": "Run now",
     "forbidden": "Your role cannot run a stored search (permission search:execute).",
     "gone": "This search no longer exists. Reload the page.",
-    "failed": "The run did not start. Reload and try again."
+    "failed": "The run did not start. Reload and try again.",
+    "queuedButton": "Run queued",
+    "queued": "Run queued. A worker starts it shortly; this page checks every 5 seconds.",
+    "queuedAt": "Run queued at <time></time>. A worker starts it shortly; this page checks every 5 seconds.",
+    "runningSince": "Running in QRadar since <time></time>. A search can take up to 15 minutes; this page checks every 5 seconds.",
+    "runningNow": "Running in QRadar. A search can take up to 15 minutes; this page checks every 5 seconds.",
+    "pollFailed": "The run's progress could not be read. Checking again in 5 seconds.",
+    "errorAbandoned": "Abandoned: the worker stopped before finishing",
+    "errorWorker": "Worker error ({type})",
+    "capacityAction": "Nothing was sent to QRadar. Try again shortly, or wait for the scheduled run.",
+    "alreadyRunning": "A manual run of this search has been queued or running since <time></time>."
   },
   "notice": {
     "hiddenUnknown": "Your permissions could not be read, so the editor stays hidden. ",

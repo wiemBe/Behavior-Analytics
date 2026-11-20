@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import copy
 import uuid
-from collections.abc import Callable, Mapping
-from datetime import UTC, datetime
+from collections.abc import Mapping
+from datetime import UTC, datetime, timedelta
 from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
@@ -15,15 +15,12 @@ from sqlalchemy import case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql.selectable import ScalarSelect
 
-from app.alerts.dispatcher import NotificationDispatcher
-from app.alerts.routing import default_policy
-from app.alerts.search_alerts import SearchAlertEvaluator
-from app.api.deps import ProviderDep, SessionDep, SettingsDep
-from app.core.config import Settings, get_settings
+from app.api.deps import SessionDep, SettingsDep
+from app.core.config import get_settings
 from app.core.rate_limit import limiter
-from app.i18n.messages import MessageRef
+from app.i18n.messages import MessageRef, render
 from app.i18n.refusal import CodedHTTPException, permission_refusal
-from app.models.enums import ExecutionErrorType
+from app.models.enums import ExecutionErrorType, ExecutionStatus
 from app.models.search import (
     ScheduledSearch,
     SearchExecution,
@@ -57,35 +54,13 @@ from app.security.rbac import (
     Principal,
     require_permission,
 )
-from app.services.ariel_permit import ArielPermitBudget
 from app.services.ariel_status import ariel_budget_status
 from app.services.scheduled_search import EnabledSearchLimitError, ScheduledSearchService
-from app.services.search_executor import SearchExecutor
 from app.services.search_scheduler import CronFloorError
 
 router = APIRouter(prefix="/searches", tags=["searches"])
 
 PrincipalDep = Annotated[Principal, Depends(get_principal)]
-
-
-PermitFactory = Callable[[AsyncSession, Settings], ArielPermitBudget]
-
-
-def _permit_for_session(session: AsyncSession, settings: Settings) -> ArielPermitBudget:
-    return ArielPermitBudget.for_session(session, settings, instance_id=None)
-
-
-def get_ariel_permit_factory() -> PermitFactory:
-    """How a manual run builds its Ariel permit budget from the request session.
-
-    A dependency returning a factory, not a budget: the budget is built in the
-    route body, after the permission guard, so a refused caller never touches the
-    engine. A test substitutes the factory.
-    """
-    return _permit_for_session
-
-
-PermitFactoryDep = Annotated[PermitFactory, Depends(get_ariel_permit_factory)]
 
 
 def _run_limit() -> str:
@@ -722,22 +697,23 @@ async def list_latest_groups(
     )
 
 
-@router.post("/{search_id}/run", response_model=ExecutionOut)
+@router.post("/{search_id}/run", response_model=ExecutionOut, status_code=status.HTTP_202_ACCEPTED)
 @limiter.limit(_run_limit)
 async def run_search(
     request: Request,
     response: Response,
     search_id: uuid.UUID,
     session: SessionDep,
-    provider: ProviderDep,
     principal: PrincipalDep,
-    permit_factory: PermitFactoryDep,
 ) -> ExecutionOut:
-    """Manually execute a stored search. Requires search:execute.
+    """Queue a manual run of a stored search. Requires search:execute.
 
-    Executes the *stored* query only — never AQL from the request body. Each
-    run takes a scarce Ariel search slot, so the route carries the manual
-    search-execution limit.
+    Executes the *stored* query only — never AQL from the request body. The route
+    answers 202 with a QUEUED execution and builds no provider and no permit: a
+    worker polls Ariel (up to 15 minutes), which a request behind a 60 s proxy
+    cannot. Each run takes a scarce Ariel search slot, so the route carries the
+    manual search-execution limit, and a second run of the same search is refused
+    (409) while one is queued or running.
     """
     _guard(principal, PERM_SEARCH_EXECUTE)
     svc = ScheduledSearchService(session)
@@ -745,42 +721,87 @@ async def run_search(
     if search is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "search not found")
 
-    settings = get_settings()
-    # Global-only: execution_instance_key is "default" for every search today.
-    permit = permit_factory(session, settings)
-    executor = SearchExecutor(session, provider, permit, settings=settings)
+    # One manual run per search at a time: the row lock makes the check and the
+    # insert below atomic against a second request.
+    await session.execute(
+        select(ScheduledSearch.id).where(ScheduledSearch.id == search_id).with_for_update()
+    )
+    now = datetime.now(UTC)
+    await _refuse_or_reap_manual_run(session, search, now)
+
     run_key = svc.manual_run_key(search, principal.subject)
-    execution = await executor.execute(
-        search, run_key=run_key, instance_key="default",
-        trigger="MANUAL", triggered_by=principal.subject,
+    execution = SearchExecution(
+        search_id=search.id,
+        run_key=run_key,
+        trigger="MANUAL",
+        triggered_by=principal.subject,
+        query_version=search.query_version,
+        status=ExecutionStatus.QUEUED,
     )
-    # A manual run is a real observation of the condition, so it raises and
-    # clears the same alerts a scheduled run would — otherwise a breach found
-    # by hand would be invisible to whoever is on call.
-    enqueuer = NotificationDispatcher(session, notifiers={}, policy=default_policy())
-    await SearchAlertEvaluator(session, settings=settings, enqueuer=enqueuer).evaluate(
-        search, execution
-    )
+    session.add(execution)
+    await session.flush()
     await record_audit(
         session, action="search.execute", actor=principal.subject,
         object_type="scheduled_search", object_id=str(search.id),
-        detail={"run_key": run_key, "status": str(execution.status)},
+        detail={"run_key": run_key, "status": str(ExecutionStatus.QUEUED)},
     )
-    if execution.error_type == ExecutionErrorType.CAPACITY.value:
-        # The FAILED/CAPACITY row is the record that the run was asked for and
-        # refused. Commit it before raising: the session dependency rolls back on
-        # an exception, which would erase the only evidence.
-        counts = await permit.active_permits(session)
+    await session.commit()
+    try:
+        from app.workers import tasks
+
+        tasks.run_manual_search_task.delay(str(execution.id))
+    except Exception as exc:
+        # Nothing will ever pick the row up: close it rather than leave it QUEUED.
+        ref = MessageRef("search.run.not_queued")
+        execution.status = ExecutionStatus.FAILED
+        execution.error_type = ExecutionErrorType.NETWORK.value
+        execution.error_message = render(ref)
+        execution.error_message_i18n = ref.to_wire()
+        execution.completed_at = datetime.now(UTC)
         await session.commit()
-        held = (
-            MessageRef(
-                "search.budget.held_of", {"held": counts.global_held, "cap": counts.global_cap}
-            )
-            if counts
-            else MessageRef("search.budget.held_cap", {"cap": permit.global_limit})
-        )
-        raise CodedHTTPException(
-            status.HTTP_503_SERVICE_UNAVAILABLE,
-            MessageRef("search.budget.full", {"held": held, "waited": permit.wait_seconds}),
-        )
+        raise CodedHTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, ref) from exc
     return ExecutionOut.model_validate(execution)
+
+
+async def _refuse_or_reap_manual_run(
+    session: AsyncSession, search: ScheduledSearch, now: datetime
+) -> None:
+    """409 while a manual run of this search is queued or running; reap a stale one.
+
+    A row older than the search's own timeout (capped at 15 minutes) plus two
+    minutes belongs to a worker that died or never started: it is closed as
+    abandoned, and a new run is allowed.
+    """
+    cap = get_settings().ariel_max_timeout_seconds
+    window = timedelta(seconds=min(search.timeout_seconds, cap) + 120)
+    rows = await session.scalars(
+        select(SearchExecution).where(
+            SearchExecution.search_id == search.id,
+            SearchExecution.trigger == "MANUAL",
+            SearchExecution.status.in_([ExecutionStatus.QUEUED, ExecutionStatus.RUNNING]),
+        )
+    )
+    for row in rows:
+        queued_at = row.created_at
+        since = max(row.started_at, queued_at) if row.started_at and queued_at else (
+            row.started_at or queued_at
+        )
+        if since is None:
+            continue
+        if since.tzinfo is None:
+            since = since.replace(tzinfo=UTC)
+        if now - since < window:
+            raise CodedHTTPException(
+                status.HTTP_409_CONFLICT,
+                MessageRef(
+                    "search.run.conflict.running",
+                    {"since": (queued_at or since).astimezone(UTC).isoformat()},
+                ),
+            )
+        ref = MessageRef("search.run.abandoned")
+        row.status = ExecutionStatus.FAILED
+        row.error_type = "ABANDONED"
+        row.error_message = render(ref)
+        row.error_message_i18n = ref.to_wire()
+        row.completed_at = now
+    await session.flush()

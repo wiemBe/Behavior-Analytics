@@ -106,3 +106,185 @@ describe("SearchRunControl", () => {
     expect(screen.getByRole("button", { name: "Run now" })).toBeEnabled();
   });
 });
+
+describe("SearchRunControl queued runs", () => {
+  const queuedRow = (over: Partial<SearchExecution> = {}) =>
+    execution({
+      status: "QUEUED",
+      result_count: null,
+      duration_ms: null,
+      created_at: "2026-11-20T10:00:00Z",
+      ...over,
+    });
+
+  it("shows the queued state with its UTC time and does not refresh yet", async () => {
+    const user = userEvent.setup();
+    vi.spyOn(api, "runSearch").mockResolvedValue(queuedRow());
+    vi.spyOn(api, "searchExecutions").mockResolvedValue([queuedRow()]);
+    render(<SearchRunControl searchId="s-1" pollMs={60_000} />);
+    await user.click(screen.getByRole("button", { name: "Run now" }));
+    const status = await screen.findByRole("status");
+    expect(status).toHaveTextContent("Run queued at 2026-11-20 10:00:00 UTC");
+    expect(status).toHaveTextContent("checks every 5 seconds");
+    expect(screen.getByRole("button", { name: "Run queued" })).toBeDisabled();
+    expect(refresh).not.toHaveBeenCalled();
+  });
+
+  it("follows the row to running and then to the finished result, refreshing once", async () => {
+    const user = userEvent.setup();
+    vi.spyOn(api, "runSearch").mockResolvedValue(queuedRow());
+    const list = vi
+      .spyOn(api, "searchExecutions")
+      .mockResolvedValueOnce([queuedRow({ status: "RUNNING", started_at: "2026-11-20T10:00:00Z" })])
+      .mockResolvedValue([execution({ status: "COMPLETED", result_count: 7 })]);
+    render(<SearchRunControl searchId="s-1" pollMs={10} />);
+    await user.click(screen.getByRole("button", { name: "Run now" }));
+    expect(await screen.findByText(/Running in QRadar since/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Running…" })).toBeDisabled();
+    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("returned 7 rows"));
+    expect(refresh).toHaveBeenCalledTimes(1);
+    const calls = list.mock.calls.length;
+    await new Promise((resolve) => setTimeout(resolve, 60));
+    expect(list.mock.calls.length).toBe(calls);
+    expect(screen.getByRole("button", { name: "Run now" })).toBeEnabled();
+  });
+
+  it("stops polling when the page goes away", async () => {
+    const user = userEvent.setup();
+    vi.spyOn(api, "runSearch").mockResolvedValue(queuedRow());
+    const list = vi.spyOn(api, "searchExecutions").mockResolvedValue([queuedRow()]);
+    const view = render(<SearchRunControl searchId="s-1" pollMs={10} />);
+    await user.click(screen.getByRole("button", { name: "Run now" }));
+    await waitFor(() => expect(list).toHaveBeenCalled());
+    view.unmount();
+    const calls = list.mock.calls.length;
+    await new Promise((resolve) => setTimeout(resolve, 60));
+    expect(list.mock.calls.length).toBe(calls);
+  });
+
+  it("says the read failed and keeps following", async () => {
+    const user = userEvent.setup();
+    vi.spyOn(api, "runSearch").mockResolvedValue(queuedRow());
+    vi.spyOn(api, "searchExecutions")
+      .mockRejectedValueOnce(new ApiError(502, "bad gateway"))
+      .mockResolvedValue([execution({ status: "COMPLETED", result_count: 3 })]);
+    render(<SearchRunControl searchId="s-1" pollMs={10} />);
+    await user.click(screen.getByRole("button", { name: "Run now" }));
+    expect(await screen.findByText(/progress could not be read/)).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("returned 3 rows"));
+  });
+
+  it("resumes following a run that was already queued when the page loaded", async () => {
+    const list = vi
+      .spyOn(api, "searchExecutions")
+      .mockResolvedValue([execution({ status: "COMPLETED", result_count: 5 })]);
+    render(<SearchRunControl searchId="s-1" latest={queuedRow()} pollMs={10} />);
+    expect(screen.getByRole("status")).toHaveTextContent("Run queued at 2026-11-20 10:00:00 UTC");
+    expect(screen.getByRole("button", { name: "Run queued" })).toBeDisabled();
+    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("returned 5 rows"));
+    expect(list).toHaveBeenCalledWith("s-1");
+  });
+
+  it("shows a timed-out run from the row", async () => {
+    const user = userEvent.setup();
+    vi.spyOn(api, "runSearch").mockResolvedValue(queuedRow());
+    vi.spyOn(api, "searchExecutions").mockResolvedValue([
+      execution({ status: "TIMEOUT", result_count: null, error_type: "TIMEOUT" }),
+    ]);
+    render(<SearchRunControl searchId="s-1" pollMs={10} />);
+    await user.click(screen.getByRole("button", { name: "Run now" }));
+    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("TIMEOUT"));
+  });
+
+  it("shows the held and cap sentence of a capacity refusal from the row", async () => {
+    const user = userEvent.setup();
+    vi.spyOn(api, "runSearch").mockResolvedValue(queuedRow());
+    vi.spyOn(api, "searchExecutions").mockResolvedValue([
+      execution({
+        status: "FAILED",
+        result_count: null,
+        error_type: "CAPACITY",
+        error_message:
+          "No Ariel permit became available within 30 seconds (per-console cap 3, global cap 6)",
+        error_message_code: "search.run.capacity",
+        error_message_params: { waited: 30, instance_cap: 3, global_cap: 6 },
+      }),
+    ]);
+    render(<SearchRunControl searchId="s-1" pollMs={10} />);
+    await user.click(screen.getByRole("button", { name: "Run now" }));
+    const note = await screen.findByText(/No Ariel permit became available within 30 seconds/);
+    expect(note).toHaveTextContent("per-console cap 3, global cap 6");
+    expect(note).toHaveTextContent("Nothing was sent to QRadar");
+    expect(screen.getAllByRole("status")).toHaveLength(1);
+    expect(screen.queryByText(/latest run failed/)).toBeNull();
+  });
+
+  it("answers a 409 with the time the open run started, in UTC, and follows that run", async () => {
+    const user = userEvent.setup();
+    const conflict = new ApiError(409, "conflict", "a manual run ... since 2026-11-20T10:00:00+00:00", {
+      detail: "a manual run of this search has been queued or running since 2026-11-20T10:00:00+00:00",
+      detail_code: "search.run.conflict.running",
+      detail_params: { since: "2026-11-20T10:00:00+00:00" },
+    });
+    vi.spyOn(api, "runSearch").mockRejectedValue(conflict);
+    vi.spyOn(api, "searchExecutions").mockResolvedValue([
+      queuedRow({ id: "e-open", status: "RUNNING", started_at: "2026-11-20T10:00:02Z" }),
+    ]);
+    render(<SearchRunControl searchId="s-1" pollMs={60_000} />);
+    await user.click(screen.getByRole("button", { name: "Run now" }));
+    const notice = await screen.findByText(/Running in QRadar since/);
+    expect(notice).toHaveTextContent("2026-11-20 10:00:02 UTC");
+    expect(notice).not.toHaveTextContent("2026-11-20T10:00:02Z");
+    expect(screen.getAllByRole("status")).toHaveLength(1);
+    expect(screen.queryByText(/queued or running since/)).toBeNull();
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("falls back to the generic line on a 409 without the code", async () => {
+    const user = userEvent.setup();
+    vi.spyOn(api, "runSearch").mockRejectedValue(new ApiError(409, "conflict", "conflict"));
+    vi.spyOn(api, "searchExecutions").mockResolvedValue([]);
+    render(<SearchRunControl searchId="s-1" />);
+    await user.click(screen.getByRole("button", { name: "Run now" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("The run did not start");
+    expect(screen.getByRole("button", { name: "Run now" })).toBeEnabled();
+  });
+
+  it("names the open run's conflict when it cannot be followed", async () => {
+    const user = userEvent.setup();
+    const conflict = new ApiError(409, "conflict", "x", {
+      detail: "x",
+      detail_code: "search.run.conflict.running",
+      detail_params: { since: "2026-11-20T10:00:00+00:00" },
+    });
+    vi.spyOn(api, "runSearch").mockRejectedValue(conflict);
+    vi.spyOn(api, "searchExecutions").mockResolvedValue([]);
+    render(<SearchRunControl searchId="s-1" />);
+    await user.click(screen.getByRole("button", { name: "Run now" }));
+    const notice = await screen.findByText(/queued or running since/);
+    expect(notice).toHaveTextContent("2026-11-20 10:00:00 UTC");
+  });
+
+  it("reads an abandoned run and a worker error as words, not tokens", async () => {
+    const abandoned = execution({
+      status: "FAILED",
+      error_type: "ABANDONED",
+      error_message_code: "search.run.abandoned",
+      result_count: null,
+    });
+    const { unmount } = render(<SearchRunControl searchId="s-1" latest={abandoned} />);
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "Abandoned: the worker stopped before finishing",
+    );
+    expect(screen.getByRole("status")).not.toHaveTextContent("ABANDONED");
+    unmount();
+    const worker = execution({
+      status: "FAILED",
+      error_type: "KeyError",
+      error_message_code: "search.run.worker_failed",
+      result_count: null,
+    });
+    render(<SearchRunControl searchId="s-1" latest={worker} />);
+    expect(screen.getByRole("status")).toHaveTextContent("Worker error (KeyError)");
+  });
+});

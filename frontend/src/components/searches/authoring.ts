@@ -387,6 +387,23 @@ export interface RunReadout {
  * keys); without one they are English, as before. `locale` groups the counts the Turkish way
  * (`1.204`); English prints them plain, as before.
  */
+/**
+ * The words for a run the worker did not finish, or null for any other run. Such a run carries
+ * `ABANDONED` or the class of the exception that stopped it, with a fixed message code; every other
+ * error type keeps its enum label (and an unknown one shows raw).
+ */
+export function workerStopLabel(
+  t: TextTranslator,
+  execution: Pick<SearchExecution, "error_type" | "error_message_code">,
+): string | null {
+  if (!execution.error_type) return null;
+  if (execution.error_message_code === "search.run.abandoned") return t("searches.run.errorAbandoned");
+  if (execution.error_message_code === "search.run.worker_failed") {
+    return t("searches.run.errorWorker", { type: execution.error_type });
+  }
+  return null;
+}
+
 export function runReadout(
   execution: SearchExecution,
   consecutiveFailures: number | null,
@@ -399,7 +416,10 @@ export function runReadout(
     // The type slot is the executionErrorType label. English labels are the
     // raw tokens, so English stays "TIMEOUT". A translator without the enums
     // namespace (the English trend fallback) also keeps the raw token.
-    const named = execution.error_type
+    const stopped = workerStopLabel(t, execution);
+    const named = stopped
+      ? `${stopped}.`
+      : execution.error_type
       ? t("trend.run.errorType", {
           type: enumLabel(t, "executionErrorType", execution.error_type),
           words:

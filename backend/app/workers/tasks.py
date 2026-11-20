@@ -53,12 +53,13 @@ from app.identity.collector import IdentityCollector
 from app.identity.profiles import IdentityProfileError, IdentityProfileService
 from app.identity.retention import IdentityRetention
 from app.identity.revalidation import IdentityRevalidator, failure_token
-from app.models.enums import AlertDigestState, EvidenceStatus, Severity
+from app.models.enums import AlertDigestState, EvidenceStatus, ExecutionStatus, Severity
 from app.models.identity_detection import IdentitySourceProfile
 from app.models.instance import QRadarInstance
 from app.models.ips import IpsSourceProfile
 from app.models.log_source import LogSource, LogSourceAnomaly
 from app.models.monitoring import CollectionWatermark
+from app.models.search import ScheduledSearch, SearchExecution
 from app.models.waf import WafSourceProfile
 from app.providers.base import ProviderCapability, QRadarProvider
 from app.providers.factory import build_provider, build_provider_for_instance
@@ -1556,6 +1557,113 @@ async def _run_due_searches_cycle(settings: Settings, maker: Any) -> dict:
         await provider.aclose()
 
 
+def _manual_search_permit(session: AsyncSession, settings: Settings) -> ArielPermitBudget:
+    """The permit a manual run holds: global-only, like the scheduler's (searches are not
+    instance-scoped yet)."""
+    return ArielPermitBudget.for_session(session, settings, instance_id=None)
+
+
+async def _close_manual_search(
+    session: AsyncSession, execution_id: uuid.UUID, exc: Exception
+) -> None:
+    """Fail closed: a manual run the worker could not finish is FAILED, never QUEUED/RUNNING.
+
+    The row records the exception's class, never its text (it may carry a query or a URL).
+    A row the executor already finished is left as it is.
+    """
+    await session.rollback()
+    row = await session.scalar(
+        select(SearchExecution)
+        .where(SearchExecution.id == execution_id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
+    if row is not None and row.status in (
+        ExecutionStatus.PENDING,
+        ExecutionStatus.QUEUED,
+        ExecutionStatus.RUNNING,
+    ):
+        ref = MessageRef("search.run.worker_failed")
+        row.status = ExecutionStatus.FAILED
+        row.error_type = type(exc).__name__[:64]
+        row.error_message = render(ref)
+        row.error_message_i18n = ref.to_wire()
+        row.completed_at = datetime.now(UTC)
+    await session.commit()
+
+
+async def run_manual_search(execution_id: str) -> dict:
+    """Run the manual search the route queued, on its own row, and evaluate its alerts.
+
+    The route created the QUEUED execution; the executor takes it by its run key, so the
+    permit, Ariel polling and result storage are the scheduled path's, unchanged. A second
+    delivery of the task finds the row no longer QUEUED and does nothing. Whatever happens,
+    the row leaves this task terminal: the executor's own outcome (a capacity refusal is
+    FAILED/CAPACITY), or FAILED with the exception's class. The provider closes in `finally`.
+    """
+    settings = get_settings()
+    maker = get_sessionmaker()
+    row_id = uuid.UUID(execution_id)
+    async with maker() as session:
+        execution = await session.get(SearchExecution, row_id)
+        if execution is None:
+            return {"status": "not_found", "execution_id": execution_id}
+        if execution.status != ExecutionStatus.QUEUED:
+            return {"status": "not_queued", "execution_id": execution_id}
+        run_key, triggered_by = execution.run_key, execution.triggered_by
+        search = await session.get(ScheduledSearch, execution.search_id)
+        provider: QRadarProvider | None = None
+        try:
+            if search is None:
+                raise LookupError("search_not_found")
+            provider = build_provider()
+            executor = SearchExecutor(
+                session,
+                provider,
+                _manual_search_permit(session, settings),
+                settings=settings,
+                commit_progress=True,
+            )
+            execution = await executor.execute(
+                search,
+                run_key=run_key,
+                instance_key="default",
+                trigger="MANUAL",
+                triggered_by=triggered_by,
+            )
+            await session.commit()
+        except Exception as exc:
+            logger.warning("manual search run failed: %s", type(exc).__name__)
+            await _close_manual_search(session, row_id, exc)
+            return {
+                "status": "failed",
+                "execution_id": execution_id,
+                "error_class": type(exc).__name__,
+            }
+        finally:
+            if provider is not None:
+                try:
+                    await provider.aclose()
+                except Exception as close_exc:
+                    logger.warning(
+                        "manual search provider close failed: %s", type(close_exc).__name__
+                    )
+        outcome = str(execution.status)
+        try:
+            # A manual run is a real observation of the condition, so it raises and clears
+            # the same alerts a scheduled run would.
+            enqueuer = NotificationDispatcher(session, notifiers={}, policy=default_policy())
+            await SearchAlertEvaluator(session, settings=settings, enqueuer=enqueuer).evaluate(
+                search, execution
+            )
+            await session.commit()
+        except Exception as eval_exc:
+            await session.rollback()
+            logger.warning("manual search alert evaluation failed: %s", type(eval_exc).__name__)
+            return {"status": "alerts_failed", "execution_id": execution_id, "outcome": outcome}
+    return {"status": "done", "execution_id": execution_id, "outcome": outcome}
+
+
 # ------------------------------------------------------------------ WAF (B.1)
 async def dispatch_waf_collection(enqueue: Callable[[str], object] | None = None) -> dict:
     """Enqueue one independent run per eligible WAF source, once per cadence slot.
@@ -2765,6 +2873,11 @@ def dispatch_identity_collection_task(instance_name: str | None = None) -> dict:
 @celery_app.task(name="validate_identity_profile")
 def validate_identity_profile_task(profile_id: str, lock_retry_count: int = 0) -> dict:
     return _run(validate_identity_profile(profile_id, lock_retry_count))
+
+
+@celery_app.task(name="run_manual_search")
+def run_manual_search_task(execution_id: str) -> dict:
+    return _run(run_manual_search(execution_id))
 
 
 @celery_app.task(name="revalidate_identity_profiles")

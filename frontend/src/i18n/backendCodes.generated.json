@@ -13194,6 +13194,13 @@
     },
     "template": "the limit is {limit} enabled searches"
   },
+  "search.run.abandoned": {
+    "params": {},
+    "sample": {},
+    "sample_english": "the run was abandoned: no worker finished it within the search timeout",
+    "sample_english_params": {},
+    "template": "the run was abandoned: no worker finished it within the search timeout"
+  },
   "search.run.capacity": {
     "params": {
       "global_cap": {
@@ -13221,6 +13228,21 @@
     },
     "template": "No Ariel permit became available within {waited} seconds (per-console cap {instance_cap}, global cap {global_cap})"
   },
+  "search.run.conflict.running": {
+    "params": {
+      "since": {
+        "kind": "text"
+      }
+    },
+    "sample": {
+      "since": "2026-11-20T10:00:00+00:00"
+    },
+    "sample_english": "a manual run of this search has been queued or running since 2026-11-20T10:00:00+00:00",
+    "sample_english_params": {
+      "since": "2026-11-20T10:00:00+00:00"
+    },
+    "template": "a manual run of this search has been queued or running since {since}"
+  },
   "search.run.failed": {
     "params": {},
     "sample": {},
@@ -13234,6 +13256,13 @@
     "sample_english": "configured provider cannot execute AQL",
     "sample_english_params": {},
     "template": "configured provider cannot execute AQL"
+  },
+  "search.run.not_queued": {
+    "params": {},
+    "sample": {},
+    "sample_english": "the run could not be queued, so nothing was sent to QRadar; try again shortly",
+    "sample_english_params": {},
+    "template": "the run could not be queued, so nothing was sent to QRadar; try again shortly"
   },
   "search.run.parse_failed": {
     "params": {
@@ -13289,6 +13318,13 @@
       "reasons": "query is empty"
     },
     "template": "{reasons}"
+  },
+  "search.run.worker_failed": {
+    "params": {},
+    "sample": {},
+    "sample_english": "the run stopped because the worker failed before it finished",
+    "sample_english_params": {},
+    "template": "the run stopped because the worker failed before it finished"
   },
   "search.threshold.unreachable": {
     "params": {
