@@ -53,6 +53,7 @@ from app.identity.collector import IdentityCollector
 from app.identity.profiles import IdentityProfileError, IdentityProfileService
 from app.identity.retention import IdentityRetention
 from app.identity.revalidation import IdentityRevalidator, failure_token
+from app.jdbc.jobs import request_and_enqueue_jdbc_run, run_jdbc_collection
 from app.models.enums import AlertDigestState, EvidenceStatus, ExecutionStatus, Severity
 from app.models.identity_detection import IdentitySourceProfile
 from app.models.instance import QRadarInstance
@@ -436,6 +437,16 @@ async def sync_log_sources(
     ) -> dict:
         assert provider is not None
         report = await LogSourceCollector(session, provider, settings=settings).sync(instance)
+        if report.status in ("COMPLETE", "PARTIAL") and settings.jdbc_collection_enabled:
+            try:
+                await request_and_enqueue_jdbc_run(
+                    session, instance.id, now=datetime.now(UTC),
+                    enqueue=lambda iid: collect_jdbc_configs_task.delay(str(iid)),
+                )
+            except Exception:
+                # A broker failure must neither fail the inventory pass nor lose
+                # the QUEUED row: the next beat tick claims it and retries the walk.
+                logger.warning("jdbc inventory kick could not enqueue its task")
         return {
             "status": (
                 "skipped_locked"
@@ -457,6 +468,48 @@ async def sync_log_sources(
         run, instance_name, instance_id=_parse_instance_id(instance_id),
         provider_settings=settings,
     )
+
+
+async def collect_jdbc_configs(instance_name: str | None = None) -> dict:
+    """Walk JDBC protocol-8 configuration for every enabled console, inert while off.
+
+    One effective-settings read decides from the feature switches. With the switch
+    off, or when the switch table cannot be read, no provider is built and no
+    sync-state row is touched. On, the queued/coalesced lease lifecycle in
+    ``run_jdbc_collection`` owns each console's pass; the result is fixed state,
+    code and counts only. A non-REST console reports UNSUPPORTED there.
+    """
+    settings, reason = await _effective_settings("collect_jdbc_configs")
+    if not settings.jdbc_collection_enabled:
+        return _with_reason({"status": "disabled"}, reason)
+
+    maker = get_sessionmaker()
+    lease_seconds = walk_time_limits("collect_jdbc_configs")["time_limit"] + 60
+    walk_kwargs = {
+        "page_timeout_seconds": settings.jdbc_page_timeout_seconds,
+        "page_attempts": settings.jdbc_page_attempts,
+        "wall_seconds": settings.jdbc_walk_max_seconds,
+    }
+
+    async def run(
+        session: AsyncSession, instance: QRadarInstance, provider: QRadarProvider | None
+    ) -> dict:
+        assert provider is not None
+        outcome = await run_jdbc_collection(
+            maker, instance, provider, clock=lambda: datetime.now(UTC),
+            lease_seconds=lease_seconds, walk_kwargs=walk_kwargs,
+        )
+        return {
+            "status": outcome.state,
+            "failure_code": outcome.failure_code,
+            "pages": outcome.pages,
+            "rows": outcome.rows,
+            "failures": outcome.failures,
+            "elapsed_ms": outcome.elapsed_ms,
+            "failed_page": outcome.failed_page,
+        }
+
+    return await _for_each_instance(run, instance_name, provider_settings=settings)
 
 
 async def check_qradar_access(instance_name: str | None = None, claimed: bool = False) -> dict:
@@ -2779,6 +2832,13 @@ def collect_metrics_task(instance_name: str | None = None) -> dict:
 @celery_app.task(name="sync_log_sources", base=WalkTask, **walk_time_limits("sync_log_sources"))
 def sync_log_sources_task(instance_name: str | None = None) -> dict:
     return _run(sync_log_sources(instance_name))
+
+
+@celery_app.task(
+    name="collect_jdbc_configs", base=WalkTask, **walk_time_limits("collect_jdbc_configs")
+)
+def collect_jdbc_configs_task(instance_name: str | None = None) -> dict:
+    return _run(collect_jdbc_configs(instance_name))
 
 
 @celery_app.task(name="check_qradar_access")
