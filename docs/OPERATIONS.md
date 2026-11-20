@@ -986,6 +986,11 @@ this project's containers, all its local Docker volumes (database, Redis, logs),
 saved answers; it keeps the backups, the external secret volumes (unless `--include-secrets`) and
 the checkout. See [`INSTALL.md`](INSTALL.md), "Moving from a pre-production to a production QRadar".
 
+`reset` also deletes every profile, policy, watch, dashboard and mail setting. Take
+`./qradar-dash config-export` first and apply the file with `./qradar-dash config-import` after
+the new install and its first log-source sync; see [`INSTALL.md`](INSTALL.md), "Carry the operator
+configuration across: `config-export` and `config-import`".
+
 ### Seçili yedeği geri yükleme (`restore`)
 
 ```bash
