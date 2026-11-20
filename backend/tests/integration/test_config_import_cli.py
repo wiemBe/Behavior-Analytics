@@ -397,10 +397,10 @@ async def test_duplicate_keys_and_later_sections_are_reported(db_schema, db_sess
     await _fleet(db_session)
     document = _document(log_source_settings=[_soc(owner="first"), _soc(owner="second")],
                          technique_mappings=[{"name": "x"}],
-                         alert_policies=[{"name": "policy"}], dashboards=[{"name": "SOC"}])
+                         property_watches=[{"name": "policy"}], dashboards=[{"name": "SOC"}])
     report = _report(_run(db_schema, tmp_path, "--apply", "--yes", document=document))
     assert len(_lines(report, "log_source_settings", "unresolved")) == 2
-    for section in ("technique_mappings", "alert_policies", "dashboards"):
+    for section in ("technique_mappings", "property_watches", "dashboards"):
         assert _lines(report, section, "unresolved")[0]["reason"] == "not applied in this release"
     source = await db_session.scalar(select(LogSource))
     await db_session.refresh(source)
