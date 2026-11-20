@@ -5834,6 +5834,15 @@ REGISTRY: tuple[MessageSpec, ...] = (
         "noise.tuning.direction_disabled",
         "the direction was disabled by a tuning change",
     ),
+    # --- JDBC-1 P3b: a source disabled in QRadar closes its live volume incidents ---
+    _fixed(
+        "anomaly.source_disabled_without_verdict",
+        "Closed without a verdict: source disabled in QRadar.",
+    ),
+    _fixed(
+        "alert.source_disabled_without_verdict",
+        "Closed without a verdict: source disabled in QRadar.",
+    ),
     _fixed(
         "noise.preview.not_monitored",
         "The source is not monitored, so there is nothing to replay.",

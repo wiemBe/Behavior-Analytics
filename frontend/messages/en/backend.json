@@ -87,6 +87,7 @@
         "recovered": "result back within threshold"
       }
     },
+    "source_disabled_without_verdict": "Closed without a verdict: source disabled in QRadar.",
     "threshold": {
       "crossed": "{name} crossed its threshold"
     },
@@ -156,6 +157,7 @@
     "resolution": {
       "recovered": "condition recovered"
     },
+    "source_disabled_without_verdict": "Closed without a verdict: source disabled in QRadar.",
     "suppression": {
       "maintenance": "maintenance window"
     }

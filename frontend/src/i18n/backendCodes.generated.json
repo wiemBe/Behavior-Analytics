@@ -752,6 +752,13 @@
     "sample_english_params": {},
     "template": "result back within threshold"
   },
+  "alert.source_disabled_without_verdict": {
+    "params": {},
+    "sample": {},
+    "sample_english": "Closed without a verdict: source disabled in QRadar.",
+    "sample_english_params": {},
+    "template": "Closed without a verdict: source disabled in QRadar."
+  },
   "alert.threshold.crossed": {
     "params": {
       "name": {
@@ -1619,6 +1626,13 @@
     "sample_english": "condition recovered",
     "sample_english_params": {},
     "template": "condition recovered"
+  },
+  "anomaly.source_disabled_without_verdict": {
+    "params": {},
+    "sample": {},
+    "sample_english": "Closed without a verdict: source disabled in QRadar.",
+    "sample_english_params": {},
+    "template": "Closed without a verdict: source disabled in QRadar."
   },
   "anomaly.suppression.maintenance": {
     "params": {},
