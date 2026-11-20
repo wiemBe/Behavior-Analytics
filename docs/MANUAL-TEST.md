@@ -194,7 +194,7 @@ tar -tzf "$BUNDLE" | head -40
 
 **Expected:**
 
-- During the upgrade the backend, worker, beat, frontend and proxy stop; analysts see a connection error. For the duration, see section 2.
+- During the upgrade the backend, worker, walker, beat, frontend and proxy stop; analysts see a connection error. For the duration, see section 2.
 
 **Record:** The start and end of the window (UTC), the name of the path, and the person or role who was told.
 
@@ -204,7 +204,7 @@ A fresh browser has no `ba_locale` cookie, and the sign-in page shows the `h1` �
 
 There are two ways to upgrade the site from 0.1.15 to 0.1.16; choose one. The target version works the same way as the "Upgrade" and "Offline bundle" sections of `docs/OPERATIONS.md`. The upgrade takes its own verified `pre-upgrade` backup; the backup is also restore-tested. 0.1.16 adds three migrations: the migration head is `0060` before the upgrade and `0063` after it, and the newest file in `backend/alembic/versions/` is `0063_shift_handover.py` (`0061_entity_mention`, `0062_entity_mention_backfill`, `0063_shift_handover`). The migrate step runs them once (`alembic upgrade head`), in order, and prints one `Running upgrade` line for each. They are additive and nothing is backfilled. No migration is run downward on a site.
 
-**Outage.** The backend, worker and beat are down from the start of `pg_dump` until `/api/v1/health/ready` returns 200; `frontend` and `proxy` are stopped too. On a small database the upgrade outage was measured at about 15-25 s with migrations (22.3 s in the 0.1.14 → 0.1.15 run of REL-15e, offline, six migrations on the lab VM; 22.9 s in the 0.1.10 → 0.1.11 run with seven migrations); the budget for a database under 5 GiB is 10 minutes. Pulling the images is outside this window. These are not promises. The upgrade empties Redis (`FLUSHALL`); queued tasks are lost and are set up again at the next beat tick, and the important data is in PostgreSQL. Nothing is written to QRadar.
+**Outage.** The backend, worker, walker and beat are down from the start of `pg_dump` until `/api/v1/health/ready` returns 200; `frontend` and `proxy` are stopped too. On a small database the upgrade outage was measured at about 15-25 s with migrations (22.3 s in the 0.1.14 → 0.1.15 run of REL-15e, offline, six migrations on the lab VM; 22.9 s in the 0.1.10 → 0.1.11 run with seven migrations); the budget for a database under 5 GiB is 10 minutes. Pulling the images is outside this window. These are not promises. The upgrade empties Redis (`FLUSHALL`); queued tasks are lost and are set up again at the next beat tick, and the important data is in PostgreSQL. Nothing is written to QRadar.
 
 #### MT-06 — Upgrade, online path (writes) [core]
 
@@ -1680,7 +1680,7 @@ The Dashboard is at `/`. In the “Dashboards” menu the “Template” group h
 grep -E '^GEO_(COUNTRY_SOURCE|SOURCE_COUNTRY_PROPERTY|DESTINATION_COUNTRY_PROPERTY)=' .env
 ```
 
-- Run `./qradar-dash doctor` and read the `geo_country_source` line. After a change in `.env`, recreate the backend, worker and beat containers first.
+- Run `./qradar-dash doctor` and read the `geo_country_source` line. After a change in `.env`, recreate the backend, worker, walker and beat containers first.
 
 **Expected:**
 
