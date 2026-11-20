@@ -53,6 +53,7 @@ from app.core.config import Settings, get_settings
 from app.fleet.outage_policy import ResolvedOutage, resolve
 from app.history.origin import is_live_clause
 from app.i18n.messages import MessageRef, render
+from app.log_source_policy import source_pause_enabled
 from app.models.alert import Alert
 from app.models.enums import (
     ACTIVE_ANOMALY_STATES,
@@ -98,6 +99,10 @@ MESSAGE_RECOVERED = MessageRef("anomaly.resolution.recovered")
 #: Detector types whose incidents warrant a bounded explanation package. A
 #: silence has no volume to attribute, so there is nothing to explain.
 EXPLAINABLE_TYPES = frozenset({AnomalyType.VOLUME_SPIKE, AnomalyType.VOLUME_DROP})
+
+#: Fixed skip reason when the stored QRadar flag disables a source under the
+#: D-52 pause policy. Stale inventory is irrelevant: the stored flag is the input.
+SKIPPED_DISABLED_IN_QRADAR = "disabled in QRadar"
 
 
 @dataclass
@@ -307,6 +312,10 @@ class AnomalyEngine:
             return EvaluationReport(
                 log_source.id, None, skipped_reason="monitoring disabled"
             )
+        if source_pause_enabled(self.settings) and log_source.enabled is not True:
+            return EvaluationReport(
+                log_source.id, None, skipped_reason=SKIPPED_DISABLED_IN_QRADAR
+            )
 
         watermark = await self.session.get(AnomalyEvaluationWatermark, log_source.id)
         if watermark is None:
@@ -492,6 +501,9 @@ class AnomalyEngine:
 
         if not log_source.monitoring_enabled:
             report.skipped_reason = "monitoring disabled"
+            return report
+        if source_pause_enabled(self.settings) and log_source.enabled is not True:
+            report.skipped_reason = SKIPPED_DISABLED_IN_QRADAR
             return report
 
         in_maintenance = self._in_maintenance(log_source, metric.bucket_start)
