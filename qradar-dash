@@ -17,7 +17,7 @@
 #   ./qradar-dash repair-state
 #   ./qradar-dash reset [--backup] [--include-secrets] [--non-interactive --yes] [--dry-run]
 #   ./qradar-dash config-export [--label LABEL] [--instance NAME] [--output FILE]
-#   ./qradar-dash config-import FILE (--dry-run | --apply) [--non-interactive --yes]
+#   ./qradar-dash config-import FILE (--dry-run | --apply) [--instance NAME] [--non-interactive --yes]
 #
 # Specified in docs/OPERATIONS-DESIGN.md section 3. The script needs bash and
 # Docker with Compose v2 on the host, plus openssl and curl. It never calls
@@ -102,6 +102,7 @@ config-export options
 config-import options
   --dry-run         Print the import plan and change nothing.
   --apply           Apply the import (requires --yes when not on a terminal).
+  --instance NAME   Console to import into when more than one is registered.
   --non-interactive Refuse unless --yes is also present.
   --yes             Confirm a non-interactive import.
 
@@ -5059,7 +5060,8 @@ cmd_config_export() {
 }
 
 cmd_config_import() {
-  local file="" dry_run=no apply=no non_interactive=no yes=no
+  local file="" dry_run=no apply=no non_interactive=no yes=no instance=""
+  local instance_given=no
   local actor rc dry_output dry_err instance_name answer head_part
   while [ $# -gt 0 ]; do
     case "$1" in
@@ -5068,15 +5070,32 @@ cmd_config_import() {
       --apply) apply=yes ;;
       --non-interactive) non_interactive=yes ;;
       --yes) yes=yes ;;
+      --instance)
+        if [ $# -lt 2 ]; then
+          fail "config-import: --instance needs a value. Nothing was executed."
+          return 2
+        fi
+        case "$2" in
+          ""|-*) fail "config-import: --instance needs a value. Nothing was executed."; return 2 ;;
+        esac
+        if [ "$instance_given" = yes ]; then
+          fail "config-import: --instance given more than once. Nothing was executed."
+          return 2
+        fi
+        instance=$2
+        instance_given=yes
+        shift 2
+        continue
+        ;;
       --*)
-        fail "unknown config-import argument: $1; usage: ./qradar-dash config-import FILE (--dry-run | --apply) [--non-interactive --yes]. Nothing was executed."
+        fail "unknown config-import argument: $1; usage: ./qradar-dash config-import FILE (--dry-run | --apply) [--instance NAME] [--non-interactive --yes]. Nothing was executed."
         return 2
         ;;
       *)
         if [ -z "$file" ]; then
           file=$1
         else
-          fail "config-import accepts one FILE; usage: ./qradar-dash config-import FILE (--dry-run | --apply) [--non-interactive --yes]. Nothing was executed."
+          fail "config-import accepts one FILE; usage: ./qradar-dash config-import FILE (--dry-run | --apply) [--instance NAME] [--non-interactive --yes]. Nothing was executed."
           return 2
         fi
         ;;
@@ -5111,8 +5130,10 @@ cmd_config_import() {
   actor=$(id -un)
 
   if [ "$dry_run" = yes ]; then
+    local -a ci_dry_args=(exec -T backend python -m app.cli.config import --dry-run --actor "$actor")
+    [ -z "$instance" ] || ci_dry_args+=(--instance "$instance")
     set +e
-    dc exec -T backend python -m app.cli.config import --dry-run --actor "$actor" < "$file"
+    dc "${ci_dry_args[@]}" < "$file"
     rc=$?
     set -e
     return "$rc"
@@ -5124,8 +5145,10 @@ cmd_config_import() {
       fail "config-import: --non-interactive requires --yes. Nothing was executed."
       return 1
     fi
+    local -a ci_apply_args=(exec -T backend python -m app.cli.config import --apply --yes --actor "$actor")
+    [ -z "$instance" ] || ci_apply_args+=(--instance "$instance")
     set +e
-    dc exec -T backend python -m app.cli.config import --apply --yes --actor "$actor" < "$file"
+    dc "${ci_apply_args[@]}" < "$file"
     rc=$?
     set -e
     return "$rc"
@@ -5143,8 +5166,10 @@ cmd_config_import() {
   }
   trap 'rm -f -- "$dry_err"' EXIT
   install_signal_traps
+  local -a ci_tty_dry_args=(exec -T backend python -m app.cli.config import --dry-run --actor "$actor")
+  [ -z "$instance" ] || ci_tty_dry_args+=(--instance "$instance")
   set +e
-  dry_output=$(dc exec -T backend python -m app.cli.config import --dry-run --actor "$actor" < "$file" 2>"$dry_err")
+  dry_output=$(dc "${ci_tty_dry_args[@]}" < "$file" 2>"$dry_err")
   rc=$?
   set -e
   if [ "$rc" -ne 0 ]; then
@@ -5176,8 +5201,10 @@ cmd_config_import() {
   fi
   trap - EXIT HUP INT TERM
   rm -f -- "$dry_err"
+  local -a ci_tty_apply_args=(exec -T backend python -m app.cli.config import --apply --yes --actor "$actor")
+  [ -z "$instance" ] || ci_tty_apply_args+=(--instance "$instance")
   set +e
-  dc exec -T backend python -m app.cli.config import --apply --yes --actor "$actor" < "$file"
+  dc "${ci_tty_apply_args[@]}" < "$file"
   rc=$?
   set -e
   return "$rc"

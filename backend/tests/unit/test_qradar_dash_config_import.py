@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import os
 import pty
+import pwd
 import shutil
 import subprocess
 from pathlib import Path
@@ -163,6 +164,12 @@ JSON = """\
 """
 DOCKER_STUB = """#!/bin/bash
 printf '%s\\n' "$*" >> "$STUB_CALLS"
+if [ -n "${STUB_ARGV_FILE:-}" ]; then
+  printf 'ARGC=%s\\n' "$#" >> "$STUB_ARGV_FILE"
+  printf 'ARGV=' >> "$STUB_ARGV_FILE"
+  printf '<%s>' "$@" >> "$STUB_ARGV_FILE"
+  printf '\\n' >> "$STUB_ARGV_FILE"
+fi
 case "$*" in
   *" exec -T backend python -m app.cli.config import --dry-run"*)
     _dry_stdin="${STUB_DRY_STDIN:-${STUB_STDIN:-}}"
@@ -801,3 +808,198 @@ def test_tty_instance_name_sections_lab_applies(fx: Import, tmp_path: Path) -> N
     calls = fx.calls.read_text().splitlines()
     assert any("import --dry-run" in c for c in calls)
     assert any("import --apply" in c for c in calls)
+
+
+def _actor() -> str:
+    return pwd.getpwuid(os.getuid()).pw_name
+
+
+def test_instance_lab_dry_run_passes_instance(fx: Import, tmp_path: Path) -> None:
+    source = tmp_path / "in.json"
+    source.write_text('{"x":1}')
+    actor = _actor()
+    result = fx.run("--dry-run", str(source), "--instance", "lab")
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    calls = fx.calls.read_text().splitlines()
+    expected = (
+        "exec -T backend python -m app.cli.config import "
+        f"--dry-run --actor {actor} --instance lab"
+    )
+    assert len(calls) == 1
+    assert calls[0].endswith(expected)
+
+
+def test_instance_lab_non_tty_apply_passes_instance(fx: Import, tmp_path: Path) -> None:
+    source = tmp_path / "in.json"
+    source.write_text('{"x":1}')
+    actor = _actor()
+    result = fx.run("--apply", str(source), "--non-interactive", "--yes", "--instance", "lab")
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    calls = fx.calls.read_text().splitlines()
+    expected = (
+        "exec -T backend python -m app.cli.config import "
+        f"--apply --yes --actor {actor} --instance lab"
+    )
+    assert len(calls) == 1
+    assert calls[0].endswith(expected)
+
+
+def test_instance_lab_tty_passes_instance_both_calls(fx: Import, tmp_path: Path) -> None:
+    source = tmp_path / "in.json"
+    source.write_text('{"x":1}')
+    actor = _actor()
+    result = fx.tty("--apply", str(source), "--instance", "lab", replies="lab\n")
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    calls = fx.calls.read_text().splitlines()
+    dry = (
+        "exec -T backend python -m app.cli.config import "
+        f"--dry-run --actor {actor} --instance lab"
+    )
+    apply_cmd = (
+        "exec -T backend python -m app.cli.config import "
+        f"--apply --yes --actor {actor} --instance lab"
+    )
+    assert len(calls) == 2
+    assert calls[0].endswith(dry)
+    assert calls[1].endswith(apply_cmd)
+
+
+def test_no_instance_dry_run_pinned_argv(fx: Import, tmp_path: Path) -> None:
+    source = tmp_path / "in.json"
+    source.write_text('{"x":1}')
+    actor = _actor()
+    result = fx.run("--dry-run", str(source))
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    calls = fx.calls.read_text().splitlines()
+    expected = (
+        "exec -T backend python -m app.cli.config import "
+        f"--dry-run --actor {actor}"
+    )
+    assert len(calls) == 1
+    assert calls[0].endswith(expected)
+
+
+def test_no_instance_non_tty_apply_pinned_argv(fx: Import, tmp_path: Path) -> None:
+    source = tmp_path / "in.json"
+    source.write_text('{"x":1}')
+    actor = _actor()
+    result = fx.run("--apply", str(source), "--non-interactive", "--yes")
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    calls = fx.calls.read_text().splitlines()
+    expected = (
+        "exec -T backend python -m app.cli.config import "
+        f"--apply --yes --actor {actor}"
+    )
+    assert len(calls) == 1
+    assert calls[0].endswith(expected)
+
+
+def test_no_instance_tty_pinned_argv(fx: Import, tmp_path: Path) -> None:
+    source = tmp_path / "in.json"
+    source.write_text('{"x":1}')
+    actor = _actor()
+    result = fx.tty("--apply", str(source), replies="lab\n")
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    calls = fx.calls.read_text().splitlines()
+    dry = (
+        "exec -T backend python -m app.cli.config import "
+        f"--dry-run --actor {actor}"
+    )
+    apply_cmd = (
+        "exec -T backend python -m app.cli.config import "
+        f"--apply --yes --actor {actor}"
+    )
+    assert len(calls) == 2
+    assert calls[0].endswith(dry)
+    assert calls[1].endswith(apply_cmd)
+
+
+def test_instance_missing_value_exits_two(fx: Import, tmp_path: Path) -> None:
+    source = tmp_path / "in.json"
+    source.write_text('{"x":1}')
+    result = fx.run("--dry-run", str(source), "--instance")
+
+    assert result.returncode == 2
+    assert "config-import: --instance needs a value. Nothing was executed." in result.stderr
+    assert not fx.calls.exists()
+
+
+def test_instance_empty_value_exits_two(fx: Import, tmp_path: Path) -> None:
+    source = tmp_path / "in.json"
+    source.write_text('{"x":1}')
+    result = fx.run("--dry-run", str(source), "--instance", "")
+
+    assert result.returncode == 2
+    assert "config-import: --instance needs a value. Nothing was executed." in result.stderr
+    assert not fx.calls.exists()
+
+
+def test_instance_flag_like_value_exits_two(fx: Import, tmp_path: Path) -> None:
+    source = tmp_path / "in.json"
+    source.write_text('{"x":1}')
+    result = fx.run("--dry-run", str(source), "--instance", "--yes")
+
+    assert result.returncode == 2
+    assert "config-import: --instance needs a value. Nothing was executed." in result.stderr
+    assert not fx.calls.exists()
+
+
+def test_instance_duplicate_exits_two(fx: Import, tmp_path: Path) -> None:
+    source = tmp_path / "in.json"
+    source.write_text('{"x":1}')
+    result = fx.run("--dry-run", str(source), "--instance", "lab", "--instance", "lab")
+
+    assert result.returncode == 2
+    assert not fx.calls.exists()
+
+
+def test_instance_space_value_single_element(fx: Import, tmp_path: Path) -> None:
+    source = tmp_path / "in.json"
+    source.write_text('{"x":1}')
+    actor = _actor()
+    argv_file = tmp_path / "argv.txt"
+    result = fx.run("--dry-run", str(source), "--instance", "a b",
+                    STUB_ARGV_FILE=str(argv_file))
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    calls = fx.calls.read_text().splitlines()
+    expected = (
+        "exec -T backend python -m app.cli.config import "
+        f"--dry-run --actor {actor} --instance a b"
+    )
+    assert len(calls) == 1
+    assert calls[0].endswith(expected)
+    assert "<--instance><a b>" in argv_file.read_text()
+
+
+@pytest.mark.parametrize("template", [
+    "x;touch {marker}",
+    "$(touch {marker})",
+    "`touch {marker}`",
+])
+def test_instance_metachar_value_single_element(fx: Import, tmp_path: Path, template: str) -> None:
+    source = tmp_path / "in.json"
+    source.write_text('{"x":1}')
+    actor = _actor()
+    marker = tmp_path / "pwned"
+    value = template.format(marker=marker)
+    argv_file = tmp_path / "argv.txt"
+    result = fx.run("--dry-run", str(source), "--instance", value,
+                    STUB_ARGV_FILE=str(argv_file))
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert not marker.exists()
+    calls = fx.calls.read_text().splitlines()
+    expected = (
+        "exec -T backend python -m app.cli.config import "
+        f"--dry-run --actor {actor} --instance {value}"
+    )
+    assert len(calls) == 1
+    assert calls[0].endswith(expected)
+    assert f"<--instance><{value}>" in argv_file.read_text()
