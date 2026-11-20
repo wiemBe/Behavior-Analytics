@@ -650,6 +650,13 @@ class Settings(BaseSettings):
     #: Run the JDBC metadata collector and its queued refresh. The GET view is
     #: unaffected and still reads stored configurations while this is off.
     jdbc_collection_enabled: bool = False
+    #: JDBC walk cadence and page/walk budgets. Bounded like the log-source walk:
+    #: one short page without failures proves a pass complete, and the wall cap
+    #: stays below the cadence so one run cannot overlap the next.
+    jdbc_walk_interval_seconds: int = Field(default=900, ge=300)
+    jdbc_page_timeout_seconds: float = Field(default=30.0, ge=5.0, le=300.0)
+    jdbc_page_attempts: int = Field(default=3, ge=1, le=6)
+    jdbc_walk_max_seconds: int = Field(default=600, ge=60, le=3600)
     #: D-52: QRadar-disabled source pauses, closure, guard predicates and the
     #: changed active-count filters. Off preserves today's behavior exactly.
     qradar_source_pause_enabled: bool = False

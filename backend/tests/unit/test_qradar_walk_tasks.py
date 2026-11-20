@@ -29,7 +29,7 @@ REAL_EFFECTIVE_SETTINGS = tasks._effective_settings
 
 WALKS = {
     "sync_log_sources", "sync_rule_inventory", "collect_offenses",
-    "refresh_property_catalog", "sync_instance_inventories",
+    "refresh_property_catalog", "sync_instance_inventories", "collect_jdbc_configs",
 }
 
 
@@ -50,7 +50,9 @@ def test_all_walks_and_only_walks_are_routed():
                  "collect_geo_countries", "dispatch_property_catalog_refresh"):
         assert queue(name) == "celery"
     scheduled_walks = {entry["task"] for entry in celery_app.conf.beat_schedule.values()} & WALKS
-    assert scheduled_walks == {"sync_log_sources", "sync_rule_inventory", "collect_offenses"}
+    assert scheduled_walks == {
+        "sync_log_sources", "sync_rule_inventory", "collect_offenses", "collect_jdbc_configs",
+    }
     assert all(queue(name) == QRADAR_WALKS_QUEUE for name in scheduled_walks)
 
 
@@ -61,6 +63,7 @@ def test_time_limits_follow_every_wall_clock(custom):
         "rule_walk_max_seconds": 1900,
         "offense_walk_max_seconds": 1800,
         "qradar_property_catalog_walk_timeout_seconds": 1200,
+        "jdbc_walk_max_seconds": 900,
     } if custom else {}))
     for name, fields in WALK_WALL_CLOCKS.items():
         limits = walk_time_limits(name, config)
@@ -124,7 +127,11 @@ def test_task_soft_limit_unwinds_then_records_and_reraises(monkeypatch, name):
     from billiard.exceptions import SoftTimeLimitExceeded
 
     instance_id = uuid.uuid4()
+    # The JDBC task has no real timeout target: J1d1 records its own soft_timeout
+    # in jdbc_sync_state. This forced target only exercises the generic WalkTask
+    # unwind path for every registered walk.
     collector = "property_catalog" if name == "refresh_property_catalog" else (
+        "jdbc_config" if name == "collect_jdbc_configs" else
         "log_source_inventory" if name in {"sync_log_sources", "sync_instance_inventories"}
         else "rule_inventory" if name == "sync_rule_inventory" else "offense_snapshot"
     )
@@ -197,7 +204,7 @@ print(json.dumps({name: [celery_app.tasks[name].soft_time_limit,
     assert json.loads(result.stdout) == {
         "sync_log_sources": [2160, 2220], "sync_rule_inventory": [1960, 2020],
         "collect_offenses": [1860, 1920], "refresh_property_catalog": [1260, 1320],
-        "sync_instance_inventories": [4060, 4120],
+        "sync_instance_inventories": [4060, 4120], "collect_jdbc_configs": [660, 720],
     }
 
 

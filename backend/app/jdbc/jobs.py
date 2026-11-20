@@ -125,6 +125,26 @@ async def request_jdbc_run(session: AsyncSession, instance_id: UUID, *, now: dat
     return True
 
 
+async def request_and_enqueue_jdbc_run(
+    session: AsyncSession,
+    instance_id: UUID,
+    *,
+    now: datetime,
+    enqueue: Callable[[UUID], None],
+) -> bool:
+    """Queue one pass and dispatch its task; the manual refresh (J1n) uses this too.
+
+    Returns whether the row was newly queued. A live lease or an existing queued
+    request coalesces: no task is sent. The caller guards the enqueue against a
+    broker failure; the QUEUED row still commits, and the next beat tick claims
+    it, because ``claim_jdbc_run`` accepts QUEUED.
+    """
+    if not await request_jdbc_run(session, instance_id, now=now):
+        return False
+    enqueue(instance_id)
+    return True
+
+
 async def claim_jdbc_run(
     session: AsyncSession, instance_id: UUID, *, now: datetime, lease_seconds: float
 ) -> UUID | None:

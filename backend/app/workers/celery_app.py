@@ -25,6 +25,7 @@ WALK_WALL_CLOCKS = {
     "sync_rule_inventory": ("rule_walk_max_seconds",),
     "collect_offenses": ("offense_walk_max_seconds",),
     "sync_instance_inventories": ("log_source_walk_max_seconds", "rule_walk_max_seconds"),
+    "collect_jdbc_configs": ("jdbc_walk_max_seconds",),
 }
 
 
@@ -156,6 +157,12 @@ celery_app.conf.beat_schedule = {
     "sync-log-sources": {
         "task": "sync_log_sources",
         "schedule": float(settings.log_source_sync_interval_seconds),
+    },
+    "collect-jdbc-configs": {
+        # Inert while JDBC_COLLECTION_ENABLED is off: the task returns disabled
+        # before it builds a provider or touches jdbc_sync_state.
+        "task": "collect_jdbc_configs",
+        "schedule": float(settings.jdbc_walk_interval_seconds),
     },
     "check-qradar-access": {
         # One minimal read per QRadar API per console: which the token can reach. Also sent
