@@ -47,7 +47,9 @@ describe("SearchRunControl", () => {
     expect(run.mock.calls[0]).toHaveLength(1);
     const status = await screen.findByRole("status");
     expect(status).toHaveTextContent("returned 42 rows");
-    expect(refresh).toHaveBeenCalledTimes(1);
+    // `router.refresh()` runs in a passive effect (SearchRunControl.tsx:80-85), after the
+    // commit that renders this readout: wait for it rather than reading it synchronously.
+    await waitFor(() => expect(refresh).toHaveBeenCalledTimes(1));
   });
 
   it("reports a truncated run as a lower bound", async () => {
@@ -152,9 +154,13 @@ describe("SearchRunControl queued runs", () => {
     expect(screen.getByRole("button", { name: "Running…" })).toBeDisabled();
     resolveDone([execution({ status: "COMPLETED", result_count: 7 })]);
     await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("returned 7 rows"));
-    expect(refresh).toHaveBeenCalledTimes(1);
+    // The refresh runs in a passive effect (SearchRunControl.tsx:80-85) after the commit that
+    // rendered the readout, so waiting for the text alone can outrun it. Wait for the call, and
+    // re-assert "exactly once" below after the no-more-polling window.
+    await waitFor(() => expect(refresh).toHaveBeenCalledTimes(1));
     const calls = list.mock.calls.length;
     await new Promise((resolve) => setTimeout(resolve, 60));
+    expect(refresh).toHaveBeenCalledTimes(1);
     expect(list.mock.calls.length).toBe(calls);
     expect(screen.getByRole("button", { name: "Run now" })).toBeEnabled();
   });
@@ -173,14 +179,27 @@ describe("SearchRunControl queued runs", () => {
   });
 
   it("says the read failed and keeps following", async () => {
+    // "progress could not be read" is not sticky: SearchRunControl clears
+    // `pollFailed` on the next successful read (SearchRunControl.tsx:65) and
+    // stops rendering the open-run notice entirely once the row is terminal
+    // (SearchRunControl.tsx:153-169). The read after the rejected one therefore
+    // returns a promise this test resolves only after it has seen the failure
+    // sentence: the component polls on a 10 ms timer, so a resolved read could
+    // otherwise replace the sentence with the COMPLETED readout before
+    // `findByText` (50 ms re-check) ever observes it.
+    let resolveDone!: (value: SearchExecution[]) => void;
+    const donePromise = new Promise<SearchExecution[]>((resolve) => {
+      resolveDone = resolve;
+    });
     const user = userEvent.setup();
     vi.spyOn(api, "runSearch").mockResolvedValue(queuedRow());
     vi.spyOn(api, "searchExecutions")
       .mockRejectedValueOnce(new ApiError(502, "bad gateway"))
-      .mockResolvedValue([execution({ status: "COMPLETED", result_count: 3 })]);
+      .mockImplementationOnce(() => donePromise);
     render(<SearchRunControl searchId="s-1" pollMs={10} />);
     await user.click(screen.getByRole("button", { name: "Run now" }));
     expect(await screen.findByText(/progress could not be read/)).toBeInTheDocument();
+    resolveDone([execution({ status: "COMPLETED", result_count: 3 })]);
     await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("returned 3 rows"));
   });
 
