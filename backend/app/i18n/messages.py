@@ -3625,8 +3625,7 @@ REGISTRY: tuple[MessageSpec, ...] = (
     ),
     _msg(
         "waf.rate.not_proven_lower_bound",
-        "at least {observed} requests were attributed to this endpoint, but the count is a "
-        "lower bound and {reason}; a normal verdict cannot be concluded from a lower bound",
+        "at least {observed} requests (lower bound); {reason}, so no normal verdict",
         {
             "observed": _FIXED0,
             "reason": ParamSpec(ParamKind.REF, ref_codes=_WAF_RATE_NOT_PROVEN),
@@ -3644,16 +3643,16 @@ REGISTRY: tuple[MessageSpec, ...] = (
         {"covered": _PERCENT},
         {"covered": 0.62},
     ),
-    _msg("waf.rate.no_baseline", "no request-rate baseline for this weekday/hour cell yet"),
+    _msg("waf.rate.no_baseline", "no request-rate baseline for this weekday/hour yet"),
     _msg(
         "waf.rate.baseline_samples",
-        "baseline has {samples} sample(s), below the minimum required for a defensible verdict",
+        "baseline has {samples} sample(s), below the minimum",
         {"samples": _PLAIN},
         {"samples": 3},
     ),
     _msg(
         "waf.rate.below_min_volume",
-        "{observed} requests/bucket is below the {minimum} minimum for a defensible verdict",
+        "{observed} requests/bucket is below the {minimum} minimum",
         {"observed": _FIXED0, "minimum": _FIXED0},
         {"observed": 12.0, "minimum": 20.0},
     ),
@@ -3671,7 +3670,7 @@ REGISTRY: tuple[MessageSpec, ...] = (
     ),
     _msg(
         "waf.rate.z_not_reached",
-        "robust z={score} has not reached the +{threshold} threshold",
+        "robust z={score} has not reached +{threshold}",
         {"score": _FIXED2, "threshold": _REPR},
         {"score": 2.1, "threshold": 3.5},
     ),
@@ -3710,8 +3709,8 @@ REGISTRY: tuple[MessageSpec, ...] = (
     ),
     _msg(
         "waf.rate.fired_lower",
-        "at least {observed} requests (a lower bound: {scope}) is above the baseline "
-        "median {expected} ({ratio_text}, +{delta} requests/bucket); {basis}",
+        "at least {observed} requests (lower bound: {scope}) is above the baseline median "
+        "{expected} ({ratio_text}, +{delta} requests/bucket); {basis}",
         {
             "observed": _FIXED0,
             "scope": ParamSpec(ParamKind.REF, ref_codes=_WAF_SCOPES),
@@ -3738,8 +3737,8 @@ REGISTRY: tuple[MessageSpec, ...] = (
     ),
     _msg(
         "waf.basis.mad_outside_band",
-        "robust score unavailable (MAD=0); observed value is outside the expected band "
-        "[{lower}, {upper}]",
+        "robust score unavailable (MAD=0); observed value is outside the expected band [{lower}, "
+        "{upper}]",
         {"lower": _FIXED2, "upper": _FIXED2},
         {"lower": 80.0, "upper": 120.0},
     ),
@@ -3764,35 +3763,32 @@ REGISTRY: tuple[MessageSpec, ...] = (
     # Guards shared by the ratio and concentration detectors.
     _msg(
         "waf.guard.breakdown_not_collected",
-        "the {breakdown} breakdown was not collected for this bucket: the value is "
-        "unavailable, not zero",
+        "the {breakdown} breakdown was not collected for this bucket; value unavailable, not zero",
         {"breakdown": _TEXT},
         {"breakdown": "ACTION"},
     ),
     _msg(
         "waf.guard.breakdown_failed",
-        "the {breakdown} breakdown failed for this bucket: the value is unavailable, not zero",
+        "the {breakdown} breakdown failed for this bucket; value unavailable, not zero",
         {"breakdown": _TEXT},
         {"breakdown": "ACTION"},
     ),
     _msg(
         "waf.guard.source_coverage_low",
-        "only {covered} of this source's events parsed to an endpoint, below the {floor} "
-        "coverage floor: the unparsed requests may differ in kind from the parsed ones, "
-        "so the visible proportion bounds nothing",
+        "only {covered} of this source's events parsed to an endpoint, below the {floor} coverage "
+        "floor, so the proportion bounds nothing",
         {"covered": _PERCENT, "floor": _PERCENT},
         {"covered": 0.62, "floor": 0.9},
     ),
     _msg(
         "waf.guard.no_baseline",
-        "no {metric} baseline for this weekday/hour cell yet",
+        "no {metric} baseline for this weekday/hour yet",
         {"metric": _TEXT},
         {"metric": "block_ratio"},
     ),
     _msg(
         "waf.guard.baseline_samples",
-        "the {metric} baseline has {samples} material bucket(s), below the minimum for a "
-        "defensible verdict",
+        "the {metric} baseline has {samples} material bucket(s), below the minimum",
         {"metric": _TEXT, "samples": _PLAIN},
         {"metric": "block_ratio", "samples": 3},
     ),
@@ -3804,8 +3800,7 @@ REGISTRY: tuple[MessageSpec, ...] = (
     ),
     _msg(
         "waf.guard.not_proven_lower_bound",
-        "{reason}; the numerator is a lower bound ({scope}), so a normal verdict cannot be "
-        "concluded from it",
+        "{reason}; the numerator is a lower bound ({scope}), so no normal verdict",
         {
             "reason": ParamSpec(ParamKind.REF, ref_codes=_WAF_GUARD_NOT_PROVEN),
             "scope": ParamSpec(ParamKind.REF, ref_codes=_WAF_SCOPES),
@@ -3839,8 +3834,7 @@ REGISTRY: tuple[MessageSpec, ...] = (
     ),
     _msg(
         "waf.ratio.numerator_below_min",
-        "{count} {noun} is below the {minimum} minimum; no material rise in the "
-        "proportion is possible",
+        "{count} {noun} is below the {minimum} minimum; no material rise is possible",
         {
             "count": _PLAIN,
             "noun": ParamSpec(ParamKind.REF, ref_codes=_WAF_NOUNS),
@@ -3850,7 +3844,7 @@ REGISTRY: tuple[MessageSpec, ...] = (
     ),
     _msg(
         "waf.ratio.denominator_below_min",
-        "{count} {noun} is below the {minimum} minimum denominator for a ratio verdict",
+        "{count} {noun} is below the {minimum} minimum denominator",
         {
             "count": _PLAIN,
             "noun": ParamSpec(ParamKind.REF, ref_codes=_WAF_NOUNS),
@@ -3881,9 +3875,8 @@ REGISTRY: tuple[MessageSpec, ...] = (
     ),
     _msg(
         "waf.ratio.fired",
-        "{count} of {total} {denominator} to {subject} were {numerator} ({share}), against "
-        "an expected {expected} from {history} historical requests ({rise}, {multiple}x); "
-        "{basis}",
+        "{count} of {total} {denominator} to {subject} were {numerator} ({share}); expected "
+        "{expected} from {history} historical requests ({rise}, {multiple}x); {basis}",
         {
             "count": _PLAIN,
             "total": _PLAIN,
@@ -3914,8 +3907,8 @@ REGISTRY: tuple[MessageSpec, ...] = (
     _msg(
         "waf.ratio.fired_lower",
         "at least {count} of {total} {denominator} to {subject} were {numerator} (at least "
-        "{share}), against an expected {expected} from {history} historical requests "
-        "({rise}, {multiple}x); {basis}",
+        "{share}); expected {expected} from {history} historical requests ({rise}, {multiple}x); "
+        "{basis}",
         {
             "count": _PLAIN,
             "total": _PLAIN,
@@ -3945,8 +3938,8 @@ REGISTRY: tuple[MessageSpec, ...] = (
     ),
     _msg(
         "waf.ratio.fired_no_multiple",
-        "{count} of {total} {denominator} to {subject} were {numerator} ({share}), against "
-        "an expected {expected} from {history} historical requests ({rise}); {basis}",
+        "{count} of {total} {denominator} to {subject} were {numerator} ({share}); expected "
+        "{expected} from {history} historical requests ({rise}); {basis}",
         {
             "count": _PLAIN,
             "total": _PLAIN,
@@ -3975,8 +3968,7 @@ REGISTRY: tuple[MessageSpec, ...] = (
     _msg(
         "waf.ratio.fired_lower_no_multiple",
         "at least {count} of {total} {denominator} to {subject} were {numerator} (at least "
-        "{share}), against an expected {expected} from {history} historical requests "
-        "({rise}); {basis}",
+        "{share}); expected {expected} from {history} historical requests ({rise}); {basis}",
         {
             "count": _PLAIN,
             "total": _PLAIN,
@@ -4005,15 +3997,14 @@ REGISTRY: tuple[MessageSpec, ...] = (
     # Client concentration.
     _msg(
         "waf.concentration.attributed_low",
-        "only {covered} of the endpoint's requests were attributed to a source IP, below "
-        "the {floor} coverage floor",
+        "only {covered} of the endpoint's requests had a source IP, below the {floor} coverage "
+        "floor",
         {"covered": _PERCENT, "floor": _PERCENT},
         {"covered": 0.7, "floor": 0.9},
     ),
     _msg(
         "waf.concentration.top_below_min",
-        "the largest source IP sent {top} requests, below the {minimum} minimum for a "
-        "material concentration",
+        "the largest source IP sent {top} requests, below the {minimum} minimum for concentration",
         {"top": _PLAIN, "minimum": _PLAIN},
         {"top": 12, "minimum": 20},
     ),
@@ -4025,28 +4016,27 @@ REGISTRY: tuple[MessageSpec, ...] = (
     ),
     _msg(
         "waf.concentration.rise_below_min",
-        "the largest source IP's share {share} is {rise} from the expected {expected}, "
-        "below the {minimum} minimum rise",
+        "the largest source IP's share {share} is {rise} from the expected {expected}, below the "
+        "{minimum} minimum rise",
         {"share": _PCT1, "rise": _POINTS1, "expected": _PCT1, "minimum": _POINTS0U},
         {"share": 0.35, "rise": 0.05, "expected": 0.3, "minimum": 0.2},
     ),
     _msg(
         "waf.concentration.volume_with_baseline",
-        "endpoint volume {requests} requests against an expected {expected}",
+        "endpoint volume {requests} requests, expected {expected}",
         {"requests": _PLAIN, "expected": _REPR},
         {"requests": 480, "expected": 100.0},
     ),
     _msg(
         "waf.concentration.volume_no_baseline",
-        "endpoint volume {requests} requests (no reliable volume baseline)",
+        "endpoint volume {requests} requests (no reliable baseline)",
         {"requests": _PLAIN},
         {"requests": 480},
     ),
     _msg(
         "waf.concentration.fired",
-        "the largest source IP sent {top} of {total} requests to {subject} ({share}), "
-        "against an expected share of {expected} ({rise}); the five largest sent "
-        "{top5}; {volume}; {basis}",
+        "the largest source IP sent {top} of {total} requests to {subject} ({share}) against an "
+        "expected {expected} ({rise}); the top five sent {top5}; {volume}; {basis}",
         {
             "top": _PLAIN,
             "total": _PLAIN,
@@ -4076,8 +4066,7 @@ REGISTRY: tuple[MessageSpec, ...] = (
     _msg("waf.novelty.not_established", "the endpoint's first appearance was not established"),
     _msg(
         "waf.novelty.established_hand_off",
-        "established endpoint: first admitted {first_seen} before the history hand-off "
-        "{hand_off}",
+        "established endpoint: first admitted {first_seen}, before history hand-off {hand_off}",
         {"first_seen": _ISO, "hand_off": _ISO},
         {"first_seen": _WAF_AT, "hand_off": _WAF_AT},
     ),
@@ -4105,8 +4094,8 @@ REGISTRY: tuple[MessageSpec, ...] = (
     ),
     _msg(
         "waf.novelty.below_materiality",
-        "{requests} request(s) in {buckets} bucket(s) since first appearance has not "
-        "reached {min_requests} requests in {min_buckets} buckets",
+        "{requests} request(s) in {buckets} bucket(s) since first appearance, below "
+        "{min_requests} requests in {min_buckets} buckets",
         {
             "requests": _PLAIN,
             "buckets": _PLAIN,
@@ -4128,9 +4117,9 @@ REGISTRY: tuple[MessageSpec, ...] = (
     ),
     _msg(
         "waf.novelty.fired",
-        "{subject} received {requests} requests across {buckets} buckets since it first "
-        "appeared at {first_seen}; in the verified history {history_start} to {history_end} "
-        "it was never requested {admission} or more times in one bucket",
+        "{subject} received {requests} requests in {buckets} buckets since first appearing at "
+        "{first_seen}; in verified history {history_start} to {history_end} never {admission} or "
+        "more in one bucket",
         {
             "subject": ParamSpec(ParamKind.REF, ref_codes=_WAF_SUBJECTS),
             "requests": _PLAIN,
@@ -4152,9 +4141,9 @@ REGISTRY: tuple[MessageSpec, ...] = (
     ),
     _msg(
         "waf.novelty.fired_lower",
-        "{subject} received at least {requests} requests across {buckets} buckets since it "
-        "first appeared at {first_seen}; in the verified history {history_start} to "
-        "{history_end} it was never requested {admission} or more times in one bucket",
+        "{subject} received at least {requests} requests in {buckets} buckets since first "
+        "appearing at {first_seen}; in verified history {history_start} to {history_end} never "
+        "{admission} or more in one bucket",
         {
             "subject": ParamSpec(ParamKind.REF, ref_codes=_WAF_SUBJECTS),
             "requests": _PLAIN,
@@ -4177,23 +4166,23 @@ REGISTRY: tuple[MessageSpec, ...] = (
     # History verification: why the window before an endpoint's first appearance is not proof.
     _msg(
         "waf.history_check.not_divisible",
-        "the history window is not divisible by the collection bucket width",
+        "the history window is not divisible by the bucket width",
     ),
     _msg(
         "waf.history_check.never_collected",
-        "{missing} of {expected} history buckets were never collected",
+        "{missing} of {expected} history buckets never collected",
         {"missing": _PLAIN, "expected": _PLAIN},
         {"missing": 3, "expected": 168},
     ),
     _msg(
         "waf.history_check.record_count",
-        "the history contains {records} bucket records for {expected} expected buckets",
+        "history has {records} bucket records for {expected} expected",
         {"records": _PLAIN, "expected": _PLAIN},
         {"records": 169, "expected": 168},
     ),
     _msg(
         "waf.history_check.bucket_width",
-        "history bucket {bucket} used a different collection bucket width",
+        "history bucket {bucket} had a different bucket width",
         {"bucket": _ISO},
         {"bucket": _WAF_AT},
     ),
@@ -4218,7 +4207,7 @@ REGISTRY: tuple[MessageSpec, ...] = (
     ),
     _msg(
         "waf.history_check.normalizer_version",
-        "history bucket {bucket} is incompatible with endpoint normalizer version {version}",
+        "history bucket {bucket} is incompatible with normalizer version {version}",
         {"bucket": _ISO, "version": _PLAIN},
         {"bucket": _WAF_AT, "version": 2},
     ),
@@ -4232,30 +4221,26 @@ REGISTRY: tuple[MessageSpec, ...] = (
     ),
     _msg(
         "waf.history_check.appearance_no_profile",
-        "the first-appearance bucket carries no profile version",
+        "the first-appearance bucket has no profile version",
     ),
     _msg(
         "waf.history_check.appearance_normalizer",
-        "the first-appearance bucket is incompatible with endpoint normalizer version "
-        "{version}",
+        "the first-appearance bucket is incompatible with normalizer version {version}",
         {"version": _PLAIN},
         {"version": 2},
     ),
     # The fixed interpretive caveats, one per detector family.
     _msg(
         "waf.caveat.block_ratio",
-        "Blocking is judged through the profile's action map. A higher block ratio "
-        "describes WAF decisions; it does not establish that an attack succeeded.",
+        "A higher block ratio describes WAF decisions, not a successful attack.",
     ),
     _msg(
         "waf.caveat.server_error_ratio",
-        "HTTP 5xx responses describe server-side failures. They do not establish that "
-        "the traffic was malicious.",
+        "HTTP 5xx responses describe server failures, not malicious traffic.",
     ),
     _msg(
         "waf.caveat.client_error_ratio",
-        "HTTP 4xx responses are response codes, not WAF decisions: a 403 is not by "
-        "itself a block, and WAF blocking is reported separately.",
+        "HTTP 4xx responses are response codes, not WAF decisions; a 403 alone is not a block.",
     ),
     _msg(
         "waf.caveat.client_concentration",
@@ -4263,7 +4248,7 @@ REGISTRY: tuple[MessageSpec, ...] = (
     ),
     _msg(
         "waf.caveat.new_endpoint",
-        "A newly requested endpoint may be a deployment as easily as a probe.",
+        "A new endpoint may be a deployment, not a probe.",
     ),
     # Suppression.
     _msg("waf.suppression.maintenance_window", "maintenance window"),
@@ -4321,7 +4306,7 @@ REGISTRY: tuple[MessageSpec, ...] = (
     _msg("ips.guard.maintenance", "the source was in maintenance during this bucket"),
     _msg(
         "ips.guard.dimension_unmeasured",
-        "the {label} search was {state} for this bucket: the value is unavailable, not zero",
+        "the {label} search was {state} for this bucket; value unavailable, not zero",
         {
             "label": ParamSpec(ParamKind.REF, ref_codes=_IPS_LABELS),
             "state": ParamSpec(ParamKind.REF, ref_codes=_IPS_STATES),
@@ -4333,15 +4318,14 @@ REGISTRY: tuple[MessageSpec, ...] = (
     ),
     _msg(
         "ips.guard.coverage_unmeasurable",
-        "{label} coverage was not measurable, below the {floor} floor: the events without a "
-        "value may differ in kind from the ones with one, so the visible numbers bound nothing",
+        "{label} coverage was not measurable, below the {floor} floor, so these numbers bound "
+        "nothing",
         {"label": ParamSpec(ParamKind.REF, ref_codes=_IPS_LABELS), "floor": _PERCENT},
         {"label": MessageRef("ips.label.destination_port"), "floor": 0.9},
     ),
     _msg(
         "ips.guard.coverage_low",
-        "{label} coverage was {covered}, below the {floor} floor: the events without a "
-        "value may differ in kind from the ones with one, so the visible numbers bound nothing",
+        "{label} coverage was {covered}, below the {floor} floor, so these numbers bound nothing",
         {
             "label": ParamSpec(ParamKind.REF, ref_codes=_IPS_LABELS),
             "covered": _PERCENT,
@@ -4351,7 +4335,7 @@ REGISTRY: tuple[MessageSpec, ...] = (
     ),
     _msg(
         "ips.guard.no_entity",
-        "no {label} entity was supplied for this verdict",
+        "no {label} entity was supplied",
         {"label": ParamSpec(ParamKind.REF, ref_codes=_IPS_LABELS)},
         {"label": MessageRef("ips.label.destination_port")},
     ),
@@ -4363,11 +4347,11 @@ REGISTRY: tuple[MessageSpec, ...] = (
     ),
     _msg(
         "ips.guard.absent_port",
-        "port 0 and protocol 255 are absent values, not a service: no claim about them",
+        "port 0 and protocol 255 are absent values, not a service",
     ),
     _msg(
         "ips.guard.generic_signature",
-        "the signature's name is generic: a claim about a specific signature is not safe",
+        "the signature's name is generic; a specific-signature claim is unsafe",
     ),
     _msg("ips.guard.count_unknown", "the entity's count is unknown for this bucket"),
     _msg(
@@ -4382,8 +4366,8 @@ REGISTRY: tuple[MessageSpec, ...] = (
     ),
     _msg(
         "ips.guard.baseline_versions",
-        "the {metric} baseline was built under profile version {profile} and normalizer "
-        "version {normalizer}, not the bucket's {bucket_profile} and {bucket_normalizer}",
+        "the {metric} baseline is profile version {profile} and normalizer version {normalizer}, "
+        "not the bucket's {bucket_profile} and {bucket_normalizer}",
         {
             "metric": _TEXT,
             "profile": _TEXT,
@@ -4401,15 +4385,13 @@ REGISTRY: tuple[MessageSpec, ...] = (
     ),
     _msg(
         "ips.guard.baseline_samples",
-        "the {metric} baseline has {samples} sample(s), below the minimum of {minimum} for a "
-        "defensible verdict",
+        "the {metric} baseline has {samples} sample(s), below the minimum of {minimum}",
         {"metric": _TEXT, "samples": _PLAIN, "minimum": _PLAIN},
         {"metric": "entity_events", "samples": 7, "minimum": 8},
     ),
     _msg(
         "ips.guard.not_proven_lower_bound",
-        "{reason}; the count is a lower bound ({scope}), so a normal verdict cannot be "
-        "concluded from it",
+        "{reason}; the count is a lower bound ({scope}), so no normal verdict",
         {
             "reason": ParamSpec(ParamKind.REF, ref_codes=_IPS_NOT_PROVEN),
             "scope": ParamSpec(ParamKind.REF, ref_codes=_IPS_SCOPES),
@@ -4422,7 +4404,7 @@ REGISTRY: tuple[MessageSpec, ...] = (
     # Entity spikes (port, destination IP, signature) and the port fan-out.
     _msg(
         "ips.spike.below_min",
-        "{observed} {unit}/bucket is below the {minimum} minimum for a defensible verdict",
+        "{observed} {unit}/bucket is below the {minimum} minimum",
         {
             "observed": _GROUPED0,
             "unit": ParamSpec(ParamKind.REF, ref_codes=_IPS_NOUNS),
@@ -4469,8 +4451,8 @@ REGISTRY: tuple[MessageSpec, ...] = (
     ),
     _msg(
         "ips.spike.fired_lower",
-        "at least {observed} {unit} (a lower bound: {scope}) for {subject} is above the "
-        "baseline median {expected} ({ratio_text}, +{delta} {unit}/bucket); {basis}",
+        "at least {observed} {unit} (lower bound: {scope}) for {subject} is above the baseline "
+        "median {expected} ({ratio_text}, +{delta} {unit}/bucket); {basis}",
         {
             "observed": _GROUPED0,
             "unit": ParamSpec(ParamKind.REF, ref_codes=_IPS_NOUNS),
@@ -4517,21 +4499,20 @@ REGISTRY: tuple[MessageSpec, ...] = (
     # Source concentration.
     _msg(
         "ips.concentration.top_below_min",
-        "the largest source IP sent {top} events, below the {minimum} minimum for a material "
-        "concentration",
+        "the largest source IP sent {top} events, below the {minimum} minimum for concentration",
         {"top": _PLAIN, "minimum": _PLAIN},
         {"top": 15, "minimum": 20},
     ),
     _msg(
         "ips.concentration.total_below_min",
-        "{total} events is below the {minimum} minimum for a composition verdict",
+        "{total} events is below the {minimum} minimum for composition",
         {"total": _PLAIN, "minimum": _PLAIN},
         {"total": 40, "minimum": 50},
     ),
     _msg(
         "ips.concentration.fired",
-        "the largest source IP sent {top} of {total} events ({share}), against an expected "
-        "share of {expected} ({rise}); the five largest sent {top5}; {basis}",
+        "the largest source IP sent {top} of {total} events ({share}) against an expected "
+        "{expected} ({rise}); the top five sent {top5}; {basis}",
         {
             "top": _PLAIN,
             "total": _PLAIN,
@@ -4553,8 +4534,8 @@ REGISTRY: tuple[MessageSpec, ...] = (
     ),
     _msg(
         "ips.concentration.fired_no_top5",
-        "the largest source IP sent {top} of {total} events ({share}), against an expected "
-        "share of {expected} ({rise}); the five largest sent n/a; {basis}",
+        "the largest source IP sent {top} of {total} events ({share}) against an expected "
+        "{expected} ({rise}); the top five sent n/a; {basis}",
         {
             "top": _PLAIN,
             "total": _PLAIN,
@@ -4575,22 +4556,20 @@ REGISTRY: tuple[MessageSpec, ...] = (
     # Block-ratio shift.
     _msg(
         "ips.block.numerator_below_min",
-        "{count} blocked events is below the {minimum} minimum; no material rise in the "
-        "proportion is possible",
+        "{count} blocked events is below the {minimum} minimum; no material rise is possible",
         {"count": _PLAIN, "minimum": _PLAIN},
         {"count": 5, "minimum": 10},
     ),
     _msg(
         "ips.block.denominator_below_min",
-        "{count} events carrying an action is below the {minimum} minimum denominator for a "
-        "ratio verdict",
+        "{count} events carrying an action is below the {minimum} minimum denominator",
         {"count": _PLAIN, "minimum": _PLAIN},
         {"count": 40, "minimum": 50},
     ),
     _msg(
         "ips.block.fired",
-        "{count} of {total} events carrying an action were blocked ({share}), against an "
-        "expected {expected} from {history} historical events ({rise}, {multiple}x); {basis}",
+        "{count} of {total} events carrying an action were blocked ({share}); expected {expected} "
+        "from {history} historical events ({rise}, {multiple}x); {basis}",
         {
             "count": _PLAIN,
             "total": _PLAIN,
@@ -4614,8 +4593,8 @@ REGISTRY: tuple[MessageSpec, ...] = (
     ),
     _msg(
         "ips.block.fired_no_multiple",
-        "{count} of {total} events carrying an action were blocked ({share}), against an "
-        "expected {expected} from {history} historical events ({rise}); {basis}",
+        "{count} of {total} events carrying an action were blocked ({share}); expected {expected} "
+        "from {history} historical events ({rise}); {basis}",
         {
             "count": _PLAIN,
             "total": _PLAIN,
@@ -4637,9 +4616,8 @@ REGISTRY: tuple[MessageSpec, ...] = (
     ),
     _msg(
         "ips.block.fired_lower",
-        "at least {count} of {total} events carrying an action were blocked (at least "
-        "{share}), against an expected {expected} from {history} historical events ({rise}, "
-        "{multiple}x); {basis}",
+        "at least {count} of {total} events carrying an action were blocked (at least {share}); "
+        "expected {expected} from {history} historical events ({rise}, {multiple}x); {basis}",
         {
             "count": _PLAIN,
             "total": _PLAIN,
@@ -4663,9 +4641,8 @@ REGISTRY: tuple[MessageSpec, ...] = (
     ),
     _msg(
         "ips.block.fired_lower_no_multiple",
-        "at least {count} of {total} events carrying an action were blocked (at least "
-        "{share}), against an expected {expected} from {history} historical events ({rise}); "
-        "{basis}",
+        "at least {count} of {total} events carrying an action were blocked (at least {share}); "
+        "expected {expected} from {history} historical events ({rise}); {basis}",
         {
             "count": _PLAIN,
             "total": _PLAIN,
@@ -4702,7 +4679,7 @@ REGISTRY: tuple[MessageSpec, ...] = (
     ),
     _msg(
         "ips.novelty.readmitted",
-        "re-admitted port: it was retired and seen again, so it is not new",
+        "re-admitted port: retired and seen again, so not new",
     ),
     _msg(
         "ips.novelty.cannot_establish",
@@ -4712,18 +4689,18 @@ REGISTRY: tuple[MessageSpec, ...] = (
     ),
     _msg(
         "ips.novelty.flood_discovery",
-        "the first-appearance bucket's destination-port discovery was incomplete: the port "
-        "cannot be told apart from a flood of new ports",
+        "the first-appearance bucket's destination-port discovery was incomplete; the port is "
+        "indistinguishable from a flood",
     ),
     _msg(
         "ips.novelty.flood_admission",
-        "the first-appearance bucket's destination-port admission was truncated: the port "
-        "appeared in a flood of new ports and is not individually new",
+        "the first-appearance bucket's destination-port admission was truncated; the port arrived "
+        "in a flood",
     ),
     _msg(
         "ips.novelty.below_materiality",
-        "{events} event(s) in {buckets} bucket(s) since first appearance has not reached "
-        "{min_events} events in {min_buckets} buckets",
+        "{events} event(s) in {buckets} bucket(s) since first appearance, below {min_events} "
+        "events in {min_buckets} buckets",
         {"events": _PLAIN, "buckets": _PLAIN, "min_events": _PLAIN, "min_buckets": _PLAIN},
         {"events": 5, "buckets": 1, "min_events": 20, "min_buckets": 2},
     ),
@@ -4740,9 +4717,9 @@ REGISTRY: tuple[MessageSpec, ...] = (
     ),
     _msg(
         "ips.novelty.fired",
-        "destination port {port} carried {events} events across {buckets} buckets since it "
-        "first appeared at {first_seen}; in the verified history {history_start} to "
-        "{history_end} it stayed below {admission} events in every bucket",
+        "destination port {port} carried {events} events in {buckets} buckets since first "
+        "appearing at {first_seen}; in verified history {history_start} to {history_end} always "
+        "below {admission} per bucket",
         {
             "port": _TEXT,
             "events": _PLAIN,
@@ -4764,9 +4741,9 @@ REGISTRY: tuple[MessageSpec, ...] = (
     ),
     _msg(
         "ips.novelty.fired_lower",
-        "destination port {port} carried at least {events} events across {buckets} buckets "
-        "since it first appeared at {first_seen}; in the verified history {history_start} to "
-        "{history_end} it stayed below {admission} events in every bucket",
+        "destination port {port} carried at least {events} events in {buckets} buckets since "
+        "first appearing at {first_seen}; in verified history {history_start} to {history_end} "
+        "always below {admission} per bucket",
         {
             "port": _TEXT,
             "events": _PLAIN,
@@ -4790,7 +4767,7 @@ REGISTRY: tuple[MessageSpec, ...] = (
     # checks the endpoint and the port share).
     _msg(
         "ips.history_check.port_search_not_exact",
-        "history bucket {bucket} had a destination-port search that was {state}, not exact",
+        "history bucket {bucket} had a destination-port search {state}, not exact",
         {"bucket": _ISO, "state": ParamSpec(ParamKind.REF, ref_codes=_IPS_STATES)},
         {"bucket": _IPS_AT, "state": MessageRef("ips.state.failed")},
     ),
@@ -4821,45 +4798,41 @@ REGISTRY: tuple[MessageSpec, ...] = (
     _msg("ips.history_check.not_loaded", "history was not loaded for an established port"),
     _msg(
         "ips.history_check.before_hand_off",
-        "the port was first admitted before the history hand-off at {hand_off}",
+        "the port was first admitted before history hand-off at {hand_off}",
         {"hand_off": _ISO},
         {"hand_off": _IPS_AT},
     ),
     # The fixed interpretive caveats, one per detector.
     _msg(
         "ips.caveat.port_rate",
-        "More events on a port describe traffic volume, not intent: a scan, a deployment and "
-        "a misconfigured client look alike here.",
+        "More events on a port describe volume, not intent.",
     ),
     _msg(
         "ips.caveat.destination_rate",
-        "More events towards a destination describe traffic volume, not an attack on it.",
+        "More events to a destination describe volume, not an attack on it.",
     ),
     _msg(
         "ips.caveat.signature_burst",
-        "A burst of one signature describes how often the IPS matched it, not that the "
-        "matched activity succeeded.",
+        "A signature burst shows how often the IPS matched it, not that the activity succeeded.",
     ),
     _msg(
         "ips.caveat.port_fanout",
-        "Many distinct destination ports from one source IP is a traffic shape, not an "
-        "attack verdict: a scan, a vulnerability assessment and a service that rotates "
-        "ports look alike.",
+        "Many distinct destination ports from one source IP is a traffic shape, not an attack "
+        "verdict.",
     ),
     _msg(
         "ips.caveat.source_concentration",
-        "A dominant source IP describes traffic composition, not intent. Behind a proxy or "
-        "NAT it is the intermediary's address.",
+        "A dominant source IP describes composition, not intent; behind a proxy or NAT it is the "
+        "intermediary.",
     ),
     _msg(
         "ips.caveat.block_ratio",
-        "Blocking is judged through the profile's action map. A higher block ratio describes "
-        "the IPS's decisions; it does not establish that an attack succeeded.",
+        "A higher block ratio describes the IPS's decisions, not a successful attack.",
     ),
     _msg(
         "ips.caveat.new_port",
-        "A newly busy destination port may be a deployment as easily as a probe. The "
-        "contributors are the bucket's busiest source IPs, not necessarily this port's.",
+        "A newly busy destination port may be a deployment, not a probe. Contributors are the "
+        "bucket's busiest source IPs, not necessarily this port's.",
     ),
     # --- end MSG-6b --------------------------------------------------------------------------
     # --- MSG-8b: search scheduling, the manual-run budget refusal and run results -- keep
@@ -5974,28 +5947,27 @@ REGISTRY: tuple[MessageSpec, ...] = (
     # and would change these sentences.
     _text(
         "rule.detector.not_exact",
-        "Not judged: this rule's type ({rule_type}) does not give exact match counts, so a "
-        "window cannot prove how many times it matched.",
+        "Not judged: this rule's type ({rule_type}) gives no exact match counts.",
         rule_type="COMMON",
     ),
     _mixed(
         "rule.detector.disabled_with_sync",
-        "Not judged: the inventory sync at {synced_at} shows this rule disabled.",
+        "Not judged: disabled in the inventory sync at {synced_at}.",
         synced_at=(_MINUTE, _PW_AT),
     ),
     _fixed(
         "rule.detector.disabled_no_sync",
-        "Not judged: the inventory sync shows this rule disabled.",
+        "Not judged: disabled in the inventory sync.",
     ),
     _fixed(
         "rule.detector.monitoring_off",
-        "Not judged: health monitoring is switched off for this rule.",
+        "Not judged: health monitoring is off for this rule.",
     ),
     MessageSpec(
         code="rule.detector.dependency_disabled",
         template=(
-            "Not judged: a stored building-block dependency of this rule is disabled "
-            "(QRadar ids {ids})."
+            "Not judged: a stored building-block dependency of this rule is disabled (QRadar ids "
+            "{ids})."
         ),
         params={"ids": ParamSpec(ParamKind.LIST)},
         sample={"ids": [9, 10]},
@@ -6003,25 +5975,24 @@ REGISTRY: tuple[MessageSpec, ...] = (
     MessageSpec(
         code="rule.detector.dependency_unobserved",
         template=(
-            "No verdict: a stored dependency of this rule is not in the inventory "
-            "(QRadar ids {ids})."
+            "No verdict: a dependency is not in the inventory (QRadar ids {ids})."
         ),
         params={"ids": ParamSpec(ParamKind.LIST)},
         sample={"ids": [9]},
     ),
     _fixed(
         "rule.detector.stale_inventory",
-        "No verdict: the inventory was last synced before this window ended, so the "
-        "enabled flag may be from an earlier sync.",
+        "No verdict: the inventory was synced before this window ended; the enabled flag may be "
+        "stale.",
     ),
     _fixed("rule.detector.not_settled", "No verdict: this window has not settled yet."),
     _fixed(
         "rule.detector.window_missing",
-        "No verdict: no collection record exists for this window.",
+        "No verdict: no collection record for this window.",
     ),
     _mixed(
         "rule.detector.window_wrong_width",
-        "No verdict: it was collected at another window width than the current {width} s.",
+        "No verdict: collected at another width than the current {width} s.",
         count={"width": 3600},
     ),
     _fixed("rule.detector.window_failed", "No verdict: its collection failed or was skipped."),
@@ -6038,9 +6009,8 @@ REGISTRY: tuple[MessageSpec, ...] = (
     MessageSpec(
         code="rule.detector.silence_proven_zero",
         template=(
-            "Proven zero matches in {windows} consecutive window(s) of {width} s; the preceding "
-            "{days} days had a median of {median} matched events per window, matching in "
-            "{presence}% of windows."
+            "Proven zero matches in {windows} consecutive {width} s window(s); preceding {days} "
+            "days: median {median} matched events per window, matched in {presence}% of windows."
         ),
         params={
             "windows": _PLAIN,
@@ -6054,8 +6024,8 @@ REGISTRY: tuple[MessageSpec, ...] = (
     MessageSpec(
         code="rule.detector.silence_proven_zero_open",
         template=(
-            "Proven zero matches in {windows} consecutive window(s) of {width} s; the incident "
-            "is open and its stability is not re-tested."
+            "Proven zero matches in {windows} consecutive {width} s window(s); incident open, "
+            "stability not re-tested."
         ),
         params={"windows": _PLAIN, "width": _PLAIN},
         sample={"windows": 3, "width": 3600},
@@ -6067,20 +6037,18 @@ REGISTRY: tuple[MessageSpec, ...] = (
     ),
     _fixed(
         "rule.detector.state_transition",
-        "No verdict: this rule was enabled or disabled inside the baseline or the streak "
-        "(the platform noticed the flip at the recorded sync time).",
+        "No verdict: this rule was enabled or disabled inside the baseline or the streak.",
     ),
     _mixed(
         "rule.detector.modified",
-        "QRadar reports this rule modified at {modified_at}. Match anomalies are not judged "
-        "across that time.",
+        "Modified in QRadar at {modified_at}; not judged across that time.",
         modified_at=(_MINUTE, _PW_AT),
     ),
     _mixed(
         "rule.detector.baseline_incomplete",
-        "No verdict: the {days} days before the streak are not fully measured "
-        "({missing} missing, {truncated} truncated, {failed} failed, {wrong_width} of another "
-        "width, of {expected} windows).",
+        "No verdict: the {days} days before the streak are incomplete ({missing} missing, "
+        "{truncated} truncated, {failed} failed, {wrong_width} other width, of {expected} "
+        "windows).",
         count={
             "days": 7,
             "missing": 1,
@@ -6093,8 +6061,8 @@ REGISTRY: tuple[MessageSpec, ...] = (
     MessageSpec(
         code="rule.detector.median_below_floor",
         template=(
-            "No verdict: the median is {median} matched events per window, below the minimum "
-            "of {minimum}; not a stable match rate."
+            "No verdict: median {median} matched events per window is below {minimum}; not a "
+            "stable match rate."
         ),
         params={"median": _NUM, "minimum": _NUM},
         sample={"median": 0.5, "minimum": 1.0},
@@ -6110,27 +6078,26 @@ REGISTRY: tuple[MessageSpec, ...] = (
     ),
     _mixed(
         "rule.detector.width_does_not_tile",
-        "No verdict: a window of {width} s does not tile a UTC day, so there is no weekday "
-        "and slot to compare against.",
+        "No verdict: a {width} s window does not tile a UTC day; no weekday and slot to compare.",
         count={"width": 7000},
     ),
     _fixed(
         "rule.detector.storm_truncated",
-        "No verdict: this window was truncated and holds no row for this rule, so its count "
-        "is neither zero nor small.",
+        "No verdict: this window was truncated with no row for this rule; its count is not "
+        "measured.",
     ),
     _fixed(
         "rule.detector.storm_zero",
-        "The rule had a measured zero in this window; a zero is not a storm.",
+        "The rule had a measured zero in this window, not a storm.",
     ),
     _fixed(
         "rule.detector.cell_missing",
-        "No verdict: there is no baseline cell for this weekday and slot.",
+        "No verdict: no baseline for this weekday and slot.",
     ),
     _mixed(
         "rule.detector.cell_thin",
-        "Still learning: this weekday and slot has {samples} sample(s) over {weeks} week(s); "
-        "{min_samples} samples over {min_weeks} weeks are needed.",
+        "Still learning: {samples} sample(s) over {weeks} week(s) for this weekday and slot; "
+        "needs {min_samples} samples over {min_weeks} weeks.",
         count={"samples": 7, "weeks": 7, "min_samples": 8, "min_weeks": 4},
     ),
     MessageSpec(
@@ -6160,8 +6127,8 @@ REGISTRY: tuple[MessageSpec, ...] = (
     MessageSpec(
         code="rule.detector.mad_within_p95",
         template=(
-            "The count is within the usual 95th percentile ({bound}) and the spread is too "
-            "small for a z-score."
+            "The count is within the usual 95th percentile ({bound}); spread too small for a "
+            "z-score."
         ),
         params={"bound": _NUM},
         sample={"bound": 100.0},
@@ -6230,39 +6197,36 @@ REGISTRY: tuple[MessageSpec, ...] = (
     MessageSpec(
         code="rule.match_anomaly.disabled",
         template=(
-            "Disabled in the inventory sync at {synced_at}. Match anomalies are not opened."
+            "Disabled in the inventory sync at {synced_at}; no match anomalies opened."
         ),
         params={"synced_at": ParamSpec(ParamKind.TIMESTAMP, style="minute")},
         sample={"synced_at": _PW_AT},
     ),
     _fixed(
         "rule.match_anomaly.disabled_no_sync",
-        "Disabled in the inventory sync. Match anomalies are not opened.",
+        "Disabled in the inventory sync; no match anomalies opened.",
     ),
     _fixed(
         "rule.match_anomaly.monitoring_off",
-        "Match anomalies are off for this rule (health_monitoring_enabled). "
-        "The health status does not read that flag.",
+        "Match anomalies are off for this rule (health_monitoring_enabled).",
     ),
     MessageSpec(
         code="rule.match_anomaly.modified",
         template=(
-            "QRadar reports this rule modified at {modified_at}. "
-            "Match anomalies are not judged across that time."
+            "Modified in QRadar at {modified_at}; not judged across that time."
         ),
         params={"modified_at": ParamSpec(ParamKind.TIMESTAMP, style="minute")},
         sample={"modified_at": _PW_AT},
     ),
     _fixed(
         "rule.match_anomaly.truncated",
-        "The latest window hit the row cap. Silence is not judged. "
-        "A storm is judged only when this rule has a row.",
+        "Latest window hit the row cap: silence not judged; a storm only if this rule has a row.",
     ),
     _mixed(
         "rule.match_anomaly.span_incomplete",
-        "The {days}-day span is not fully measured ({missing} missing, {truncated} truncated, "
-        "{failed} failed, {wrong_width} of another width, of {expected} windows). "
-        "The judged window runs from {window_start} to {window_end}.",
+        "The {days}-day span is incomplete ({missing} missing, {truncated} truncated, {failed} "
+        "failed, {wrong_width} other width, of {expected} windows). Judged window: {window_start} "
+        "to {window_end}.",
         count={
             "days": 7,
             "missing": 1,
@@ -6276,8 +6240,8 @@ REGISTRY: tuple[MessageSpec, ...] = (
     ),
     _mixed(
         "rule.match_anomaly.rule_too_new",
-        "The inventory has not held this rule for {days} days. "
-        "The judged window runs from {window_start} to {window_end}.",
+        "The inventory has not held this rule for {days} days. Judged window: {window_start} to "
+        "{window_end}.",
         count={"days": 7},
         window_start=(_MINUTE, _PW_AT),
         window_end=(_MINUTE, _PW_AT),
@@ -6285,7 +6249,7 @@ REGISTRY: tuple[MessageSpec, ...] = (
     MessageSpec(
         code="rule.match_anomaly.stale_inventory",
         template=(
-            "The inventory sync at {synced_at} is older than the window ending {window_end}."
+            "Inventory sync {synced_at} predates the window ending {window_end}."
         ),
         params={
             "synced_at": ParamSpec(ParamKind.TIMESTAMP, style="minute"),
@@ -6296,15 +6260,15 @@ REGISTRY: tuple[MessageSpec, ...] = (
     MessageSpec(
         code="rule.match_anomaly.stale_inventory_unknown",
         template=(
-            "No inventory sync is recorded, so the window ending {window_end} cannot be judged."
+            "No inventory sync recorded; the window ending {window_end} cannot be judged."
         ),
         params={"window_end": ParamSpec(ParamKind.TIMESTAMP, style="minute")},
         sample={"window_end": _PW_AT},
     ),
     _mixed(
         "rule.match_anomaly.presence_below",
-        "The rule matched in {presence} of windows over {days} days, below {minimum}. "
-        "The judged window runs from {window_start} to {window_end}.",
+        "The rule matched in {presence} of windows over {days} days, below {minimum}. Judged "
+        "window: {window_start} to {window_end}.",
         count={"days": 7},
         presence=(_PERCENT, 0.6),
         minimum=(_PERCENT, 0.8),
@@ -6313,8 +6277,8 @@ REGISTRY: tuple[MessageSpec, ...] = (
     ),
     _mixed(
         "rule.match_anomaly.median_below",
-        "The median is {median} matched events per window, below the minimum of {minimum}. "
-        "The judged window runs from {window_start} to {window_end}.",
+        "Median {median} matched events per window, below the minimum {minimum}. Judged window: "
+        "{window_start} to {window_end}.",
         median=(ParamSpec(ParamKind.NUMBER), 0.0),
         minimum=(ParamSpec(ParamKind.NUMBER), 1.0),
         window_start=(_MINUTE, _PW_AT),
@@ -6322,69 +6286,67 @@ REGISTRY: tuple[MessageSpec, ...] = (
     ),
     _mixed(
         "rule.match_anomaly.cell_learning",
-        "The storm cell for this weekday and slot is still learning: {samples} sample(s) "
-        "over {weeks} week(s); {minimum_samples} samples over {minimum_weeks} weeks are "
-        "needed. The judged window runs from {window_start} to {window_end}.",
+        "Still learning this weekday and slot: {samples} sample(s) over {weeks} week(s); needs "
+        "{minimum_samples} samples over {minimum_weeks} weeks. Judged window: {window_start} to "
+        "{window_end}.",
         count={"samples": 2, "weeks": 2, "minimum_samples": 8, "minimum_weeks": 4},
         window_start=(_MINUTE, _PW_AT),
         window_end=(_MINUTE, _PW_AT),
     ),
     _mixed(
         "rule.match_anomaly.cell_missing",
-        "No baseline cell is stored for this weekday and slot. "
-        "The judged window runs from {window_start} to {window_end}.",
+        "No baseline for this weekday and slot. Judged window: {window_start} to {window_end}.",
         window_start=(_MINUTE, _PW_AT),
         window_end=(_MINUTE, _PW_AT),
     ),
     _mixed(
         "rule.match_anomaly.state_transition",
-        "This rule was enabled or disabled inside the baseline or the streak. "
-        "The judged window runs from {window_start} to {window_end}.",
+        "This rule was enabled or disabled inside the baseline or the streak. Judged window: "
+        "{window_start} to {window_end}.",
         window_start=(_MINUTE, _PW_AT),
         window_end=(_MINUTE, _PW_AT),
     ),
     _text(
         "rule.match_anomaly.dependency_disabled",
-        "Not judged: a stored building-block dependency of this rule is disabled "
-        "(QRadar ids {ids}).",
+        "Not judged: a stored building-block dependency of this rule is disabled (QRadar ids "
+        "{ids}).",
         ids="12, 15",
     ),
     _text(
         "rule.match_anomaly.dependency_unobserved",
-        "No verdict: a stored dependency of this rule is not in the inventory "
-        "(QRadar ids {ids}).",
+        "No verdict: a dependency is not in the inventory (QRadar ids {ids}).",
         ids="12",
     ),
     _mixed(
         "rule.match_anomaly.window_missing",
-        "No collection record exists for the window from {window_start} to {window_end}.",
+        "No collection record for window {window_start} to {window_end}.",
         window_start=(_MINUTE, _PW_AT),
         window_end=(_MINUTE, _PW_AT),
     ),
     _mixed(
         "rule.match_anomaly.window_failed",
-        "Collection of the window from {window_start} to {window_end} failed or was skipped.",
+        "Collection of window {window_start} to {window_end} failed or was skipped.",
         window_start=(_MINUTE, _PW_AT),
         window_end=(_MINUTE, _PW_AT),
     ),
     _mixed(
         "rule.match_anomaly.window_wrong_width",
-        "The window from {window_start} to {window_end} was collected at another width "
-        "than the current {width} s.",
+        "Window {window_start} to {window_end} was collected at another width than the current "
+        "{width} s.",
         count={"width": 3600},
         window_start=(_MINUTE, _PW_AT),
         window_end=(_MINUTE, _PW_AT),
     ),
     _mixed(
         "rule.match_anomaly.not_settled",
-        "The window from {window_start} to {window_end} has not settled yet.",
+        "Window {window_start} to {window_end} has not settled yet.",
         window_start=(_MINUTE, _PW_AT),
         window_end=(_MINUTE, _PW_AT),
     ),
     _mixed(
         "rule.match_anomaly.width_does_not_tile",
-        "A window of {width} s does not tile a UTC day, so there is no weekday and slot "
-        "to compare against. The judged window runs from {window_start} to {window_end}.",
+        "A {width} s window does not tile a UTC day; no weekday and slot to compare. Judged "
+        "window: {window_start} to {window_end}.",
         count={"width": 1000},
         window_start=(_MINUTE, _PW_AT),
         window_end=(_MINUTE, _PW_AT),

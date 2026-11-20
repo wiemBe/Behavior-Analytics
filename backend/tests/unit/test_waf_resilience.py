@@ -121,7 +121,7 @@ class TestLowerBoundSpike:
         assert ev.observed_value == 900
         assert ev.extra["request_count_measurement"] == "LOWER_BOUND"
         # Never displayed as an exact count.
-        assert ev.reason.startswith("at least 900 requests (a lower bound")
+        assert ev.reason.startswith("at least 900 requests (lower bound")
 
     @pytest.mark.parametrize("requests", [0, 5, 110, 150, 199])
     def test_a_lower_bound_that_fails_a_guard_is_never_healthy(self, requests: int) -> None:

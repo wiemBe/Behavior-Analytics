@@ -173,27 +173,25 @@ class TestSilenceSentences:
     def test_not_exact(self) -> None:
         assert_coded(
             Silence(rule_type="COMMON").run(),
-            "Not judged: this rule's type (COMMON) does not give exact match counts, so a "
-            "window cannot prove how many times it matched.",
+            "Not judged: this rule's type (COMMON) gives no exact match counts.",
         )
 
     def test_disabled_with_sync(self) -> None:
         sc = Silence(enabled=False)
         assert_coded(
             sc.run(),
-            f"Not judged: the inventory sync at {sc.watermark:%Y-%m-%d %H:%M} UTC shows this "
-            "rule disabled.",
+            f"Not judged: disabled in the inventory sync at {sc.watermark:%Y-%m-%d %H:%M} UTC.",
         )
 
     def test_disabled_without_sync(self) -> None:
         sc = Silence(enabled=False)
         sc.watermark = None
-        assert_coded(sc.run(), "Not judged: the inventory sync shows this rule disabled.")
+        assert_coded(sc.run(), "Not judged: disabled in the inventory sync.")
 
     def test_monitoring_off(self) -> None:
         assert_coded(
             Silence(health_monitoring_enabled=False).run(),
-            "Not judged: health monitoring is switched off for this rule.",
+            "Not judged: health monitoring is off for this rule.",
         )
 
     def test_dependency_disabled(self) -> None:
@@ -206,8 +204,7 @@ class TestSilenceSentences:
     def test_dependency_unobserved(self) -> None:
         assert_coded(
             Silence(unobserved_dependencies=(9,), dependency_count=1).run(),
-            "No verdict: a stored dependency of this rule is not in the inventory "
-            "(QRadar ids 9).",
+            "No verdict: a dependency is not in the inventory (QRadar ids 9).",
         )
 
     def test_stale_inventory(self) -> None:
@@ -215,8 +212,8 @@ class TestSilenceSentences:
         sc.watermark = sc.judged + STEP - timedelta(seconds=1)
         assert_coded(
             sc.run(),
-            "No verdict: the inventory was last synced before this window ended, so the "
-            "enabled flag may be from an earlier sync.",
+            "No verdict: the inventory was synced before this window ended; the enabled flag may "
+            "be stale.",
         )
 
     def test_not_settled(self) -> None:
@@ -227,14 +224,14 @@ class TestSilenceSentences:
     def test_window_missing(self) -> None:
         sc = Silence()
         del sc.windows[sc.judged]
-        assert_coded(sc.run(), "No verdict: no collection record exists for this window.")
+        assert_coded(sc.run(), "No verdict: no collection record for this window.")
 
     def test_window_wrong_width(self) -> None:
         sc = Silence()
         sc.windows[sc.judged] = fact(sc.judged, None, width=1800)
         assert_coded(
             sc.run(),
-            "No verdict: it was collected at another window width than the current 3600 s.",
+            "No verdict: collected at another width than the current 3600 s.",
         )
 
     def test_window_failed(self) -> None:
@@ -269,8 +266,7 @@ class TestSilenceSentences:
         sc.sub = subject(transitions=(sc.streak_start - timedelta(days=2),))
         assert_coded(
             sc.run(),
-            "No verdict: this rule was enabled or disabled inside the baseline or the streak "
-            "(the platform noticed the flip at the recorded sync time).",
+            "No verdict: this rule was enabled or disabled inside the baseline or the streak.",
         )
 
     def test_modified(self) -> None:
@@ -279,8 +275,7 @@ class TestSilenceSentences:
         sc.sub = subject(qradar_modified_at=modified)
         assert_coded(
             sc.run(),
-            f"QRadar reports this rule modified at {modified:%Y-%m-%d %H:%M} UTC. "
-            "Match anomalies are not judged across that time.",
+            f"Modified in QRadar at {modified:%Y-%m-%d %H:%M} UTC; not judged across that time.",
         )
 
     def test_baseline_incomplete(self) -> None:
@@ -288,8 +283,8 @@ class TestSilenceSentences:
         del sc.windows[sc.streak_start - 10 * STEP]
         assert_coded(
             sc.run(),
-            "No verdict: the 7 days before the streak are not fully measured "
-            "(1 missing, 0 truncated, 0 failed, 0 of another width, of 168 windows).",
+            "No verdict: the 7 days before the streak are incomplete (1 missing, 0 truncated, 0 "
+            "failed, 0 other width, of 168 windows).",
         )
 
     def test_median_below_floor(self) -> None:
@@ -297,8 +292,7 @@ class TestSilenceSentences:
         sc.th = RuleThresholds(silence_min_median=5)
         assert_coded(
             sc.run(),
-            "No verdict: the median is 3 matched events per window, below the minimum of 5; "
-            "not a stable match rate.",
+            "No verdict: median 3 matched events per window is below 5; not a stable match rate.",
         )
 
     def test_presence_below_gate(self) -> None:
@@ -312,8 +306,8 @@ class TestSilenceSentences:
     def test_proven_zero(self) -> None:
         assert_coded(
             Silence().run(),
-            "Proven zero matches in 3 consecutive window(s) of 3600 s; the preceding 7 days "
-            "had a median of 5 matched events per window, matching in 100% of windows.",
+            "Proven zero matches in 3 consecutive 3600 s window(s); preceding 7 days: median 5 "
+            "matched events per window, matched in 100% of windows.",
         )
 
     def test_proven_zero_with_the_incident_open(self) -> None:
@@ -323,8 +317,8 @@ class TestSilenceSentences:
         assert isinstance(ev.extra, dict) and ev.extra["stability_retested"] is False
         assert_coded(
             ev,
-            "Proven zero matches in 3 consecutive window(s) of 3600 s; the incident is open "
-            "and its stability is not re-tested.",
+            "Proven zero matches in 3 consecutive 3600 s window(s); incident open, stability not "
+            "re-tested.",
         )
 
 
@@ -333,21 +327,20 @@ class TestStormSentences:
         s = Storm(400, width=7000, cell=RuleCell(1, 0, None, 0, False))
         assert_coded(
             s.run(),
-            "No verdict: a window of 7000 s does not tile a UTC day, so there is no weekday "
-            "and slot to compare against.",
+            "No verdict: a 7000 s window does not tile a UTC day; no weekday and slot to compare.",
         )
 
     def test_storm_truncated(self) -> None:
         assert_coded(
             Storm(None, status=S.TRUNCATED).run(),
-            "No verdict: this window was truncated and holds no row for this rule, so its "
-            "count is neither zero nor small.",
+            "No verdict: this window was truncated with no row for this rule; its count is not "
+            "measured.",
         )
 
     def test_storm_zero(self) -> None:
         assert_coded(
             Storm(None).run(),
-            "The rule had a measured zero in this window; a zero is not a storm.",
+            "The rule had a measured zero in this window, not a storm.",
         )
 
     def test_cell_missing(self) -> None:
@@ -355,14 +348,14 @@ class TestStormSentences:
         s.cell = None
         assert_coded(
             s.run(),
-            "No verdict: there is no baseline cell for this weekday and slot.",
+            "No verdict: no baseline for this weekday and slot.",
         )
 
     def test_cell_thin(self) -> None:
         assert_coded(
             Storm(400, cell=cell_of([100.0] * 7, weeks=7)).run(),
-            "Still learning: this weekday and slot has 7 sample(s) over 7 week(s); "
-            "8 samples over 4 weeks are needed.",
+            "Still learning: 7 sample(s) over 7 week(s) for this weekday and slot; needs 8 "
+            "samples over 4 weeks.",
         )
 
     def test_below_event_floor(self) -> None:
@@ -403,8 +396,8 @@ class TestStormSentences:
         upper = max(summary.p95, summary.median)
         assert_coded(
             Storm(200, cell=cell).run(),
-            f"The count is within the usual 95th percentile ({upper:g}) and the spread is "
-            "too small for a z-score.",
+            f"The count is within the usual 95th percentile ({upper:g}); spread too small for a "
+            "z-score.",
         )
 
     def test_storm_fired_on_a_z_score(self) -> None:

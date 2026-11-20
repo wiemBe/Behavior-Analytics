@@ -5546,12 +5546,12 @@
       "count": 40,
       "minimum": 50
     },
-    "sample_english": "40 events carrying an action is below the 50 minimum denominator for a ratio verdict",
+    "sample_english": "40 events carrying an action is below the 50 minimum denominator",
     "sample_english_params": {
       "count": "40",
       "minimum": "50"
     },
-    "template": "{count} events carrying an action is below the {minimum} minimum denominator for a ratio verdict"
+    "template": "{count} events carrying an action is below the {minimum} minimum denominator"
   },
   "ips.block.fired": {
     "params": {
@@ -5622,7 +5622,7 @@
       },
       "total": 100
     },
-    "sample_english": "60 of 100 events carrying an action were blocked (60.0 %), against an expected 10.0 % from 1200 historical events (+50.0 pp, 6.0x); robust z=6.20 (threshold +3.5)",
+    "sample_english": "60 of 100 events carrying an action were blocked (60.0 %); expected 10.0 % from 1200 historical events (+50.0 pp, 6.0x); robust z=6.20 (threshold +3.5)",
     "sample_english_params": {
       "basis": "robust z=6.20 (threshold +3.5)",
       "count": "60",
@@ -5633,7 +5633,7 @@
       "share": "60.0 %",
       "total": "100"
     },
-    "template": "{count} of {total} events carrying an action were blocked ({share}), against an expected {expected} from {history} historical events ({rise}, {multiple}x); {basis}"
+    "template": "{count} of {total} events carrying an action were blocked ({share}); expected {expected} from {history} historical events ({rise}, {multiple}x); {basis}"
   },
   "ips.block.fired_lower": {
     "params": {
@@ -5704,7 +5704,7 @@
       },
       "total": 100
     },
-    "sample_english": "at least 60 of 100 events carrying an action were blocked (at least 60.0 %), against an expected 10.0 % from 1200 historical events (+50.0 pp, 6.0x); robust z=6.20 (threshold +3.5)",
+    "sample_english": "at least 60 of 100 events carrying an action were blocked (at least 60.0 %); expected 10.0 % from 1200 historical events (+50.0 pp, 6.0x); robust z=6.20 (threshold +3.5)",
     "sample_english_params": {
       "basis": "robust z=6.20 (threshold +3.5)",
       "count": "60",
@@ -5715,7 +5715,7 @@
       "share": "60.0 %",
       "total": "100"
     },
-    "template": "at least {count} of {total} events carrying an action were blocked (at least {share}), against an expected {expected} from {history} historical events ({rise}, {multiple}x); {basis}"
+    "template": "at least {count} of {total} events carrying an action were blocked (at least {share}); expected {expected} from {history} historical events ({rise}, {multiple}x); {basis}"
   },
   "ips.block.fired_lower_no_multiple": {
     "params": {
@@ -5780,7 +5780,7 @@
       },
       "total": 100
     },
-    "sample_english": "at least 60 of 100 events carrying an action were blocked (at least 60.0 %), against an expected 0.0 % from 1200 historical events (+60.0 pp); robust z=6.20 (threshold +3.5)",
+    "sample_english": "at least 60 of 100 events carrying an action were blocked (at least 60.0 %); expected 0.0 % from 1200 historical events (+60.0 pp); robust z=6.20 (threshold +3.5)",
     "sample_english_params": {
       "basis": "robust z=6.20 (threshold +3.5)",
       "count": "60",
@@ -5790,7 +5790,7 @@
       "share": "60.0 %",
       "total": "100"
     },
-    "template": "at least {count} of {total} events carrying an action were blocked (at least {share}), against an expected {expected} from {history} historical events ({rise}); {basis}"
+    "template": "at least {count} of {total} events carrying an action were blocked (at least {share}); expected {expected} from {history} historical events ({rise}); {basis}"
   },
   "ips.block.fired_no_multiple": {
     "params": {
@@ -5855,7 +5855,7 @@
       },
       "total": 100
     },
-    "sample_english": "60 of 100 events carrying an action were blocked (60.0 %), against an expected 0.0 % from 1200 historical events (+60.0 pp); robust z=6.20 (threshold +3.5)",
+    "sample_english": "60 of 100 events carrying an action were blocked (60.0 %); expected 0.0 % from 1200 historical events (+60.0 pp); robust z=6.20 (threshold +3.5)",
     "sample_english_params": {
       "basis": "robust z=6.20 (threshold +3.5)",
       "count": "60",
@@ -5865,7 +5865,7 @@
       "share": "60.0 %",
       "total": "100"
     },
-    "template": "{count} of {total} events carrying an action were blocked ({share}), against an expected {expected} from {history} historical events ({rise}); {basis}"
+    "template": "{count} of {total} events carrying an action were blocked ({share}); expected {expected} from {history} historical events ({rise}); {basis}"
   },
   "ips.block.numerator_below_min": {
     "params": {
@@ -5882,61 +5882,61 @@
       "count": 5,
       "minimum": 10
     },
-    "sample_english": "5 blocked events is below the 10 minimum; no material rise in the proportion is possible",
+    "sample_english": "5 blocked events is below the 10 minimum; no material rise is possible",
     "sample_english_params": {
       "count": "5",
       "minimum": "10"
     },
-    "template": "{count} blocked events is below the {minimum} minimum; no material rise in the proportion is possible"
+    "template": "{count} blocked events is below the {minimum} minimum; no material rise is possible"
   },
   "ips.caveat.block_ratio": {
     "params": {},
     "sample": {},
-    "sample_english": "Blocking is judged through the profile's action map. A higher block ratio describes the IPS's decisions; it does not establish that an attack succeeded.",
+    "sample_english": "A higher block ratio describes the IPS's decisions, not a successful attack.",
     "sample_english_params": {},
-    "template": "Blocking is judged through the profile's action map. A higher block ratio describes the IPS's decisions; it does not establish that an attack succeeded."
+    "template": "A higher block ratio describes the IPS's decisions, not a successful attack."
   },
   "ips.caveat.destination_rate": {
     "params": {},
     "sample": {},
-    "sample_english": "More events towards a destination describe traffic volume, not an attack on it.",
+    "sample_english": "More events to a destination describe volume, not an attack on it.",
     "sample_english_params": {},
-    "template": "More events towards a destination describe traffic volume, not an attack on it."
+    "template": "More events to a destination describe volume, not an attack on it."
   },
   "ips.caveat.new_port": {
     "params": {},
     "sample": {},
-    "sample_english": "A newly busy destination port may be a deployment as easily as a probe. The contributors are the bucket's busiest source IPs, not necessarily this port's.",
+    "sample_english": "A newly busy destination port may be a deployment, not a probe. Contributors are the bucket's busiest source IPs, not necessarily this port's.",
     "sample_english_params": {},
-    "template": "A newly busy destination port may be a deployment as easily as a probe. The contributors are the bucket's busiest source IPs, not necessarily this port's."
+    "template": "A newly busy destination port may be a deployment, not a probe. Contributors are the bucket's busiest source IPs, not necessarily this port's."
   },
   "ips.caveat.port_fanout": {
     "params": {},
     "sample": {},
-    "sample_english": "Many distinct destination ports from one source IP is a traffic shape, not an attack verdict: a scan, a vulnerability assessment and a service that rotates ports look alike.",
+    "sample_english": "Many distinct destination ports from one source IP is a traffic shape, not an attack verdict.",
     "sample_english_params": {},
-    "template": "Many distinct destination ports from one source IP is a traffic shape, not an attack verdict: a scan, a vulnerability assessment and a service that rotates ports look alike."
+    "template": "Many distinct destination ports from one source IP is a traffic shape, not an attack verdict."
   },
   "ips.caveat.port_rate": {
     "params": {},
     "sample": {},
-    "sample_english": "More events on a port describe traffic volume, not intent: a scan, a deployment and a misconfigured client look alike here.",
+    "sample_english": "More events on a port describe volume, not intent.",
     "sample_english_params": {},
-    "template": "More events on a port describe traffic volume, not intent: a scan, a deployment and a misconfigured client look alike here."
+    "template": "More events on a port describe volume, not intent."
   },
   "ips.caveat.signature_burst": {
     "params": {},
     "sample": {},
-    "sample_english": "A burst of one signature describes how often the IPS matched it, not that the matched activity succeeded.",
+    "sample_english": "A signature burst shows how often the IPS matched it, not that the activity succeeded.",
     "sample_english_params": {},
-    "template": "A burst of one signature describes how often the IPS matched it, not that the matched activity succeeded."
+    "template": "A signature burst shows how often the IPS matched it, not that the activity succeeded."
   },
   "ips.caveat.source_concentration": {
     "params": {},
     "sample": {},
-    "sample_english": "A dominant source IP describes traffic composition, not intent. Behind a proxy or NAT it is the intermediary's address.",
+    "sample_english": "A dominant source IP describes composition, not intent; behind a proxy or NAT it is the intermediary.",
     "sample_english_params": {},
-    "template": "A dominant source IP describes traffic composition, not intent. Behind a proxy or NAT it is the intermediary's address."
+    "template": "A dominant source IP describes composition, not intent; behind a proxy or NAT it is the intermediary."
   },
   "ips.concentration.fired": {
     "params": {
@@ -6004,7 +6004,7 @@
       },
       "total": 100
     },
-    "sample_english": "the largest source IP sent 70 of 100 events (70.0 %), against an expected share of 10.0 % (+60.0 pp); the five largest sent 95.0 %; robust z=6.20 (threshold +3.5)",
+    "sample_english": "the largest source IP sent 70 of 100 events (70.0 %) against an expected 10.0 % (+60.0 pp); the top five sent 95.0 %; robust z=6.20 (threshold +3.5)",
     "sample_english_params": {
       "basis": "robust z=6.20 (threshold +3.5)",
       "expected": "10.0 %",
@@ -6014,7 +6014,7 @@
       "top5": "95.0 %",
       "total": "100"
     },
-    "template": "the largest source IP sent {top} of {total} events ({share}), against an expected share of {expected} ({rise}); the five largest sent {top5}; {basis}"
+    "template": "the largest source IP sent {top} of {total} events ({share}) against an expected {expected} ({rise}); the top five sent {top5}; {basis}"
   },
   "ips.concentration.fired_no_top5": {
     "params": {
@@ -6073,7 +6073,7 @@
       "top": 70,
       "total": 100
     },
-    "sample_english": "the largest source IP sent 70 of 100 events (70.0 %), against an expected share of 10.0 % (+60.0 pp); the five largest sent n/a; robust z=6.20 (threshold +3.5)",
+    "sample_english": "the largest source IP sent 70 of 100 events (70.0 %) against an expected 10.0 % (+60.0 pp); the top five sent n/a; robust z=6.20 (threshold +3.5)",
     "sample_english_params": {
       "basis": "robust z=6.20 (threshold +3.5)",
       "expected": "10.0 %",
@@ -6082,7 +6082,7 @@
       "top": "70",
       "total": "100"
     },
-    "template": "the largest source IP sent {top} of {total} events ({share}), against an expected share of {expected} ({rise}); the five largest sent n/a; {basis}"
+    "template": "the largest source IP sent {top} of {total} events ({share}) against an expected {expected} ({rise}); the top five sent n/a; {basis}"
   },
   "ips.concentration.top_below_min": {
     "params": {
@@ -6099,12 +6099,12 @@
       "minimum": 20,
       "top": 15
     },
-    "sample_english": "the largest source IP sent 15 events, below the 20 minimum for a material concentration",
+    "sample_english": "the largest source IP sent 15 events, below the 20 minimum for concentration",
     "sample_english_params": {
       "minimum": "20",
       "top": "15"
     },
-    "template": "the largest source IP sent {top} events, below the {minimum} minimum for a material concentration"
+    "template": "the largest source IP sent {top} events, below the {minimum} minimum for concentration"
   },
   "ips.concentration.total_below_min": {
     "params": {
@@ -6121,19 +6121,19 @@
       "minimum": 50,
       "total": 40
     },
-    "sample_english": "40 events is below the 50 minimum for a composition verdict",
+    "sample_english": "40 events is below the 50 minimum for composition",
     "sample_english_params": {
       "minimum": "50",
       "total": "40"
     },
-    "template": "{total} events is below the {minimum} minimum for a composition verdict"
+    "template": "{total} events is below the {minimum} minimum for composition"
   },
   "ips.guard.absent_port": {
     "params": {},
     "sample": {},
-    "sample_english": "port 0 and protocol 255 are absent values, not a service: no claim about them",
+    "sample_english": "port 0 and protocol 255 are absent values, not a service",
     "sample_english_params": {},
-    "template": "port 0 and protocol 255 are absent values, not a service: no claim about them"
+    "template": "port 0 and protocol 255 are absent values, not a service"
   },
   "ips.guard.action_counts_unstated": {
     "params": {},
@@ -6168,13 +6168,13 @@
       "minimum": 8,
       "samples": 7
     },
-    "sample_english": "the entity_events baseline has 7 sample(s), below the minimum of 8 for a defensible verdict",
+    "sample_english": "the entity_events baseline has 7 sample(s), below the minimum of 8",
     "sample_english_params": {
       "metric": "entity_events",
       "minimum": "8",
       "samples": "7"
     },
-    "template": "the {metric} baseline has {samples} sample(s), below the minimum of {minimum} for a defensible verdict"
+    "template": "the {metric} baseline has {samples} sample(s), below the minimum of {minimum}"
   },
   "ips.guard.baseline_versions": {
     "params": {
@@ -6201,7 +6201,7 @@
       "normalizer": "2",
       "profile": "3"
     },
-    "sample_english": "the entity_events baseline was built under profile version 3 and normalizer version 2, not the bucket's 4 and 2",
+    "sample_english": "the entity_events baseline is profile version 3 and normalizer version 2, not the bucket's 4 and 2",
     "sample_english_params": {
       "bucket_normalizer": "2",
       "bucket_profile": "4",
@@ -6209,7 +6209,7 @@
       "normalizer": "2",
       "profile": "3"
     },
-    "template": "the {metric} baseline was built under profile version {profile} and normalizer version {normalizer}, not the bucket's {bucket_profile} and {bucket_normalizer}"
+    "template": "the {metric} baseline is profile version {profile} and normalizer version {normalizer}, not the bucket's {bucket_profile} and {bucket_normalizer}"
   },
   "ips.guard.count_unknown": {
     "params": {},
@@ -6255,13 +6255,13 @@
         "params": {}
       }
     },
-    "sample_english": "destination port coverage was 62 %, below the 90 % floor: the events without a value may differ in kind from the ones with one, so the visible numbers bound nothing",
+    "sample_english": "destination port coverage was 62 %, below the 90 % floor, so these numbers bound nothing",
     "sample_english_params": {
       "covered": "62 %",
       "floor": "90 %",
       "label": "destination port"
     },
-    "template": "{label} coverage was {covered}, below the {floor} floor: the events without a value may differ in kind from the ones with one, so the visible numbers bound nothing"
+    "template": "{label} coverage was {covered}, below the {floor} floor, so these numbers bound nothing"
   },
   "ips.guard.coverage_unmeasurable": {
     "params": {
@@ -6292,12 +6292,12 @@
         "params": {}
       }
     },
-    "sample_english": "destination port coverage was not measurable, below the 90 % floor: the events without a value may differ in kind from the ones with one, so the visible numbers bound nothing",
+    "sample_english": "destination port coverage was not measurable, below the 90 % floor, so these numbers bound nothing",
     "sample_english_params": {
       "floor": "90 %",
       "label": "destination port"
     },
-    "template": "{label} coverage was not measurable, below the {floor} floor: the events without a value may differ in kind from the ones with one, so the visible numbers bound nothing"
+    "template": "{label} coverage was not measurable, below the {floor} floor, so these numbers bound nothing"
   },
   "ips.guard.dimension_unmeasured": {
     "params": {
@@ -6333,12 +6333,12 @@
         "params": {}
       }
     },
-    "sample_english": "the destination port search was failed for this bucket: the value is unavailable, not zero",
+    "sample_english": "the destination port search was failed for this bucket; value unavailable, not zero",
     "sample_english_params": {
       "label": "destination port",
       "state": "failed"
     },
-    "template": "the {label} search was {state} for this bucket: the value is unavailable, not zero"
+    "template": "the {label} search was {state} for this bucket; value unavailable, not zero"
   },
   "ips.guard.entity_not_judged": {
     "params": {
@@ -6370,9 +6370,9 @@
   "ips.guard.generic_signature": {
     "params": {},
     "sample": {},
-    "sample_english": "the signature's name is generic: a claim about a specific signature is not safe",
+    "sample_english": "the signature's name is generic; a specific-signature claim is unsafe",
     "sample_english_params": {},
-    "template": "the signature's name is generic: a claim about a specific signature is not safe"
+    "template": "the signature's name is generic; a specific-signature claim is unsafe"
   },
   "ips.guard.maintenance": {
     "params": {},
@@ -6402,11 +6402,11 @@
         "params": {}
       }
     },
-    "sample_english": "no destination port entity was supplied for this verdict",
+    "sample_english": "no destination port entity was supplied",
     "sample_english_params": {
       "label": "destination port"
     },
-    "template": "no {label} entity was supplied for this verdict"
+    "template": "no {label} entity was supplied"
   },
   "ips.guard.not_proven_lower_bound": {
     "params": {
@@ -6453,12 +6453,12 @@
         "params": {}
       }
     },
-    "sample_english": "robust z=2.10 has not reached +3.5; the count is a lower bound (the count is a lower bound: an increase can be proven, normal behaviour cannot), so a normal verdict cannot be concluded from it",
+    "sample_english": "robust z=2.10 has not reached +3.5; the count is a lower bound (the count is a lower bound: an increase can be proven, normal behaviour cannot), so no normal verdict",
     "sample_english_params": {
       "reason": "robust z=2.10 has not reached +3.5",
       "scope": "the count is a lower bound: an increase can be proven, normal behaviour cannot"
     },
-    "template": "{reason}; the count is a lower bound ({scope}), so a normal verdict cannot be concluded from it"
+    "template": "{reason}; the count is a lower bound ({scope}), so no normal verdict"
   },
   "ips.guard.source_totals_unstated": {
     "params": {},
@@ -6493,11 +6493,11 @@
     "sample": {
       "hand_off": "2026-10-13T12:00:00+00:00"
     },
-    "sample_english": "the port was first admitted before the history hand-off at 2026-10-13T12:00:00+00:00",
+    "sample_english": "the port was first admitted before history hand-off at 2026-10-13T12:00:00+00:00",
     "sample_english_params": {
       "hand_off": "2026-10-13T12:00:00+00:00"
     },
-    "template": "the port was first admitted before the history hand-off at {hand_off}"
+    "template": "the port was first admitted before history hand-off at {hand_off}"
   },
   "ips.history_check.coverage_low": {
     "params": {
@@ -6592,12 +6592,12 @@
         "params": {}
       }
     },
-    "sample_english": "history bucket 2026-10-13T12:00:00+00:00 had a destination-port search that was failed, not exact",
+    "sample_english": "history bucket 2026-10-13T12:00:00+00:00 had a destination-port search failed, not exact",
     "sample_english_params": {
       "bucket": "2026-10-13T12:00:00+00:00",
       "state": "failed"
     },
-    "template": "history bucket {bucket} had a destination-port search that was {state}, not exact"
+    "template": "history bucket {bucket} had a destination-port search {state}, not exact"
   },
   "ips.label.action": {
     "params": {},
@@ -6687,14 +6687,14 @@
       "min_buckets": 2,
       "min_events": 20
     },
-    "sample_english": "5 event(s) in 1 bucket(s) since first appearance has not reached 20 events in 2 buckets",
+    "sample_english": "5 event(s) in 1 bucket(s) since first appearance, below 20 events in 2 buckets",
     "sample_english_params": {
       "buckets": "1",
       "events": "5",
       "min_buckets": "2",
       "min_events": "20"
     },
-    "template": "{events} event(s) in {buckets} bucket(s) since first appearance has not reached {min_events} events in {min_buckets} buckets"
+    "template": "{events} event(s) in {buckets} bucket(s) since first appearance, below {min_events} events in {min_buckets} buckets"
   },
   "ips.novelty.below_materiality_lower": {
     "params": {
@@ -6716,9 +6716,9 @@
         }
       }
     },
-    "sample_english": "5 event(s) in 1 bucket(s) since first appearance has not reached 20 events in 2 buckets; the counts are lower bounds",
+    "sample_english": "5 event(s) in 1 bucket(s) since first appearance, below 20 events in 2 buckets; the counts are lower bounds",
     "sample_english_params": {
-      "reason": "5 event(s) in 1 bucket(s) since first appearance has not reached 20 events in 2 buckets"
+      "reason": "5 event(s) in 1 bucket(s) since first appearance, below 20 events in 2 buckets"
     },
     "template": "{reason}; the counts are lower bounds"
   },
@@ -6750,9 +6750,9 @@
         "params": {}
       }
     },
-    "sample_english": "novelty cannot be established: the history window is not divisible by the collection bucket width",
+    "sample_english": "novelty cannot be established: the history window is not divisible by the bucket width",
     "sample_english_params": {
-      "cause": "the history window is not divisible by the collection bucket width"
+      "cause": "the history window is not divisible by the bucket width"
     },
     "template": "novelty cannot be established: {cause}"
   },
@@ -6839,7 +6839,7 @@
       "history_start": "2026-10-06T12:00:00+00:00",
       "port": "443/tcp"
     },
-    "sample_english": "destination port 443/tcp carried 30 events across 2 buckets since it first appeared at 2026-10-13T12:00:00+00:00; in the verified history 2026-10-06T12:00:00+00:00 to 2026-10-13T12:00:00+00:00 it stayed below 3 events in every bucket",
+    "sample_english": "destination port 443/tcp carried 30 events in 2 buckets since first appearing at 2026-10-13T12:00:00+00:00; in verified history 2026-10-06T12:00:00+00:00 to 2026-10-13T12:00:00+00:00 always below 3 per bucket",
     "sample_english_params": {
       "admission": "3",
       "buckets": "2",
@@ -6849,7 +6849,7 @@
       "history_start": "2026-10-06T12:00:00+00:00",
       "port": "443/tcp"
     },
-    "template": "destination port {port} carried {events} events across {buckets} buckets since it first appeared at {first_seen}; in the verified history {history_start} to {history_end} it stayed below {admission} events in every bucket"
+    "template": "destination port {port} carried {events} events in {buckets} buckets since first appearing at {first_seen}; in verified history {history_start} to {history_end} always below {admission} per bucket"
   },
   "ips.novelty.fired_lower": {
     "params": {
@@ -6890,7 +6890,7 @@
       "history_start": "2026-10-06T12:00:00+00:00",
       "port": "443/tcp"
     },
-    "sample_english": "destination port 443/tcp carried at least 30 events across 2 buckets since it first appeared at 2026-10-13T12:00:00+00:00; in the verified history 2026-10-06T12:00:00+00:00 to 2026-10-13T12:00:00+00:00 it stayed below 3 events in every bucket",
+    "sample_english": "destination port 443/tcp carried at least 30 events in 2 buckets since first appearing at 2026-10-13T12:00:00+00:00; in verified history 2026-10-06T12:00:00+00:00 to 2026-10-13T12:00:00+00:00 always below 3 per bucket",
     "sample_english_params": {
       "admission": "3",
       "buckets": "2",
@@ -6900,21 +6900,21 @@
       "history_start": "2026-10-06T12:00:00+00:00",
       "port": "443/tcp"
     },
-    "template": "destination port {port} carried at least {events} events across {buckets} buckets since it first appeared at {first_seen}; in the verified history {history_start} to {history_end} it stayed below {admission} events in every bucket"
+    "template": "destination port {port} carried at least {events} events in {buckets} buckets since first appearing at {first_seen}; in verified history {history_start} to {history_end} always below {admission} per bucket"
   },
   "ips.novelty.flood_admission": {
     "params": {},
     "sample": {},
-    "sample_english": "the first-appearance bucket's destination-port admission was truncated: the port appeared in a flood of new ports and is not individually new",
+    "sample_english": "the first-appearance bucket's destination-port admission was truncated; the port arrived in a flood",
     "sample_english_params": {},
-    "template": "the first-appearance bucket's destination-port admission was truncated: the port appeared in a flood of new ports and is not individually new"
+    "template": "the first-appearance bucket's destination-port admission was truncated; the port arrived in a flood"
   },
   "ips.novelty.flood_discovery": {
     "params": {},
     "sample": {},
-    "sample_english": "the first-appearance bucket's destination-port discovery was incomplete: the port cannot be told apart from a flood of new ports",
+    "sample_english": "the first-appearance bucket's destination-port discovery was incomplete; the port is indistinguishable from a flood",
     "sample_english_params": {},
-    "template": "the first-appearance bucket's destination-port discovery was incomplete: the port cannot be told apart from a flood of new ports"
+    "template": "the first-appearance bucket's destination-port discovery was incomplete; the port is indistinguishable from a flood"
   },
   "ips.novelty.not_established": {
     "params": {},
@@ -6926,9 +6926,9 @@
   "ips.novelty.readmitted": {
     "params": {},
     "sample": {},
-    "sample_english": "re-admitted port: it was retired and seen again, so it is not new",
+    "sample_english": "re-admitted port: retired and seen again, so not new",
     "sample_english_params": {},
-    "template": "re-admitted port: it was retired and seen again, so it is not new"
+    "template": "re-admitted port: retired and seen again, so not new"
   },
   "ips.role.coverage": {
     "params": {},
@@ -7082,13 +7082,13 @@
         "params": {}
       }
     },
-    "sample_english": "12 events/bucket is below the 20 minimum for a defensible verdict",
+    "sample_english": "12 events/bucket is below the 20 minimum",
     "sample_english_params": {
       "minimum": "20",
       "observed": "12",
       "unit": "events"
     },
-    "template": "{observed} {unit}/bucket is below the {minimum} minimum for a defensible verdict"
+    "template": "{observed} {unit}/bucket is below the {minimum} minimum"
   },
   "ips.spike.delta_below_min": {
     "params": {
@@ -7322,7 +7322,7 @@
         "params": {}
       }
     },
-    "sample_english": "at least 1,520 events (a lower bound: volume: the count is a lower bound: an increase can be proven, normal behaviour cannot) for destination port 443/tcp is above the baseline median 100.0 (15.20x expected, +1,420 events/bucket); robust z=6.20 (threshold +3.5)",
+    "sample_english": "at least 1,520 events (lower bound: volume: the count is a lower bound: an increase can be proven, normal behaviour cannot) for destination port 443/tcp is above the baseline median 100.0 (15.20x expected, +1,420 events/bucket); robust z=6.20 (threshold +3.5)",
     "sample_english_params": {
       "basis": "robust z=6.20 (threshold +3.5)",
       "delta": "1,420",
@@ -7333,7 +7333,7 @@
       "subject": "destination port 443/tcp",
       "unit": "events"
     },
-    "template": "at least {observed} {unit} (a lower bound: {scope}) for {subject} is above the baseline median {expected} ({ratio_text}, +{delta} {unit}/bucket); {basis}"
+    "template": "at least {observed} {unit} (lower bound: {scope}) for {subject} is above the baseline median {expected} ({ratio_text}, +{delta} {unit}/bucket); {basis}"
   },
   "ips.spike.ratio_none": {
     "params": {},
@@ -10859,7 +10859,7 @@
       "truncated": 0,
       "wrong_width": 0
     },
-    "sample_english": "No verdict: the 7 days before the streak are not fully measured (1 missing, 0 truncated, 0 failed, 0 of another width, of 168 windows).",
+    "sample_english": "No verdict: the 7 days before the streak are incomplete (1 missing, 0 truncated, 0 failed, 0 other width, of 168 windows).",
     "sample_english_params": {
       "days": "7",
       "expected": "168",
@@ -10868,7 +10868,7 @@
       "truncated": "0",
       "wrong_width": "0"
     },
-    "template": "No verdict: the {days} days before the streak are not fully measured ({missing} missing, {truncated} truncated, {failed} failed, {wrong_width} of another width, of {expected} windows)."
+    "template": "No verdict: the {days} days before the streak are incomplete ({missing} missing, {truncated} truncated, {failed} failed, {wrong_width} other width, of {expected} windows)."
   },
   "rule.detector.basis_above_p95": {
     "params": {
@@ -10930,9 +10930,9 @@
   "rule.detector.cell_missing": {
     "params": {},
     "sample": {},
-    "sample_english": "No verdict: there is no baseline cell for this weekday and slot.",
+    "sample_english": "No verdict: no baseline for this weekday and slot.",
     "sample_english_params": {},
-    "template": "No verdict: there is no baseline cell for this weekday and slot."
+    "template": "No verdict: no baseline for this weekday and slot."
   },
   "rule.detector.cell_thin": {
     "params": {
@@ -10959,14 +10959,14 @@
       "samples": 7,
       "weeks": 7
     },
-    "sample_english": "Still learning: this weekday and slot has 7 sample(s) over 7 week(s); 8 samples over 4 weeks are needed.",
+    "sample_english": "Still learning: 7 sample(s) over 7 week(s) for this weekday and slot; needs 8 samples over 4 weeks.",
     "sample_english_params": {
       "min_samples": "8",
       "min_weeks": "4",
       "samples": "7",
       "weeks": "7"
     },
-    "template": "Still learning: this weekday and slot has {samples} sample(s) over {weeks} week(s); {min_samples} samples over {min_weeks} weeks are needed."
+    "template": "Still learning: {samples} sample(s) over {weeks} week(s) for this weekday and slot; needs {min_samples} samples over {min_weeks} weeks."
   },
   "rule.detector.dependency_disabled": {
     "params": {
@@ -11003,18 +11003,18 @@
         "kind": "list"
       }
     },
-    "sample_english": "No verdict: a stored dependency of this rule is not in the inventory (QRadar ids 9).",
+    "sample_english": "No verdict: a dependency is not in the inventory (QRadar ids 9).",
     "sample_english_params": {
       "ids": "9"
     },
-    "template": "No verdict: a stored dependency of this rule is not in the inventory (QRadar ids {ids})."
+    "template": "No verdict: a dependency is not in the inventory (QRadar ids {ids})."
   },
   "rule.detector.disabled_no_sync": {
     "params": {},
     "sample": {},
-    "sample_english": "Not judged: the inventory sync shows this rule disabled.",
+    "sample_english": "Not judged: disabled in the inventory sync.",
     "sample_english_params": {},
-    "template": "Not judged: the inventory sync shows this rule disabled."
+    "template": "Not judged: disabled in the inventory sync."
   },
   "rule.detector.disabled_with_sync": {
     "params": {
@@ -11026,11 +11026,11 @@
     "sample": {
       "synced_at": "2026-10-17T12:00:00+00:00"
     },
-    "sample_english": "Not judged: the inventory sync at 2026-10-17 12:00 UTC shows this rule disabled.",
+    "sample_english": "Not judged: disabled in the inventory sync at 2026-10-17 12:00 UTC.",
     "sample_english_params": {
       "synced_at": "2026-10-17 12:00 UTC"
     },
-    "template": "Not judged: the inventory sync at {synced_at} shows this rule disabled."
+    "template": "Not judged: disabled in the inventory sync at {synced_at}."
   },
   "rule.detector.mad_within_p95": {
     "params": {
@@ -11041,11 +11041,11 @@
     "sample": {
       "bound": 100.0
     },
-    "sample_english": "The count is within the usual 95th percentile (100) and the spread is too small for a z-score.",
+    "sample_english": "The count is within the usual 95th percentile (100); spread too small for a z-score.",
     "sample_english_params": {
       "bound": "100"
     },
-    "template": "The count is within the usual 95th percentile ({bound}) and the spread is too small for a z-score."
+    "template": "The count is within the usual 95th percentile ({bound}); spread too small for a z-score."
   },
   "rule.detector.matched_count": {
     "params": {
@@ -11076,12 +11076,12 @@
       "median": 0.5,
       "minimum": 1.0
     },
-    "sample_english": "No verdict: the median is 0.5 matched events per window, below the minimum of 1; not a stable match rate.",
+    "sample_english": "No verdict: median 0.5 matched events per window is below 1; not a stable match rate.",
     "sample_english_params": {
       "median": "0.5",
       "minimum": "1"
     },
-    "template": "No verdict: the median is {median} matched events per window, below the minimum of {minimum}; not a stable match rate."
+    "template": "No verdict: median {median} matched events per window is below {minimum}; not a stable match rate."
   },
   "rule.detector.modified": {
     "params": {
@@ -11093,18 +11093,18 @@
     "sample": {
       "modified_at": "2026-10-17T12:00:00+00:00"
     },
-    "sample_english": "QRadar reports this rule modified at 2026-10-17 12:00 UTC. Match anomalies are not judged across that time.",
+    "sample_english": "Modified in QRadar at 2026-10-17 12:00 UTC; not judged across that time.",
     "sample_english_params": {
       "modified_at": "2026-10-17 12:00 UTC"
     },
-    "template": "QRadar reports this rule modified at {modified_at}. Match anomalies are not judged across that time."
+    "template": "Modified in QRadar at {modified_at}; not judged across that time."
   },
   "rule.detector.monitoring_off": {
     "params": {},
     "sample": {},
-    "sample_english": "Not judged: health monitoring is switched off for this rule.",
+    "sample_english": "Not judged: health monitoring is off for this rule.",
     "sample_english_params": {},
-    "template": "Not judged: health monitoring is switched off for this rule."
+    "template": "Not judged: health monitoring is off for this rule."
   },
   "rule.detector.not_exact": {
     "params": {
@@ -11115,11 +11115,11 @@
     "sample": {
       "rule_type": "COMMON"
     },
-    "sample_english": "Not judged: this rule's type (COMMON) does not give exact match counts, so a window cannot prove how many times it matched.",
+    "sample_english": "Not judged: this rule's type (COMMON) gives no exact match counts.",
     "sample_english_params": {
       "rule_type": "COMMON"
     },
-    "template": "Not judged: this rule's type ({rule_type}) does not give exact match counts, so a window cannot prove how many times it matched."
+    "template": "Not judged: this rule's type ({rule_type}) gives no exact match counts."
   },
   "rule.detector.not_settled": {
     "params": {},
@@ -11240,7 +11240,7 @@
       "width": 3600,
       "windows": 3
     },
-    "sample_english": "Proven zero matches in 3 consecutive window(s) of 3600 s; the preceding 7 days had a median of 5 matched events per window, matching in 80% of windows.",
+    "sample_english": "Proven zero matches in 3 consecutive 3600 s window(s); preceding 7 days: median 5 matched events per window, matched in 80% of windows.",
     "sample_english_params": {
       "days": "7",
       "median": "5",
@@ -11248,7 +11248,7 @@
       "width": "3600",
       "windows": "3"
     },
-    "template": "Proven zero matches in {windows} consecutive window(s) of {width} s; the preceding {days} days had a median of {median} matched events per window, matching in {presence}% of windows."
+    "template": "Proven zero matches in {windows} consecutive {width} s window(s); preceding {days} days: median {median} matched events per window, matched in {presence}% of windows."
   },
   "rule.detector.silence_proven_zero_open": {
     "params": {
@@ -11265,12 +11265,12 @@
       "width": 3600,
       "windows": 3
     },
-    "sample_english": "Proven zero matches in 3 consecutive window(s) of 3600 s; the incident is open and its stability is not re-tested.",
+    "sample_english": "Proven zero matches in 3 consecutive 3600 s window(s); incident open, stability not re-tested.",
     "sample_english_params": {
       "width": "3600",
       "windows": "3"
     },
-    "template": "Proven zero matches in {windows} consecutive window(s) of {width} s; the incident is open and its stability is not re-tested."
+    "template": "Proven zero matches in {windows} consecutive {width} s window(s); incident open, stability not re-tested."
   },
   "rule.detector.silence_truncated": {
     "params": {},
@@ -11289,16 +11289,16 @@
   "rule.detector.stale_inventory": {
     "params": {},
     "sample": {},
-    "sample_english": "No verdict: the inventory was last synced before this window ended, so the enabled flag may be from an earlier sync.",
+    "sample_english": "No verdict: the inventory was synced before this window ended; the enabled flag may be stale.",
     "sample_english_params": {},
-    "template": "No verdict: the inventory was last synced before this window ended, so the enabled flag may be from an earlier sync."
+    "template": "No verdict: the inventory was synced before this window ended; the enabled flag may be stale."
   },
   "rule.detector.state_transition": {
     "params": {},
     "sample": {},
-    "sample_english": "No verdict: this rule was enabled or disabled inside the baseline or the streak (the platform noticed the flip at the recorded sync time).",
+    "sample_english": "No verdict: this rule was enabled or disabled inside the baseline or the streak.",
     "sample_english_params": {},
-    "template": "No verdict: this rule was enabled or disabled inside the baseline or the streak (the platform noticed the flip at the recorded sync time)."
+    "template": "No verdict: this rule was enabled or disabled inside the baseline or the streak."
   },
   "rule.detector.storm_fired": {
     "params": {
@@ -11379,16 +11379,16 @@
   "rule.detector.storm_truncated": {
     "params": {},
     "sample": {},
-    "sample_english": "No verdict: this window was truncated and holds no row for this rule, so its count is neither zero nor small.",
+    "sample_english": "No verdict: this window was truncated with no row for this rule; its count is not measured.",
     "sample_english_params": {},
-    "template": "No verdict: this window was truncated and holds no row for this rule, so its count is neither zero nor small."
+    "template": "No verdict: this window was truncated with no row for this rule; its count is not measured."
   },
   "rule.detector.storm_zero": {
     "params": {},
     "sample": {},
-    "sample_english": "The rule had a measured zero in this window; a zero is not a storm.",
+    "sample_english": "The rule had a measured zero in this window, not a storm.",
     "sample_english_params": {},
-    "template": "The rule had a measured zero in this window; a zero is not a storm."
+    "template": "The rule had a measured zero in this window, not a storm."
   },
   "rule.detector.width_does_not_tile": {
     "params": {
@@ -11400,11 +11400,11 @@
     "sample": {
       "width": 7000
     },
-    "sample_english": "No verdict: a window of 7000 s does not tile a UTC day, so there is no weekday and slot to compare against.",
+    "sample_english": "No verdict: a 7000 s window does not tile a UTC day; no weekday and slot to compare.",
     "sample_english_params": {
       "width": "7000"
     },
-    "template": "No verdict: a window of {width} s does not tile a UTC day, so there is no weekday and slot to compare against."
+    "template": "No verdict: a {width} s window does not tile a UTC day; no weekday and slot to compare."
   },
   "rule.detector.window_failed": {
     "params": {},
@@ -11416,9 +11416,9 @@
   "rule.detector.window_missing": {
     "params": {},
     "sample": {},
-    "sample_english": "No verdict: no collection record exists for this window.",
+    "sample_english": "No verdict: no collection record for this window.",
     "sample_english_params": {},
-    "template": "No verdict: no collection record exists for this window."
+    "template": "No verdict: no collection record for this window."
   },
   "rule.detector.window_wrong_width": {
     "params": {
@@ -11430,11 +11430,11 @@
     "sample": {
       "width": 3600
     },
-    "sample_english": "No verdict: it was collected at another window width than the current 3600 s.",
+    "sample_english": "No verdict: collected at another width than the current 3600 s.",
     "sample_english_params": {
       "width": "3600"
     },
-    "template": "No verdict: it was collected at another window width than the current {width} s."
+    "template": "No verdict: collected at another width than the current {width} s."
   },
   "rule.detector.z_below": {
     "params": {
@@ -11493,7 +11493,7 @@
       "window_end": "2026-10-17T12:00:00+00:00",
       "window_start": "2026-10-17T12:00:00+00:00"
     },
-    "sample_english": "The storm cell for this weekday and slot is still learning: 2 sample(s) over 2 week(s); 8 samples over 4 weeks are needed. The judged window runs from 2026-10-17 12:00 UTC to 2026-10-17 12:00 UTC.",
+    "sample_english": "Still learning this weekday and slot: 2 sample(s) over 2 week(s); needs 8 samples over 4 weeks. Judged window: 2026-10-17 12:00 UTC to 2026-10-17 12:00 UTC.",
     "sample_english_params": {
       "minimum_samples": "8",
       "minimum_weeks": "4",
@@ -11502,7 +11502,7 @@
       "window_end": "2026-10-17 12:00 UTC",
       "window_start": "2026-10-17 12:00 UTC"
     },
-    "template": "The storm cell for this weekday and slot is still learning: {samples} sample(s) over {weeks} week(s); {minimum_samples} samples over {minimum_weeks} weeks are needed. The judged window runs from {window_start} to {window_end}."
+    "template": "Still learning this weekday and slot: {samples} sample(s) over {weeks} week(s); needs {minimum_samples} samples over {minimum_weeks} weeks. Judged window: {window_start} to {window_end}."
   },
   "rule.match_anomaly.cell_missing": {
     "params": {
@@ -11519,12 +11519,12 @@
       "window_end": "2026-10-17T12:00:00+00:00",
       "window_start": "2026-10-17T12:00:00+00:00"
     },
-    "sample_english": "No baseline cell is stored for this weekday and slot. The judged window runs from 2026-10-17 12:00 UTC to 2026-10-17 12:00 UTC.",
+    "sample_english": "No baseline for this weekday and slot. Judged window: 2026-10-17 12:00 UTC to 2026-10-17 12:00 UTC.",
     "sample_english_params": {
       "window_end": "2026-10-17 12:00 UTC",
       "window_start": "2026-10-17 12:00 UTC"
     },
-    "template": "No baseline cell is stored for this weekday and slot. The judged window runs from {window_start} to {window_end}."
+    "template": "No baseline for this weekday and slot. Judged window: {window_start} to {window_end}."
   },
   "rule.match_anomaly.collection_off": {
     "params": {},
@@ -11557,11 +11557,11 @@
     "sample": {
       "ids": "12"
     },
-    "sample_english": "No verdict: a stored dependency of this rule is not in the inventory (QRadar ids 12).",
+    "sample_english": "No verdict: a dependency is not in the inventory (QRadar ids 12).",
     "sample_english_params": {
       "ids": "12"
     },
-    "template": "No verdict: a stored dependency of this rule is not in the inventory (QRadar ids {ids})."
+    "template": "No verdict: a dependency is not in the inventory (QRadar ids {ids})."
   },
   "rule.match_anomaly.disabled": {
     "params": {
@@ -11573,18 +11573,18 @@
     "sample": {
       "synced_at": "2026-10-17T12:00:00+00:00"
     },
-    "sample_english": "Disabled in the inventory sync at 2026-10-17 12:00 UTC. Match anomalies are not opened.",
+    "sample_english": "Disabled in the inventory sync at 2026-10-17 12:00 UTC; no match anomalies opened.",
     "sample_english_params": {
       "synced_at": "2026-10-17 12:00 UTC"
     },
-    "template": "Disabled in the inventory sync at {synced_at}. Match anomalies are not opened."
+    "template": "Disabled in the inventory sync at {synced_at}; no match anomalies opened."
   },
   "rule.match_anomaly.disabled_no_sync": {
     "params": {},
     "sample": {},
-    "sample_english": "Disabled in the inventory sync. Match anomalies are not opened.",
+    "sample_english": "Disabled in the inventory sync; no match anomalies opened.",
     "sample_english_params": {},
-    "template": "Disabled in the inventory sync. Match anomalies are not opened."
+    "template": "Disabled in the inventory sync; no match anomalies opened."
   },
   "rule.match_anomaly.judged": {
     "params": {
@@ -11641,14 +11641,14 @@
       "window_end": "2026-10-17T12:00:00+00:00",
       "window_start": "2026-10-17T12:00:00+00:00"
     },
-    "sample_english": "The median is 0 matched events per window, below the minimum of 1. The judged window runs from 2026-10-17 12:00 UTC to 2026-10-17 12:00 UTC.",
+    "sample_english": "Median 0 matched events per window, below the minimum 1. Judged window: 2026-10-17 12:00 UTC to 2026-10-17 12:00 UTC.",
     "sample_english_params": {
       "median": "0",
       "minimum": "1",
       "window_end": "2026-10-17 12:00 UTC",
       "window_start": "2026-10-17 12:00 UTC"
     },
-    "template": "The median is {median} matched events per window, below the minimum of {minimum}. The judged window runs from {window_start} to {window_end}."
+    "template": "Median {median} matched events per window, below the minimum {minimum}. Judged window: {window_start} to {window_end}."
   },
   "rule.match_anomaly.modified": {
     "params": {
@@ -11660,18 +11660,18 @@
     "sample": {
       "modified_at": "2026-10-17T12:00:00+00:00"
     },
-    "sample_english": "QRadar reports this rule modified at 2026-10-17 12:00 UTC. Match anomalies are not judged across that time.",
+    "sample_english": "Modified in QRadar at 2026-10-17 12:00 UTC; not judged across that time.",
     "sample_english_params": {
       "modified_at": "2026-10-17 12:00 UTC"
     },
-    "template": "QRadar reports this rule modified at {modified_at}. Match anomalies are not judged across that time."
+    "template": "Modified in QRadar at {modified_at}; not judged across that time."
   },
   "rule.match_anomaly.monitoring_off": {
     "params": {},
     "sample": {},
-    "sample_english": "Match anomalies are off for this rule (health_monitoring_enabled). The health status does not read that flag.",
+    "sample_english": "Match anomalies are off for this rule (health_monitoring_enabled).",
     "sample_english_params": {},
-    "template": "Match anomalies are off for this rule (health_monitoring_enabled). The health status does not read that flag."
+    "template": "Match anomalies are off for this rule (health_monitoring_enabled)."
   },
   "rule.match_anomaly.no_window": {
     "params": {},
@@ -11710,12 +11710,12 @@
       "window_end": "2026-10-17T12:00:00+00:00",
       "window_start": "2026-10-17T12:00:00+00:00"
     },
-    "sample_english": "The window from 2026-10-17 12:00 UTC to 2026-10-17 12:00 UTC has not settled yet.",
+    "sample_english": "Window 2026-10-17 12:00 UTC to 2026-10-17 12:00 UTC has not settled yet.",
     "sample_english_params": {
       "window_end": "2026-10-17 12:00 UTC",
       "window_start": "2026-10-17 12:00 UTC"
     },
-    "template": "The window from {window_start} to {window_end} has not settled yet."
+    "template": "Window {window_start} to {window_end} has not settled yet."
   },
   "rule.match_anomaly.presence_below": {
     "params": {
@@ -11753,7 +11753,7 @@
       "window_end": "2026-10-17T12:00:00+00:00",
       "window_start": "2026-10-17T12:00:00+00:00"
     },
-    "sample_english": "The rule matched in 60 % of windows over 7 days, below 80 %. The judged window runs from 2026-10-17 12:00 UTC to 2026-10-17 12:00 UTC.",
+    "sample_english": "The rule matched in 60 % of windows over 7 days, below 80 %. Judged window: 2026-10-17 12:00 UTC to 2026-10-17 12:00 UTC.",
     "sample_english_params": {
       "days": "7",
       "minimum": "80 %",
@@ -11761,7 +11761,7 @@
       "window_end": "2026-10-17 12:00 UTC",
       "window_start": "2026-10-17 12:00 UTC"
     },
-    "template": "The rule matched in {presence} of windows over {days} days, below {minimum}. The judged window runs from {window_start} to {window_end}."
+    "template": "The rule matched in {presence} of windows over {days} days, below {minimum}. Judged window: {window_start} to {window_end}."
   },
   "rule.match_anomaly.rule_too_new": {
     "params": {
@@ -11783,13 +11783,13 @@
       "window_end": "2026-10-17T12:00:00+00:00",
       "window_start": "2026-10-17T12:00:00+00:00"
     },
-    "sample_english": "The inventory has not held this rule for 7 days. The judged window runs from 2026-10-17 12:00 UTC to 2026-10-17 12:00 UTC.",
+    "sample_english": "The inventory has not held this rule for 7 days. Judged window: 2026-10-17 12:00 UTC to 2026-10-17 12:00 UTC.",
     "sample_english_params": {
       "days": "7",
       "window_end": "2026-10-17 12:00 UTC",
       "window_start": "2026-10-17 12:00 UTC"
     },
-    "template": "The inventory has not held this rule for {days} days. The judged window runs from {window_start} to {window_end}."
+    "template": "The inventory has not held this rule for {days} days. Judged window: {window_start} to {window_end}."
   },
   "rule.match_anomaly.span_incomplete": {
     "params": {
@@ -11836,7 +11836,7 @@
       "window_start": "2026-10-17T12:00:00+00:00",
       "wrong_width": 0
     },
-    "sample_english": "The 7-day span is not fully measured (1 missing, 0 truncated, 0 failed, 0 of another width, of 168 windows). The judged window runs from 2026-10-17 12:00 UTC to 2026-10-17 12:00 UTC.",
+    "sample_english": "The 7-day span is incomplete (1 missing, 0 truncated, 0 failed, 0 other width, of 168 windows). Judged window: 2026-10-17 12:00 UTC to 2026-10-17 12:00 UTC.",
     "sample_english_params": {
       "days": "7",
       "expected": "168",
@@ -11847,7 +11847,7 @@
       "window_start": "2026-10-17 12:00 UTC",
       "wrong_width": "0"
     },
-    "template": "The {days}-day span is not fully measured ({missing} missing, {truncated} truncated, {failed} failed, {wrong_width} of another width, of {expected} windows). The judged window runs from {window_start} to {window_end}."
+    "template": "The {days}-day span is incomplete ({missing} missing, {truncated} truncated, {failed} failed, {wrong_width} other width, of {expected} windows). Judged window: {window_start} to {window_end}."
   },
   "rule.match_anomaly.stale_inventory": {
     "params": {
@@ -11864,12 +11864,12 @@
       "synced_at": "2026-10-17T12:00:00+00:00",
       "window_end": "2026-10-17T12:00:00+00:00"
     },
-    "sample_english": "The inventory sync at 2026-10-17 12:00 UTC is older than the window ending 2026-10-17 12:00 UTC.",
+    "sample_english": "Inventory sync 2026-10-17 12:00 UTC predates the window ending 2026-10-17 12:00 UTC.",
     "sample_english_params": {
       "synced_at": "2026-10-17 12:00 UTC",
       "window_end": "2026-10-17 12:00 UTC"
     },
-    "template": "The inventory sync at {synced_at} is older than the window ending {window_end}."
+    "template": "Inventory sync {synced_at} predates the window ending {window_end}."
   },
   "rule.match_anomaly.stale_inventory_unknown": {
     "params": {
@@ -11881,11 +11881,11 @@
     "sample": {
       "window_end": "2026-10-17T12:00:00+00:00"
     },
-    "sample_english": "No inventory sync is recorded, so the window ending 2026-10-17 12:00 UTC cannot be judged.",
+    "sample_english": "No inventory sync recorded; the window ending 2026-10-17 12:00 UTC cannot be judged.",
     "sample_english_params": {
       "window_end": "2026-10-17 12:00 UTC"
     },
-    "template": "No inventory sync is recorded, so the window ending {window_end} cannot be judged."
+    "template": "No inventory sync recorded; the window ending {window_end} cannot be judged."
   },
   "rule.match_anomaly.state_transition": {
     "params": {
@@ -11902,19 +11902,19 @@
       "window_end": "2026-10-17T12:00:00+00:00",
       "window_start": "2026-10-17T12:00:00+00:00"
     },
-    "sample_english": "This rule was enabled or disabled inside the baseline or the streak. The judged window runs from 2026-10-17 12:00 UTC to 2026-10-17 12:00 UTC.",
+    "sample_english": "This rule was enabled or disabled inside the baseline or the streak. Judged window: 2026-10-17 12:00 UTC to 2026-10-17 12:00 UTC.",
     "sample_english_params": {
       "window_end": "2026-10-17 12:00 UTC",
       "window_start": "2026-10-17 12:00 UTC"
     },
-    "template": "This rule was enabled or disabled inside the baseline or the streak. The judged window runs from {window_start} to {window_end}."
+    "template": "This rule was enabled or disabled inside the baseline or the streak. Judged window: {window_start} to {window_end}."
   },
   "rule.match_anomaly.truncated": {
     "params": {},
     "sample": {},
-    "sample_english": "The latest window hit the row cap. Silence is not judged. A storm is judged only when this rule has a row.",
+    "sample_english": "Latest window hit the row cap: silence not judged; a storm only if this rule has a row.",
     "sample_english_params": {},
-    "template": "The latest window hit the row cap. Silence is not judged. A storm is judged only when this rule has a row."
+    "template": "Latest window hit the row cap: silence not judged; a storm only if this rule has a row."
   },
   "rule.match_anomaly.width_does_not_tile": {
     "params": {
@@ -11936,13 +11936,13 @@
       "window_end": "2026-10-17T12:00:00+00:00",
       "window_start": "2026-10-17T12:00:00+00:00"
     },
-    "sample_english": "A window of 1000 s does not tile a UTC day, so there is no weekday and slot to compare against. The judged window runs from 2026-10-17 12:00 UTC to 2026-10-17 12:00 UTC.",
+    "sample_english": "A 1000 s window does not tile a UTC day; no weekday and slot to compare. Judged window: 2026-10-17 12:00 UTC to 2026-10-17 12:00 UTC.",
     "sample_english_params": {
       "width": "1000",
       "window_end": "2026-10-17 12:00 UTC",
       "window_start": "2026-10-17 12:00 UTC"
     },
-    "template": "A window of {width} s does not tile a UTC day, so there is no weekday and slot to compare against. The judged window runs from {window_start} to {window_end}."
+    "template": "A {width} s window does not tile a UTC day; no weekday and slot to compare. Judged window: {window_start} to {window_end}."
   },
   "rule.match_anomaly.window_failed": {
     "params": {
@@ -11959,12 +11959,12 @@
       "window_end": "2026-10-17T12:00:00+00:00",
       "window_start": "2026-10-17T12:00:00+00:00"
     },
-    "sample_english": "Collection of the window from 2026-10-17 12:00 UTC to 2026-10-17 12:00 UTC failed or was skipped.",
+    "sample_english": "Collection of window 2026-10-17 12:00 UTC to 2026-10-17 12:00 UTC failed or was skipped.",
     "sample_english_params": {
       "window_end": "2026-10-17 12:00 UTC",
       "window_start": "2026-10-17 12:00 UTC"
     },
-    "template": "Collection of the window from {window_start} to {window_end} failed or was skipped."
+    "template": "Collection of window {window_start} to {window_end} failed or was skipped."
   },
   "rule.match_anomaly.window_missing": {
     "params": {
@@ -11981,12 +11981,12 @@
       "window_end": "2026-10-17T12:00:00+00:00",
       "window_start": "2026-10-17T12:00:00+00:00"
     },
-    "sample_english": "No collection record exists for the window from 2026-10-17 12:00 UTC to 2026-10-17 12:00 UTC.",
+    "sample_english": "No collection record for window 2026-10-17 12:00 UTC to 2026-10-17 12:00 UTC.",
     "sample_english_params": {
       "window_end": "2026-10-17 12:00 UTC",
       "window_start": "2026-10-17 12:00 UTC"
     },
-    "template": "No collection record exists for the window from {window_start} to {window_end}."
+    "template": "No collection record for window {window_start} to {window_end}."
   },
   "rule.match_anomaly.window_wrong_width": {
     "params": {
@@ -12008,13 +12008,13 @@
       "window_end": "2026-10-17T12:00:00+00:00",
       "window_start": "2026-10-17T12:00:00+00:00"
     },
-    "sample_english": "The window from 2026-10-17 12:00 UTC to 2026-10-17 12:00 UTC was collected at another width than the current 3600 s.",
+    "sample_english": "Window 2026-10-17 12:00 UTC to 2026-10-17 12:00 UTC was collected at another width than the current 3600 s.",
     "sample_english_params": {
       "width": "3600",
       "window_end": "2026-10-17 12:00 UTC",
       "window_start": "2026-10-17 12:00 UTC"
     },
-    "template": "The window from {window_start} to {window_end} was collected at another width than the current {width} s."
+    "template": "Window {window_start} to {window_end} was collected at another width than the current {width} s."
   },
   "rule_health.age_unknown": {
     "params": {},
@@ -14159,9 +14159,9 @@
   "waf.caveat.block_ratio": {
     "params": {},
     "sample": {},
-    "sample_english": "Blocking is judged through the profile's action map. A higher block ratio describes WAF decisions; it does not establish that an attack succeeded.",
+    "sample_english": "A higher block ratio describes WAF decisions, not a successful attack.",
     "sample_english_params": {},
-    "template": "Blocking is judged through the profile's action map. A higher block ratio describes WAF decisions; it does not establish that an attack succeeded."
+    "template": "A higher block ratio describes WAF decisions, not a successful attack."
   },
   "waf.caveat.client_concentration": {
     "params": {},
@@ -14173,23 +14173,23 @@
   "waf.caveat.client_error_ratio": {
     "params": {},
     "sample": {},
-    "sample_english": "HTTP 4xx responses are response codes, not WAF decisions: a 403 is not by itself a block, and WAF blocking is reported separately.",
+    "sample_english": "HTTP 4xx responses are response codes, not WAF decisions; a 403 alone is not a block.",
     "sample_english_params": {},
-    "template": "HTTP 4xx responses are response codes, not WAF decisions: a 403 is not by itself a block, and WAF blocking is reported separately."
+    "template": "HTTP 4xx responses are response codes, not WAF decisions; a 403 alone is not a block."
   },
   "waf.caveat.new_endpoint": {
     "params": {},
     "sample": {},
-    "sample_english": "A newly requested endpoint may be a deployment as easily as a probe.",
+    "sample_english": "A new endpoint may be a deployment, not a probe.",
     "sample_english_params": {},
-    "template": "A newly requested endpoint may be a deployment as easily as a probe."
+    "template": "A new endpoint may be a deployment, not a probe."
   },
   "waf.caveat.server_error_ratio": {
     "params": {},
     "sample": {},
-    "sample_english": "HTTP 5xx responses describe server-side failures. They do not establish that the traffic was malicious.",
+    "sample_english": "HTTP 5xx responses describe server failures, not malicious traffic.",
     "sample_english_params": {},
-    "template": "HTTP 5xx responses describe server-side failures. They do not establish that the traffic was malicious."
+    "template": "HTTP 5xx responses describe server failures, not malicious traffic."
   },
   "waf.concentration.attributed_low": {
     "params": {
@@ -14212,12 +14212,12 @@
         "ratio": 0.9
       }
     },
-    "sample_english": "only 70 % of the endpoint's requests were attributed to a source IP, below the 90 % coverage floor",
+    "sample_english": "only 70 % of the endpoint's requests had a source IP, below the 90 % coverage floor",
     "sample_english_params": {
       "covered": "70 %",
       "floor": "90 %"
     },
-    "template": "only {covered} of the endpoint's requests were attributed to a source IP, below the {floor} coverage floor"
+    "template": "only {covered} of the endpoint's requests had a source IP, below the {floor} coverage floor"
   },
   "waf.concentration.endpoint_below_min": {
     "params": {
@@ -14332,7 +14332,7 @@
         }
       }
     },
-    "sample_english": "the largest source IP sent 400 of 500 requests to this endpoint (80.0 %), against an expected share of 20.0 % (+60.0 pp); the five largest sent 95.0 %; endpoint volume 500 requests against an expected 100.0; robust z=6.20 (threshold +3.5)",
+    "sample_english": "the largest source IP sent 400 of 500 requests to this endpoint (80.0 %) against an expected 20.0 % (+60.0 pp); the top five sent 95.0 %; endpoint volume 500 requests, expected 100.0; robust z=6.20 (threshold +3.5)",
     "sample_english_params": {
       "basis": "robust z=6.20 (threshold +3.5)",
       "expected": "20.0 %",
@@ -14342,9 +14342,9 @@
       "top": "400",
       "top5": "95.0 %",
       "total": "500",
-      "volume": "endpoint volume 500 requests against an expected 100.0"
+      "volume": "endpoint volume 500 requests, expected 100.0"
     },
-    "template": "the largest source IP sent {top} of {total} requests to {subject} ({share}), against an expected share of {expected} ({rise}); the five largest sent {top5}; {volume}; {basis}"
+    "template": "the largest source IP sent {top} of {total} requests to {subject} ({share}) against an expected {expected} ({rise}); the top five sent {top5}; {volume}; {basis}"
   },
   "waf.concentration.rise_below_min": {
     "params": {
@@ -14413,12 +14413,12 @@
       "minimum": 20,
       "top": 12
     },
-    "sample_english": "the largest source IP sent 12 requests, below the 20 minimum for a material concentration",
+    "sample_english": "the largest source IP sent 12 requests, below the 20 minimum for concentration",
     "sample_english_params": {
       "minimum": "20",
       "top": "12"
     },
-    "template": "the largest source IP sent {top} requests, below the {minimum} minimum for a material concentration"
+    "template": "the largest source IP sent {top} requests, below the {minimum} minimum for concentration"
   },
   "waf.concentration.volume_no_baseline": {
     "params": {
@@ -14430,11 +14430,11 @@
     "sample": {
       "requests": 480
     },
-    "sample_english": "endpoint volume 480 requests (no reliable volume baseline)",
+    "sample_english": "endpoint volume 480 requests (no reliable baseline)",
     "sample_english_params": {
       "requests": "480"
     },
-    "template": "endpoint volume {requests} requests (no reliable volume baseline)"
+    "template": "endpoint volume {requests} requests (no reliable baseline)"
   },
   "waf.concentration.volume_with_baseline": {
     "params": {
@@ -14451,12 +14451,12 @@
       "expected": 100.0,
       "requests": 480
     },
-    "sample_english": "endpoint volume 480 requests against an expected 100.0",
+    "sample_english": "endpoint volume 480 requests, expected 100.0",
     "sample_english_params": {
       "expected": "100.0",
       "requests": "480"
     },
-    "template": "endpoint volume {requests} requests against an expected {expected}"
+    "template": "endpoint volume {requests} requests, expected {expected}"
   },
   "waf.guard.baseline_no_denominator": {
     "params": {
@@ -14487,12 +14487,12 @@
       "metric": "block_ratio",
       "samples": 3
     },
-    "sample_english": "the block_ratio baseline has 3 material bucket(s), below the minimum for a defensible verdict",
+    "sample_english": "the block_ratio baseline has 3 material bucket(s), below the minimum",
     "sample_english_params": {
       "metric": "block_ratio",
       "samples": "3"
     },
-    "template": "the {metric} baseline has {samples} material bucket(s), below the minimum for a defensible verdict"
+    "template": "the {metric} baseline has {samples} material bucket(s), below the minimum"
   },
   "waf.guard.breakdown_failed": {
     "params": {
@@ -14503,11 +14503,11 @@
     "sample": {
       "breakdown": "ACTION"
     },
-    "sample_english": "the ACTION breakdown failed for this bucket: the value is unavailable, not zero",
+    "sample_english": "the ACTION breakdown failed for this bucket; value unavailable, not zero",
     "sample_english_params": {
       "breakdown": "ACTION"
     },
-    "template": "the {breakdown} breakdown failed for this bucket: the value is unavailable, not zero"
+    "template": "the {breakdown} breakdown failed for this bucket; value unavailable, not zero"
   },
   "waf.guard.breakdown_not_collected": {
     "params": {
@@ -14518,11 +14518,11 @@
     "sample": {
       "breakdown": "ACTION"
     },
-    "sample_english": "the ACTION breakdown was not collected for this bucket: the value is unavailable, not zero",
+    "sample_english": "the ACTION breakdown was not collected for this bucket; value unavailable, not zero",
     "sample_english_params": {
       "breakdown": "ACTION"
     },
-    "template": "the {breakdown} breakdown was not collected for this bucket: the value is unavailable, not zero"
+    "template": "the {breakdown} breakdown was not collected for this bucket; value unavailable, not zero"
   },
   "waf.guard.no_baseline": {
     "params": {
@@ -14533,11 +14533,11 @@
     "sample": {
       "metric": "block_ratio"
     },
-    "sample_english": "no block_ratio baseline for this weekday/hour cell yet",
+    "sample_english": "no block_ratio baseline for this weekday/hour yet",
     "sample_english_params": {
       "metric": "block_ratio"
     },
-    "template": "no {metric} baseline for this weekday/hour cell yet"
+    "template": "no {metric} baseline for this weekday/hour yet"
   },
   "waf.guard.not_proven_lower_bound": {
     "params": {
@@ -14579,12 +14579,12 @@
         "params": {}
       }
     },
-    "sample_english": "robust z=2.10 has not reached +3.5; the numerator is a lower bound (some values were unclassified), so a normal verdict cannot be concluded from it",
+    "sample_english": "robust z=2.10 has not reached +3.5; the numerator is a lower bound (some values were unclassified), so no normal verdict",
     "sample_english_params": {
       "reason": "robust z=2.10 has not reached +3.5",
       "scope": "some values were unclassified"
     },
-    "template": "{reason}; the numerator is a lower bound ({scope}), so a normal verdict cannot be concluded from it"
+    "template": "{reason}; the numerator is a lower bound ({scope}), so no normal verdict"
   },
   "waf.guard.source_coverage_low": {
     "params": {
@@ -14607,12 +14607,12 @@
         "ratio": 0.9
       }
     },
-    "sample_english": "only 62 % of this source's events parsed to an endpoint, below the 90 % coverage floor: the unparsed requests may differ in kind from the parsed ones, so the visible proportion bounds nothing",
+    "sample_english": "only 62 % of this source's events parsed to an endpoint, below the 90 % coverage floor, so the proportion bounds nothing",
     "sample_english_params": {
       "covered": "62 %",
       "floor": "90 %"
     },
-    "template": "only {covered} of this source's events parsed to an endpoint, below the {floor} coverage floor: the unparsed requests may differ in kind from the parsed ones, so the visible proportion bounds nothing"
+    "template": "only {covered} of this source's events parsed to an endpoint, below the {floor} coverage floor, so the proportion bounds nothing"
   },
   "waf.history_check.admission_truncated": {
     "params": {
@@ -14640,9 +14640,9 @@
   "waf.history_check.appearance_no_profile": {
     "params": {},
     "sample": {},
-    "sample_english": "the first-appearance bucket carries no profile version",
+    "sample_english": "the first-appearance bucket has no profile version",
     "sample_english_params": {},
-    "template": "the first-appearance bucket carries no profile version"
+    "template": "the first-appearance bucket has no profile version"
   },
   "waf.history_check.appearance_normalizer": {
     "params": {
@@ -14654,11 +14654,11 @@
     "sample": {
       "version": 2
     },
-    "sample_english": "the first-appearance bucket is incompatible with endpoint normalizer version 2",
+    "sample_english": "the first-appearance bucket is incompatible with normalizer version 2",
     "sample_english_params": {
       "version": "2"
     },
-    "template": "the first-appearance bucket is incompatible with endpoint normalizer version {version}"
+    "template": "the first-appearance bucket is incompatible with normalizer version {version}"
   },
   "waf.history_check.bucket_width": {
     "params": {
@@ -14670,11 +14670,11 @@
     "sample": {
       "bucket": "2026-08-03T19:25:00+00:00"
     },
-    "sample_english": "history bucket 2026-08-03T19:25:00+00:00 used a different collection bucket width",
+    "sample_english": "history bucket 2026-08-03T19:25:00+00:00 had a different bucket width",
     "sample_english_params": {
       "bucket": "2026-08-03T19:25:00+00:00"
     },
-    "template": "history bucket {bucket} used a different collection bucket width"
+    "template": "history bucket {bucket} had a different bucket width"
   },
   "waf.history_check.discovery_truncated": {
     "params": {
@@ -14707,12 +14707,12 @@
       "expected": 168,
       "missing": 3
     },
-    "sample_english": "3 of 168 history buckets were never collected",
+    "sample_english": "3 of 168 history buckets never collected",
     "sample_english_params": {
       "expected": "168",
       "missing": "3"
     },
-    "template": "{missing} of {expected} history buckets were never collected"
+    "template": "{missing} of {expected} history buckets never collected"
   },
   "waf.history_check.normalizer_version": {
     "params": {
@@ -14729,19 +14729,19 @@
       "bucket": "2026-08-03T19:25:00+00:00",
       "version": 2
     },
-    "sample_english": "history bucket 2026-08-03T19:25:00+00:00 is incompatible with endpoint normalizer version 2",
+    "sample_english": "history bucket 2026-08-03T19:25:00+00:00 is incompatible with normalizer version 2",
     "sample_english_params": {
       "bucket": "2026-08-03T19:25:00+00:00",
       "version": "2"
     },
-    "template": "history bucket {bucket} is incompatible with endpoint normalizer version {version}"
+    "template": "history bucket {bucket} is incompatible with normalizer version {version}"
   },
   "waf.history_check.not_divisible": {
     "params": {},
     "sample": {},
-    "sample_english": "the history window is not divisible by the collection bucket width",
+    "sample_english": "the history window is not divisible by the bucket width",
     "sample_english_params": {},
-    "template": "the history window is not divisible by the collection bucket width"
+    "template": "the history window is not divisible by the bucket width"
   },
   "waf.history_check.not_loaded": {
     "params": {},
@@ -14792,12 +14792,12 @@
       "expected": 168,
       "records": 169
     },
-    "sample_english": "the history contains 169 bucket records for 168 expected buckets",
+    "sample_english": "history has 169 bucket records for 168 expected",
     "sample_english_params": {
       "expected": "168",
       "records": "169"
     },
-    "template": "the history contains {records} bucket records for {expected} expected buckets"
+    "template": "history has {records} bucket records for {expected} expected"
   },
   "waf.noun.blocked_requests": {
     "params": {},
@@ -14859,14 +14859,14 @@
       "min_requests": 20,
       "requests": 8
     },
-    "sample_english": "8 request(s) in 1 bucket(s) since first appearance has not reached 20 requests in 2 buckets",
+    "sample_english": "8 request(s) in 1 bucket(s) since first appearance, below 20 requests in 2 buckets",
     "sample_english_params": {
       "buckets": "1",
       "min_buckets": "2",
       "min_requests": "20",
       "requests": "8"
     },
-    "template": "{requests} request(s) in {buckets} bucket(s) since first appearance has not reached {min_requests} requests in {min_buckets} buckets"
+    "template": "{requests} request(s) in {buckets} bucket(s) since first appearance, below {min_requests} requests in {min_buckets} buckets"
   },
   "waf.novelty.below_materiality_lower": {
     "params": {
@@ -14888,9 +14888,9 @@
         }
       }
     },
-    "sample_english": "8 request(s) in 1 bucket(s) since first appearance has not reached 20 requests in 2 buckets; the counts are lower bounds",
+    "sample_english": "8 request(s) in 1 bucket(s) since first appearance, below 20 requests in 2 buckets; the counts are lower bounds",
     "sample_english_params": {
-      "reason": "8 request(s) in 1 bucket(s) since first appearance has not reached 20 requests in 2 buckets"
+      "reason": "8 request(s) in 1 bucket(s) since first appearance, below 20 requests in 2 buckets"
     },
     "template": "{reason}; the counts are lower bounds"
   },
@@ -14928,9 +14928,9 @@
         "params": {}
       }
     },
-    "sample_english": "novelty cannot be established: the history window is not divisible by the collection bucket width",
+    "sample_english": "novelty cannot be established: the history window is not divisible by the bucket width",
     "sample_english_params": {
-      "cause": "the history window is not divisible by the collection bucket width"
+      "cause": "the history window is not divisible by the bucket width"
     },
     "template": "novelty cannot be established: {cause}"
   },
@@ -14949,12 +14949,12 @@
       "first_seen": "2026-08-03T19:25:00+00:00",
       "hand_off": "2026-08-03T19:25:00+00:00"
     },
-    "sample_english": "established endpoint: first admitted 2026-08-03T19:25:00+00:00 before the history hand-off 2026-08-03T19:25:00+00:00",
+    "sample_english": "established endpoint: first admitted 2026-08-03T19:25:00+00:00, before history hand-off 2026-08-03T19:25:00+00:00",
     "sample_english_params": {
       "first_seen": "2026-08-03T19:25:00+00:00",
       "hand_off": "2026-08-03T19:25:00+00:00"
     },
-    "template": "established endpoint: first admitted {first_seen} before the history hand-off {hand_off}"
+    "template": "established endpoint: first admitted {first_seen}, before history hand-off {hand_off}"
   },
   "waf.novelty.established_outside_window": {
     "params": {
@@ -15024,7 +15024,7 @@
         "params": {}
       }
     },
-    "sample_english": "this endpoint received 90 requests across 3 buckets since it first appeared at 2026-08-03T19:25:00+00:00; in the verified history 2026-08-03T19:25:00+00:00 to 2026-08-03T19:25:00+00:00 it was never requested 3 or more times in one bucket",
+    "sample_english": "this endpoint received 90 requests in 3 buckets since first appearing at 2026-08-03T19:25:00+00:00; in verified history 2026-08-03T19:25:00+00:00 to 2026-08-03T19:25:00+00:00 never 3 or more in one bucket",
     "sample_english_params": {
       "admission": "3",
       "buckets": "3",
@@ -15034,7 +15034,7 @@
       "requests": "90",
       "subject": "this endpoint"
     },
-    "template": "{subject} received {requests} requests across {buckets} buckets since it first appeared at {first_seen}; in the verified history {history_start} to {history_end} it was never requested {admission} or more times in one bucket"
+    "template": "{subject} received {requests} requests in {buckets} buckets since first appearing at {first_seen}; in verified history {history_start} to {history_end} never {admission} or more in one bucket"
   },
   "waf.novelty.fired_lower": {
     "params": {
@@ -15082,7 +15082,7 @@
         "params": {}
       }
     },
-    "sample_english": "this endpoint received at least 90 requests across 3 buckets since it first appeared at 2026-08-03T19:25:00+00:00; in the verified history 2026-08-03T19:25:00+00:00 to 2026-08-03T19:25:00+00:00 it was never requested 3 or more times in one bucket",
+    "sample_english": "this endpoint received at least 90 requests in 3 buckets since first appearing at 2026-08-03T19:25:00+00:00; in verified history 2026-08-03T19:25:00+00:00 to 2026-08-03T19:25:00+00:00 never 3 or more in one bucket",
     "sample_english_params": {
       "admission": "3",
       "buckets": "3",
@@ -15092,7 +15092,7 @@
       "requests": "90",
       "subject": "this endpoint"
     },
-    "template": "{subject} received at least {requests} requests across {buckets} buckets since it first appeared at {first_seen}; in the verified history {history_start} to {history_end} it was never requested {admission} or more times in one bucket"
+    "template": "{subject} received at least {requests} requests in {buckets} buckets since first appearing at {first_seen}; in verified history {history_start} to {history_end} never {admission} or more in one bucket"
   },
   "waf.novelty.flood_admission": {
     "params": {},
@@ -15132,11 +15132,11 @@
     "sample": {
       "samples": 3
     },
-    "sample_english": "baseline has 3 sample(s), below the minimum required for a defensible verdict",
+    "sample_english": "baseline has 3 sample(s), below the minimum",
     "sample_english_params": {
       "samples": "3"
     },
-    "template": "baseline has {samples} sample(s), below the minimum required for a defensible verdict"
+    "template": "baseline has {samples} sample(s), below the minimum"
   },
   "waf.rate.below_min_volume": {
     "params": {
@@ -15155,12 +15155,12 @@
       "minimum": 20.0,
       "observed": 12.0
     },
-    "sample_english": "12 requests/bucket is below the 20 minimum for a defensible verdict",
+    "sample_english": "12 requests/bucket is below the 20 minimum",
     "sample_english_params": {
       "minimum": "20",
       "observed": "12"
     },
-    "template": "{observed} requests/bucket is below the {minimum} minimum for a defensible verdict"
+    "template": "{observed} requests/bucket is below the {minimum} minimum"
   },
   "waf.rate.bucket_not_whole": {
     "params": {
@@ -15349,7 +15349,7 @@
         "params": {}
       }
     },
-    "sample_english": "at least 520 requests (a lower bound: the count is a lower bound: an increase can be proven, normal behaviour cannot) is above the baseline median 100.0 (5.20x expected, +420 requests/bucket); robust z=6.20 (threshold +3.5)",
+    "sample_english": "at least 520 requests (lower bound: the count is a lower bound: an increase can be proven, normal behaviour cannot) is above the baseline median 100.0 (5.20x expected, +420 requests/bucket); robust z=6.20 (threshold +3.5)",
     "sample_english_params": {
       "basis": "robust z=6.20 (threshold +3.5)",
       "delta": "420",
@@ -15358,7 +15358,7 @@
       "ratio_text": "5.20x expected",
       "scope": "the count is a lower bound: an increase can be proven, normal behaviour cannot"
     },
-    "template": "at least {observed} requests (a lower bound: {scope}) is above the baseline median {expected} ({ratio_text}, +{delta} requests/bucket); {basis}"
+    "template": "at least {observed} requests (lower bound: {scope}) is above the baseline median {expected} ({ratio_text}, +{delta} requests/bucket); {basis}"
   },
   "waf.rate.mad_within_band": {
     "params": {
@@ -15387,9 +15387,9 @@
   "waf.rate.no_baseline": {
     "params": {},
     "sample": {},
-    "sample_english": "no request-rate baseline for this weekday/hour cell yet",
+    "sample_english": "no request-rate baseline for this weekday/hour yet",
     "sample_english_params": {},
-    "template": "no request-rate baseline for this weekday/hour cell yet"
+    "template": "no request-rate baseline for this weekday/hour yet"
   },
   "waf.rate.not_proven_lower_bound": {
     "params": {
@@ -15419,12 +15419,12 @@
         }
       }
     },
-    "sample_english": "at least 120 requests were attributed to this endpoint, but the count is a lower bound and 12 requests/bucket is below the 20 minimum for a defensible verdict; a normal verdict cannot be concluded from a lower bound",
+    "sample_english": "at least 120 requests (lower bound); 12 requests/bucket is below the 20 minimum, so no normal verdict",
     "sample_english_params": {
       "observed": "120",
-      "reason": "12 requests/bucket is below the 20 minimum for a defensible verdict"
+      "reason": "12 requests/bucket is below the 20 minimum"
     },
-    "template": "at least {observed} requests were attributed to this endpoint, but the count is a lower bound and {reason}; a normal verdict cannot be concluded from a lower bound"
+    "template": "at least {observed} requests (lower bound); {reason}, so no normal verdict"
   },
   "waf.rate.ratio_multiple": {
     "params": {
@@ -15490,12 +15490,12 @@
       "score": 2.1,
       "threshold": 3.5
     },
-    "sample_english": "robust z=2.10 has not reached the +3.5 threshold",
+    "sample_english": "robust z=2.10 has not reached +3.5",
     "sample_english_params": {
       "score": "2.10",
       "threshold": "3.5"
     },
-    "template": "robust z={score} has not reached the +{threshold} threshold"
+    "template": "robust z={score} has not reached +{threshold}"
   },
   "waf.ratio.denominator_below_min": {
     "params": {
@@ -15526,13 +15526,13 @@
         "params": {}
       }
     },
-    "sample_english": "30 requests carrying a WAF action is below the 50 minimum denominator for a ratio verdict",
+    "sample_english": "30 requests carrying a WAF action is below the 50 minimum denominator",
     "sample_english_params": {
       "count": "30",
       "minimum": "50",
       "noun": "requests carrying a WAF action"
     },
-    "template": "{count} {noun} is below the {minimum} minimum denominator for a ratio verdict"
+    "template": "{count} {noun} is below the {minimum} minimum denominator"
   },
   "waf.ratio.field_coverage_low": {
     "params": {
@@ -15675,7 +15675,7 @@
       },
       "total": 100
     },
-    "sample_english": "80 of 100 requests carrying a WAF action to this endpoint were blocked requests (80.0 %), against an expected 20.0 % from 5000 historical requests (+60.0 pp, 4.0x); robust z=6.20 (threshold +3.5)",
+    "sample_english": "80 of 100 requests carrying a WAF action to this endpoint were blocked requests (80.0 %); expected 20.0 % from 5000 historical requests (+60.0 pp, 4.0x); robust z=6.20 (threshold +3.5)",
     "sample_english_params": {
       "basis": "robust z=6.20 (threshold +3.5)",
       "count": "80",
@@ -15689,7 +15689,7 @@
       "subject": "this endpoint",
       "total": "100"
     },
-    "template": "{count} of {total} {denominator} to {subject} were {numerator} ({share}), against an expected {expected} from {history} historical requests ({rise}, {multiple}x); {basis}"
+    "template": "{count} of {total} {denominator} to {subject} were {numerator} ({share}); expected {expected} from {history} historical requests ({rise}, {multiple}x); {basis}"
   },
   "waf.ratio.fired_lower": {
     "params": {
@@ -15799,7 +15799,7 @@
       },
       "total": 100
     },
-    "sample_english": "at least 80 of 100 requests carrying a WAF action to this endpoint were blocked requests (at least 80.0 %), against an expected 20.0 % from 5000 historical requests (+60.0 pp, 4.0x); robust z=6.20 (threshold +3.5)",
+    "sample_english": "at least 80 of 100 requests carrying a WAF action to this endpoint were blocked requests (at least 80.0 %); expected 20.0 % from 5000 historical requests (+60.0 pp, 4.0x); robust z=6.20 (threshold +3.5)",
     "sample_english_params": {
       "basis": "robust z=6.20 (threshold +3.5)",
       "count": "80",
@@ -15813,7 +15813,7 @@
       "subject": "this endpoint",
       "total": "100"
     },
-    "template": "at least {count} of {total} {denominator} to {subject} were {numerator} (at least {share}), against an expected {expected} from {history} historical requests ({rise}, {multiple}x); {basis}"
+    "template": "at least {count} of {total} {denominator} to {subject} were {numerator} (at least {share}); expected {expected} from {history} historical requests ({rise}, {multiple}x); {basis}"
   },
   "waf.ratio.fired_lower_no_multiple": {
     "params": {
@@ -15917,7 +15917,7 @@
       },
       "total": 100
     },
-    "sample_english": "at least 80 of 100 requests carrying a WAF action to this endpoint were blocked requests (at least 80.0 %), against an expected 0.0 % from 5000 historical requests (+80.0 pp); robust z=6.20 (threshold +3.5)",
+    "sample_english": "at least 80 of 100 requests carrying a WAF action to this endpoint were blocked requests (at least 80.0 %); expected 0.0 % from 5000 historical requests (+80.0 pp); robust z=6.20 (threshold +3.5)",
     "sample_english_params": {
       "basis": "robust z=6.20 (threshold +3.5)",
       "count": "80",
@@ -15930,7 +15930,7 @@
       "subject": "this endpoint",
       "total": "100"
     },
-    "template": "at least {count} of {total} {denominator} to {subject} were {numerator} (at least {share}), against an expected {expected} from {history} historical requests ({rise}); {basis}"
+    "template": "at least {count} of {total} {denominator} to {subject} were {numerator} (at least {share}); expected {expected} from {history} historical requests ({rise}); {basis}"
   },
   "waf.ratio.fired_no_multiple": {
     "params": {
@@ -16034,7 +16034,7 @@
       },
       "total": 100
     },
-    "sample_english": "80 of 100 requests carrying a WAF action to this endpoint were blocked requests (80.0 %), against an expected 0.0 % from 5000 historical requests (+80.0 pp); robust z=6.20 (threshold +3.5)",
+    "sample_english": "80 of 100 requests carrying a WAF action to this endpoint were blocked requests (80.0 %); expected 0.0 % from 5000 historical requests (+80.0 pp); robust z=6.20 (threshold +3.5)",
     "sample_english_params": {
       "basis": "robust z=6.20 (threshold +3.5)",
       "count": "80",
@@ -16047,7 +16047,7 @@
       "subject": "this endpoint",
       "total": "100"
     },
-    "template": "{count} of {total} {denominator} to {subject} were {numerator} ({share}), against an expected {expected} from {history} historical requests ({rise}); {basis}"
+    "template": "{count} of {total} {denominator} to {subject} were {numerator} ({share}); expected {expected} from {history} historical requests ({rise}); {basis}"
   },
   "waf.ratio.multiple_below_min": {
     "params": {
@@ -16122,13 +16122,13 @@
         "params": {}
       }
     },
-    "sample_english": "4 blocked requests is below the 10 minimum; no material rise in the proportion is possible",
+    "sample_english": "4 blocked requests is below the 10 minimum; no material rise is possible",
     "sample_english_params": {
       "count": "4",
       "minimum": "10",
       "noun": "blocked requests"
     },
-    "template": "{count} {noun} is below the {minimum} minimum; no material rise in the proportion is possible"
+    "template": "{count} {noun} is below the {minimum} minimum; no material rise is possible"
   },
   "waf.ratio.rise_below_min": {
     "params": {

@@ -63,7 +63,9 @@ def test_the_detail_serves_the_explanation_and_detection_codes(db_schema) -> Non
     assert detection["reason_params"] == params
     assert detection["caveat_code"] == "waf.caveat.block_ratio"
     assert detection["caveat_params"] == {}
-    assert detection["caveat"].startswith("Blocking is judged through the profile's action map")
+    assert detection["caveat"] == (
+        "A higher block ratio describes WAF decisions, not a successful attack."
+    )
 
 
 def test_the_lower_bound_wrap_reaches_the_client_nested(db_schema) -> None:
@@ -76,7 +78,7 @@ def test_the_lower_bound_wrap_reaches_the_client_nested(db_schema) -> None:
     assert inner["code"] == "waf.rate.z_not_reached"
     assert inner["params"]["score"] == pytest.approx(2.53, abs=0.01)
     assert inner["params"]["threshold"] == 3.5
-    assert detection["reason"].startswith("at least 250 requests were attributed")
+    assert detection["reason"].startswith("at least 250 requests (lower bound)")
 
 
 def test_the_response_forwards_no_contributor_list_or_raw_value(db_schema) -> None:

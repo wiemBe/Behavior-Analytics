@@ -211,7 +211,7 @@ async def test_one_missing_history_bucket_is_insufficient_and_names_the_gap(db_s
     )
     report = await scenario.judge(1)
     assert report.states[NEW.value] == AnomalyState.INSUFFICIENT_DATA.value
-    assert f"1 of {HISTORY} history buckets were never collected" in scenario.evidence.reason
+    assert f"1 of {HISTORY} history buckets never collected" in scenario.evidence.reason
     assert await db_session.scalar(select(WafAnomaly)) is None
 
 

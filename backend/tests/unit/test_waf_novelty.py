@@ -71,13 +71,13 @@ def test_missing_buckets_are_counted_in_the_reason() -> None:
     buckets = [b for i, b in enumerate(history()) if i not in (2, 7, 9)]
     facts = verify(buckets)
     assert facts.complete is False
-    assert facts.reason == f"3 of {COUNT} history buckets were never collected"
+    assert facts.reason == f"3 of {COUNT} history buckets never collected"
 
 
 def test_an_empty_history_is_all_missing() -> None:
     facts = verify([])
     assert facts.complete is False
-    assert facts.reason == f"{COUNT} of {COUNT} history buckets were never collected"
+    assert facts.reason == f"{COUNT} of {COUNT} history buckets never collected"
 
 
 def test_a_window_not_divisible_by_the_bucket_width_is_refused() -> None:
@@ -102,7 +102,7 @@ def test_a_bucket_of_another_width_is_refused() -> None:
     buckets[4] = replace(buckets[4], bucket_seconds=60)
     facts = verify(buckets)
     assert facts.complete is False
-    assert "different collection bucket width" in (facts.reason or "")
+    assert "different bucket width" in (facts.reason or "")
 
 
 def test_truncated_discovery_in_one_history_bucket_is_refused() -> None:
@@ -141,7 +141,7 @@ def test_a_bucket_without_semantics_is_refused() -> None:
     buckets[3] = replace(buckets[3], metric_semantics=None)
     facts = verify(buckets)
     assert facts.complete is False
-    assert "incompatible with endpoint normalizer version" in (facts.reason or "")
+    assert "incompatible with normalizer version" in (facts.reason or "")
 
 
 def test_a_bucket_under_another_normalizer_is_refused() -> None:

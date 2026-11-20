@@ -2156,7 +2156,7 @@ async def test_the_pipeline_hands_off_the_scope_anchor_as_the_novelty_end(
     established = by_endpoint["/pre-hand-off"]
     fresh = by_endpoint["/after-hand-off"]
     assert established.signal is DetectorSignal.HEALTHY
-    assert "before the history hand-off" in established.evidence.reason
+    assert "before history hand-off" in established.evidence.reason
     assert (T0 - STEP).isoformat() in established.evidence.reason
     assert T0.isoformat() in established.evidence.reason
     assert fresh.signal is DetectorSignal.ANOMALOUS

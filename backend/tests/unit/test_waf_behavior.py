@@ -464,9 +464,9 @@ class TestRatioAnomalous:
             k: run(k, ratio_ctx(k, 40)).evidence.extra["caveat"] for k in RATIO_IDS
         }
         assert len(set(caveats.values())) == 3
-        assert "attack succeeded" in caveats["block"]
+        assert "successful attack" in caveats["block"]
         assert "malicious" in caveats["server"]
-        assert "not by itself a block" in caveats["client"]
+        assert "alone is not a block" in caveats["client"]
 
     def test_increase_only_marks_the_numerator_a_lower_bound(self, kind) -> None:
         v = run(kind, ratio_ctx(kind, 40, scope=INC))
@@ -704,8 +704,8 @@ class TestConcentrationAnomalous:
         assert x["percentage_point_change"] == pytest.approx(50.0)
         assert "intent" in x["caveat"]
         assert "proxy" in x["client_identity"]
-        assert "five largest sent 80.0\u00a0%" in ev.reason
-        assert "no reliable volume baseline" in ev.reason
+        assert "top five sent 80.0\u00a0%" in ev.reason
+        assert "no reliable baseline" in ev.reason
 
     def test_contributors_list_is_the_only_place_ips_appear(self) -> None:
         v = detect_client_concentration_spike(conc_ctx(60, top_clients=self.TOPS))
@@ -724,7 +724,7 @@ class TestConcentrationAnomalous:
         v = detect_client_concentration_spike(
             conc_ctx(60, baselines={WAF_BASELINE_METRIC: cell(median=90.0, mad=5.0)})
         )
-        assert "against an expected 90.0" in v.evidence.reason
+        assert "expected 90.0" in v.evidence.reason
 
     @pytest.mark.parametrize(
         ("top1", "severity"), [(35, Severity.MEDIUM), (45, Severity.MEDIUM), (60, Severity.HIGH)]
@@ -896,7 +896,7 @@ class TestNewEndpointMateriality:
     def test_below_materiality_is_healthy_under_full(self, label, kw) -> None:
         v = detect_new_endpoint_access(new_ctx(novelty(**kw)))
         assert_healthy(v)
-        assert "has not reached 20 requests in 2 buckets" in v.evidence.reason
+        assert "below 20 requests in 2 buckets" in v.evidence.reason
         assert v.evidence.observed_value == float(kw["requests_since_first_seen"])
         assert v.evidence.expected_value == 0.0
 
@@ -957,7 +957,7 @@ class TestNewEndpointAnomalous:
 
     def test_the_claim_is_not_never_requested(self) -> None:
         reason = detect_new_endpoint_access(new_ctx()).evidence.reason
-        assert "never requested 3 or more times in one bucket" in reason
+        assert "never 3 or more in one bucket" in reason
 
     @pytest.mark.parametrize(
         ("scope", "bound"), [(INC, False), (FULL, True), (INC, True)],

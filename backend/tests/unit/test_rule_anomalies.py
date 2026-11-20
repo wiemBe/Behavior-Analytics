@@ -229,7 +229,7 @@ class TestSilenceNotJudged:
         sc = Silence()
         sc.sub = subject(qradar_modified_at=sc.streak_start - timedelta(days=1))
         ev = sc.run()
-        assert skip(ev) == "modified" and "modified at" in ev.reason
+        assert skip(ev) == "modified" and "Modified in QRadar at" in ev.reason
 
     def test_modified_exactly_at_the_span_start_refuses_and_before_it_passes(self) -> None:
         sc = Silence()
