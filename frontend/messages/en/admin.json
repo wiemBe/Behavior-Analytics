@@ -40,6 +40,10 @@
       "name": "SIEM load",
       "description": "Load on QRadar and its health"
     },
+    "features": {
+      "name": "Features",
+      "description": "Which families collect and alert"
+    },
     "qradarAccess": {
       "name": "QRadar access",
       "description": "APIs the token can reach"

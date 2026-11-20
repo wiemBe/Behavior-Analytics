@@ -27,6 +27,7 @@ const SECTIONS: readonly Section[] = [
   { key: "history", href: "/admin/history-backfill", permission: "read:history_backfill" },
   { key: "siemLoad", href: "/admin/siem-load", permission: "admin:*" },
   { key: "qradarAccess", href: "/admin/qradar-access", permission: "admin:*" },
+  { key: "features", href: "/admin/features", permission: "read:features" },
   { key: "alertEmail", href: "/admin/email", permission: "admin:notifications" },
   { key: "notificationRouting", href: "/admin/notifications", permission: "admin:notifications" },
   { key: "users", href: "/admin/users", permission: "admin:users" },

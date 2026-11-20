@@ -1,0 +1,172 @@
+{
+  "meta": {
+    "title": "Features"
+  },
+  "page": {
+    "title": "Features",
+    "loadingWhat": "the feature switches",
+    "errorWhat": "Features",
+    "forbidden": {
+      "heading": "Features cannot be shown to this account.",
+      "body": "Reading them needs the <perm>read:features</perm> permission. Nothing was changed."
+    },
+    "readOnly": "This account can read the switches. Changing one needs <perm>admin:features</perm>.",
+    "noConsole": {
+      "heading": "No QRadar console is enabled.",
+      "body": "Nothing can be collected until one is."
+    },
+    "unreadable": {
+      "heading": "The switches could not be read.",
+      "body": "Collectors treat every family as off until they can. Run ./qradar-dash doctor on the host."
+    },
+    "readFailed": {
+      "heading": "Could not read the features.",
+      "noAnswer": "The backend did not answer.",
+      "answeredWith": "The backend answered with HTTP {status}.",
+      "advice": "Nothing was changed. Check that the backend is reachable, then try again.",
+      "tryAgain": "Try again"
+    },
+    "settings": "Settings conflict"
+  },
+  "table": {
+    "label": "Feature switches",
+    "caption": "One row per family: its state and where the value comes from, its Ariel load and cadence, what it needs from QRadar, its prerequisites and its last run.",
+    "family": "Family and prerequisites",
+    "state": "State and source",
+    "source": "Source",
+    "cadence": "Cadence",
+    "load": "Ariel load and cadence",
+    "needs": "Needs from QRadar",
+    "prerequisites": "Prerequisites",
+    "lastRun": "Last run"
+  },
+  "family": {
+    "waf": {
+      "name": "WAF"
+    },
+    "ips": {
+      "name": "IPS"
+    },
+    "identity": {
+      "name": "Identity"
+    },
+    "rule_match": {
+      "name": "Rule matches"
+    },
+    "property_watch": {
+      "name": "Property watches"
+    },
+    "custom_rules": {
+      "name": "Custom rules"
+    },
+    "catchall": {
+      "name": "Catch-all senders",
+      "purpose": "Unregistered senders"
+    },
+    "geo": {
+      "name": "Geography"
+    },
+    "qradar_health": {
+      "name": "QRadar health"
+    },
+    "explanations": {
+      "name": "Explanations",
+      "purpose": "Anomaly evidence"
+    },
+    "inventory": {
+      "name": "Inventory alerts",
+      "purpose": "New log source alerts"
+    },
+    "volume": {
+      "name": "Log source volume"
+    }
+  },
+  "state": {
+    "group": "{name} state",
+    "off": "Off",
+    "shadow": "Shadow",
+    "alerting": "Alerting",
+    "always": "Always on",
+    "inert": "Alerting stored, inactive",
+    "needs": "Needs {name} on"
+  },
+  "switch": {
+    "waf_outcome_collection_enabled": "Outcomes",
+    "waf_client_collection_enabled": "Clients",
+    "custom_rules_enabled": "Evaluate",
+    "custom_rules_alerting_enabled": "Alert",
+    "catchall_collection_enabled": "Collect",
+    "catchall_new_sender_alerts_enabled": "New senders",
+    "geo_collection_enabled": "Collect",
+    "qradar_health_collection_enabled": "Collect",
+    "explanation_enabled": "Generate",
+    "inventory_new_source_alerts_enabled": "Alert"
+  },
+  "confirm": {
+    "off": "Turn off {name}?",
+    "shadow": "Stop alerting on {name}?",
+    "offButton": "Turn off",
+    "shadowButton": "Stop alerting",
+    "keep": "Keep",
+    "reset": "Reset {name} to .env/default?",
+    "resetButton": "Reset"
+  },
+  "source": {
+    "env": "From .env",
+    "default": "Default",
+    "db": "Set by {user}",
+    "dbAnon": "Set here",
+    "reset": "Reset to .env/default",
+    "resetAria": "Reset {name} to .env/default",
+    "resetShort": "Reset"
+  },
+  "load": {
+    "bound": "up to {count, number}/h",
+    "measured": "{count, number} last hour",
+    "measuredNone": "last hour —",
+    "insufficientTitle": "No cadence row exists for this family.",
+    "none": "No enabled {unit}",
+    "unit": {
+      "enabled_profiles": "{count, plural, one {profile} other {profiles}}",
+      "enabled_watches": "{count, plural, one {watch} other {watches}}",
+      "enabled_rules": "{count, plural, one {rule} other {rules}}",
+      "enabled_consoles": "{count, plural, one {console} other {consoles}}"
+    },
+    "detail": "{count, number} {unit} · {measured}",
+    "notCollected": "No search was recorded in the last hour (not collected).",
+    "notEstimatedTitle": "This family runs no scheduled Ariel search.",
+    "every": "every {duration}"
+  },
+  "needs": {
+    "adminOnly": "Needs admin:*",
+    "nothing": "None",
+    "noConsole": "No console",
+    "reachable": "Reachable",
+    "refused": "Not reachable",
+    "notAnswered": "Not answered",
+    "notChecked": "Not checked yet"
+  },
+  "prerequisites": {
+    "enabled": "{enabled, number} of {total, number} enabled",
+    "validated": "{count, number} validated",
+    "unit": {
+      "profiles": "{count, plural, one {profile} other {profiles}}",
+      "watches": "{count, plural, one {watch} other {watches}}",
+      "rules": "{count, plural, one {rule} other {rules}}"
+    }
+  },
+  "run": {
+    "staleTitle": "The last run is older than two cadences.",
+    "neverTitle": "This family has not run."
+  },
+  "write": {
+    "saved": "Saved.",
+    "savedStale": "Saved. The page could not re-read the switches; reload it.",
+    "forbidden": "Not changed. It needs the admin:features permission.",
+    "refused": "Not changed. The server refused it: {message}",
+    "failed": "Not changed. The server answered HTTP {status}: {message}",
+    "noAnswer": "Not changed. The backend did not answer.",
+    "partial": "Collection was turned on, but alerting was not: {message}",
+    "resetPartial": "The reset stopped part-way: {message}"
+  }
+}

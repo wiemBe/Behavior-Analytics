@@ -191,6 +191,7 @@ function itemLabel(href: string, fallback: string, t: NavTranslator): string {
     case "/admin/history-backfill": return t("historyBackfill");
     case "/admin/siem-load": return t("siemLoad");
     case "/admin/qradar-access": return t("qradarAccess");
+    case "/admin/features": return t("features");
     case "/admin/email": return t("alertEmail");
     case "/admin/notifications": return t("notificationRouting");
     case "/admin/users": return t("users");
