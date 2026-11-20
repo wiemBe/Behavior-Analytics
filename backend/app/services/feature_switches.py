@@ -45,6 +45,8 @@ FAMILY_LABELS: dict[str, str] = {
     "qradar_health_collection_enabled": "QRadar health collection",
     "explanation_enabled": "Anomaly explanations",
     "inventory_new_source_alerts_enabled": "Inventory new source alerts",
+    "jdbc_collection_enabled": "JDBC collection",
+    "qradar_source_pause_enabled": "QRadar source pauses",
 }
 
 #: An alerting or modifier switch, and the collection switch it needs (design

@@ -38,6 +38,9 @@ FEATURE_KEYS: tuple[str, ...] = (
     "qradar_health_collection_enabled",
     "explanation_enabled",
     "inventory_new_source_alerts_enabled",
+    # JDBC-1 S0 (D-95): independent rollout gates for the two new tracks.
+    "jdbc_collection_enabled",
+    "qradar_source_pause_enabled",
 )
 
 _ALLOWED_KEYS = ", ".join(f"'{key}'" for key in FEATURE_KEYS)

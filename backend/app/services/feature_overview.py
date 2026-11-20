@@ -36,6 +36,8 @@ FAMILIES = (
     ("qradar_health", "QRADAR_HEALTH", ("qradar_health_collection_enabled",)),
     ("explanations", "ANOMALY_EXPLANATION", ("explanation_enabled",)),
     ("inventory", None, ("inventory_new_source_alerts_enabled",)),
+    ("jdbc", None, ("jdbc_collection_enabled",)),
+    ("qradar_source_pause", None, ("qradar_source_pause_enabled",)),
     ("volume", "LOG_SOURCE_VOLUME", ()),
 )
 PROFILE_ACCESS = ("ariel_searches", "log_sources", "custom_properties", "property_expressions")
@@ -45,7 +47,8 @@ ACCESS.update(rule_match=("ariel_searches", "analytics_rules"), geo=("ariel_sear
               catchall=("ariel_searches",), volume=("ariel_searches",),
               qradar_health=("ariel_searches", "system_about", "managed_servers",
                              "deployment_hosts", "license_pool", "ariel_search_list"),
-              explanations=("ariel_searches",), custom_rules=(), inventory=())
+              explanations=("ariel_searches",), custom_rules=(), inventory=(),
+              jdbc=(), qradar_source_pause=())
 
 
 async def prerequisites(session: AsyncSession) -> dict[str, dict[str, int]]:

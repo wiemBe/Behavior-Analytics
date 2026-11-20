@@ -77,6 +77,12 @@
       "name": "Inventory alerts",
       "purpose": "New log source alerts"
     },
+    "jdbc": {
+      "name": "JDBC"
+    },
+    "qradar_source_pause": {
+      "name": "QRadar source pauses"
+    },
     "volume": {
       "name": "Log source volume"
     }
@@ -100,7 +106,9 @@
     "geo_collection_enabled": "Collect",
     "qradar_health_collection_enabled": "Collect",
     "explanation_enabled": "Generate",
-    "inventory_new_source_alerts_enabled": "Alert"
+    "inventory_new_source_alerts_enabled": "Alert",
+    "jdbc_collection_enabled": "Collect",
+    "qradar_source_pause_enabled": "Pause"
   },
   "confirm": {
     "off": "Turn off {name}?",

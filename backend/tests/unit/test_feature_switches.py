@@ -13,7 +13,7 @@ from app.services.feature_switches import (
 
 
 def test_feature_keys_are_boolean_settings_fields() -> None:
-    assert len(FEATURE_KEYS) == len(set(FEATURE_KEYS)) == 20
+    assert len(FEATURE_KEYS) == len(set(FEATURE_KEYS)) == 22
     assert set(FEATURE_KEYS) <= set(Settings.model_fields)
     assert all(Settings.model_fields[key].annotation is bool for key in FEATURE_KEYS)
 

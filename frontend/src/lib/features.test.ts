@@ -56,6 +56,18 @@ describe("state changes", () => {
     expect(blockedBy(rows.catchall!, "catchall_collection_enabled")).toBeNull();
   });
 
+  it("lays out the JDBC and source-pause families as one toggle each, with no Ariel estimate", () => {
+    const jdbc = row("jdbc", {
+      switches: { jdbc_collection_enabled: sw(false) },
+      estimate: { upper_bound_searches_per_hour: null, reason: "NOT_COLLECTED", count: 0, count_unit: "enabled_consoles", enabled_consoles: 1 },
+      cadence_seconds: null,
+    });
+    const pause = row("qradar_source_pause", { switches: { qradar_source_pause_enabled: sw(false) } });
+    expect(layoutOf(jdbc)).toEqual({ kind: "toggles", keys: ["jdbc_collection_enabled"] });
+    expect(layoutOf(pause)).toEqual({ kind: "toggles", keys: ["qradar_source_pause_enabled"] });
+    expect(loadOf(jdbc)).toEqual({ kind: "notEstimated" });
+  });
+
   it("gives an unknown family its own switches as toggles", () => {
     const unknown = row("newer", { switches: { x_enabled: sw(true) } });
     expect(layoutOf(unknown)).toEqual({ kind: "toggles", keys: ["x_enabled"] });
