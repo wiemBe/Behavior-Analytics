@@ -153,7 +153,7 @@ Put both generated values in `.env` and leave `QRADAR_PROVIDER=mock`, then run:
 docker compose up -d postgres redis
 docker compose run --rm migrate
 docker compose run --rm backend python -m app.services.seed
-docker compose up -d backend frontend celery-worker celery-beat
+docker compose up -d backend frontend celery-worker celery-walker celery-beat
 ```
 
 Open <http://localhost:3000>. See [Installation](docs/INSTALL.md) for the full local stack and

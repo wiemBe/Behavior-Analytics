@@ -158,10 +158,15 @@ def test_override_references_the_network_create_vmnet_creates() -> None:
     assert "driver" not in network
     assert "driver_opts" not in network
     assert "ipam" not in network
-    # backend and celery-worker open QRadar connections. qradar-mcp is the
-    # optional console client. celery-beat only publishes to the broker and
+    # backend, celery-worker and celery-walker open QRadar connections. qradar-mcp
+    # is the optional console client. celery-beat only publishes to the broker and
     # migrate only opens Postgres, so neither is attached.
-    assert set(document["services"]) == {"backend", "celery-worker", "qradar-mcp"}
+    assert set(document["services"]) == {
+        "backend",
+        "celery-worker",
+        "celery-walker",
+        "qradar-mcp",
+    }
     for service in document["services"].values():
         assert service["networks"] == ["qradar_vm"]
 
@@ -298,6 +303,7 @@ def test_docker_compose_config_keeps_migrate_and_the_external_network(tmp_path: 
     expected = {
         "backend": {"internal", "edge", "qradar_vm"},
         "celery-worker": {"internal", "qradar_vm"},
+        "celery-walker": {"internal", "qradar_vm"},
         "qradar-mcp": {"internal", "qradar_vm"},
     }
     for name, required in expected.items():
