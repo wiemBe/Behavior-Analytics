@@ -56,6 +56,40 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
+describe("the JDBC and source-pause families", () => {
+  const noBound = {
+    upper_bound_searches_per_hour: null,
+    reason: "NOT_COLLECTED",
+    count: 0,
+    count_unit: "enabled_consoles",
+    enabled_consoles: 1,
+  };
+
+  it("shows both by name, linked to the log-source page, with their one switch each", async () => {
+    const base = overview();
+    await open({
+      ...base,
+      families: [
+        ...base.families,
+        row("jdbc", { switches: { jdbc_collection_enabled: sw(false) }, estimate: noBound, cadence_seconds: null, last_run: null, last_run_reason: "NOT_COLLECTED" }),
+        row("qradar_source_pause", { switches: { qradar_source_pause_enabled: sw(false) }, estimate: noBound, cadence_seconds: null, last_run: null, last_run_reason: "NOT_COLLECTED" }),
+      ],
+    });
+    expect(screen.getByRole("link", { name: "JDBC" })).toHaveAttribute("href", "/log-sources");
+    expect(screen.getByRole("link", { name: "QRadar source pauses" })).toHaveAttribute("href", "/log-sources");
+    expect(within(rowOf("JDBC")).getByText("Collect")).toBeInTheDocument();
+    expect(within(rowOf("QRadar source pauses")).getByText("Pause")).toBeInTheDocument();
+    expect(within(rowOf("JDBC")).getByTitle("This family runs no scheduled Ariel search.")).toBeInTheDocument();
+  });
+
+  it("still prints the raw key, unlinked, for a family this build does not know", async () => {
+    const base = overview();
+    await open({ ...base, families: [...base.families, row("newer", { switches: { newer_enabled: sw(false) } })] });
+    expect(screen.getByText("newer")).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "newer" })).toBeNull();
+  });
+});
+
 describe("the table", () => {
   it("has one row per family, a caption and column headers, and links each family to its data", async () => {
     await open();

@@ -644,6 +644,16 @@ class Settings(BaseSettings):
     # New, non-internal inventory rows open a deduplicated review alert.
     inventory_new_source_alerts_enabled: bool = True
 
+    # --- JDBC-1 S0 activation switches (D-93, D-94, D-95) ------------------
+    # Both ship off. They are rollout gates, not analyst settings: a DB row in
+    # feature_switch, not this default, is what activates either track.
+    #: Run the JDBC metadata collector and its queued refresh. The GET view is
+    #: unaffected and still reads stored configurations while this is off.
+    jdbc_collection_enabled: bool = False
+    #: D-52: QRadar-disabled source pauses, closure, guard predicates and the
+    #: changed active-count filters. Off preserves today's behavior exactly.
+    qradar_source_pause_enabled: bool = False
+
     # --- QRadar access check (ACC-1) ----------------------------------------
     # How often every console is asked, API by API, whether the token can reach it. Also run at
     # beat start and on demand.

@@ -37,6 +37,8 @@ export const LAYOUT: Readonly<Record<string, Layout>> = {
   qradar_health: { kind: "toggles", keys: ["qradar_health_collection_enabled"] },
   explanations: { kind: "toggles", keys: ["explanation_enabled"] },
   inventory: { kind: "toggles", keys: ["inventory_new_source_alerts_enabled"] },
+  jdbc: { kind: "toggles", keys: ["jdbc_collection_enabled"] },
+  qradar_source_pause: { kind: "toggles", keys: ["qradar_source_pause_enabled"] },
   volume: { kind: "toggles", keys: [] },
 };
 
@@ -53,11 +55,19 @@ export const DATA_PAGE: Readonly<Record<string, string>> = {
   qradar_health: "/admin/siem-load",
   explanations: "/anomalies",
   inventory: "/log-sources",
+  jdbc: "/log-sources",
+  qradar_source_pause: "/log-sources",
   volume: "/behavior/sources",
 };
 
 /** Families whose load is not an Ariel cadence: the API reports them NOT_COLLECTED by design. */
-const NO_ESTIMATE = new Set(["custom_rules", "explanations", "inventory"]);
+const NO_ESTIMATE = new Set([
+  "custom_rules",
+  "explanations",
+  "inventory",
+  "jdbc",
+  "qradar_source_pause",
+]);
 
 /** A family the API returns that this build does not know gets its own switches as toggles. */
 export function layoutOf(row: FeatureRow): Layout {
