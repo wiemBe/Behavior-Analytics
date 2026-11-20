@@ -191,3 +191,15 @@ async def load_current_with_health(
     current = await log.load_current(session, now=as_of)
     current["qradar"] = await load_qradar(session, as_of=as_of)
     return current
+
+
+async def read_ariel_runs_by_family(session: AsyncSession, *, as_of: datetime) -> dict[str, int]:
+    """Searches actually submitted in the last hour, grouped by their stored caller."""
+    rows = await session.execute(
+        select(ArielSearchRun.caller, func.count()).where(
+            ArielSearchRun.submitted_at >= as_of - timedelta(hours=1),
+            ArielSearchRun.submitted_at <= as_of,
+            ArielSearchRun.outcome != log.OUTCOME_REFUSED,
+        ).group_by(ArielSearchRun.caller)
+    )
+    return dict(rows.all())
