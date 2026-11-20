@@ -1,9 +1,10 @@
 """Plan configuration merges using only local data; the caller owns the transaction."""
 
+import math
 import uuid
 from collections import Counter
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -16,6 +17,7 @@ from app.alerts.notifiers.url_guard import URLGuardError, guard_url
 from app.config_transfer.document import TIMESTAMP_FORMAT
 from app.config_transfer.refs import ResolutionCatalog
 from app.config_transfer.report import ImportReport
+from app.core.config import get_settings
 from app.identity.reference import IdentityFieldMapping, IdentityReferenceError
 from app.ips.profile import IpsFieldMapping, IpsFieldReference, IpsProfileError
 from app.models.alert_policy import AlertPolicy
@@ -27,6 +29,7 @@ from app.models.email import (
     EmailTemplate,
 )
 from app.models.enums import (
+    AlertPolicyScope,
     AnomalyFamily,
     AnomalyType,
     ClassificationRuleKind,
@@ -34,8 +37,11 @@ from app.models.enums import (
     IdentityProfileValidationStatus,
     IpsAnomalyType,
     IpsProfileValidationStatus,
+    MappingSource,
     OutagePolicyScope,
     PwAnomalyType,
+    PwHistoryState,
+    PwScopeKind,
     RuleAnomalyType,
     SearchFamily,
     SourceClass,
@@ -43,7 +49,12 @@ from app.models.enums import (
     WafProfileValidationStatus,
     default_search_cadence,
 )
-from app.models.fleet import ClassificationRule, LogSourceClassification, LogSourceGroup
+from app.models.fleet import (
+    ClassificationRule,
+    LogSourceClassification,
+    LogSourceGroup,
+    LogSourceType,
+)
 from app.models.identity import LdapConfig
 from app.models.identity_detection import IdentitySourceProfile
 from app.models.instance import QRadarInstance
@@ -53,10 +64,12 @@ from app.models.notification_destination import NotificationDestination
 from app.models.notification_rule import NotificationRule
 from app.models.outage import OutageAlertPolicy
 from app.models.property_watch import PropertyWatch
-from app.models.rule import AnalyticsRule
+from app.models.rule import AnalyticsRule, TechniqueMapping
+from app.models.search import ScheduledSearch, SearchQueryVersion
 from app.models.search_cadence import SearchCadenceSetting
 from app.models.waf import WafSourceProfile
 from app.schemas.alert_policy import AlertPolicyUpsert
+from app.schemas.coverage import TechniqueMappingIn
 from app.schemas.email import RecipientIn
 from app.schemas.fleet import ClassificationRuleCreate, check_pattern
 from app.schemas.ips import IpsProfileIn
@@ -64,12 +77,18 @@ from app.schemas.log_source import LogSourceUpdate
 from app.schemas.notification_destination import DestinationCreate
 from app.schemas.notification_rule import RuleCreate
 from app.schemas.outage import OutagePolicyUpsert
+from app.schemas.property_watch import PropertyWatchCreate
+from app.schemas.rule import RuleUpdate
+from app.schemas.search import ScheduledSearchCreate
 from app.schemas.search_cadence import SearchCadenceUpdate
 from app.schemas.suppression import SuppressionCreate
 from app.schemas.waf import WafProfileIn
+from app.services.aql_validator import AQLValidationError, validate_aql
 from app.services.email_delivery import valid_mailbox
 from app.services.email_templates import sanitize_email_html, unknown_placeholders
 from app.services.ldap_config import validate_directory_coded
+from app.services.property_watches import WatchDraft, validate_draft
+from app.services.search_scheduler import check_cron_floor
 from app.waf.profile import WafFieldMapping, WafProfileError
 
 SOC_DEFAULTS: dict[str, Any] = {
@@ -105,6 +124,11 @@ DETECTORS: dict[AnomalyFamily, frozenset[str]] = {
     AnomalyFamily.RULE: frozenset(item.value for item in RuleAnomalyType),
     AnomalyFamily.IDENTITY: frozenset(item.value for item in IdentityAnomalyType),
 }
+#: The rule SOC block `RuleUpdate` owns, with the defaults a synced rule starts from.
+RULE_DEFAULTS: dict[str, Any] = {
+    "owner": None, "mitre_techniques": [], "soc_notes": None, "expected_daily_firings": None,
+    "health_monitoring_enabled": True,
+}
 #: The seven comparable LDAP fields: `version` is import state and never travels.
 LDAP_FIELDS = frozenset({"enabled", "urls", "start_tls", "ca_pem", "bind_template",
                          "timeout_seconds", "user_search_base"})
@@ -135,8 +159,16 @@ def _key(section: str, row: dict[str, Any]) -> str:
     elif section == "alert_suppressions":
         subject = row.get("log_source") or row.get("watch") or row.get("rule") or {}
         values = [row.get("family"), _ref_name(subject), row.get("detector_type")]
-    elif section in ("notification_destinations", "notification_rules"):
+    elif section in ("notification_destinations", "notification_rules", "property_watches",
+                     "scheduled_searches"):
         values = [row.get("name")]
+    elif section in ("analytics_rule_settings", "technique_mappings"):
+        found = row.get("rule")
+        rule_ref: dict[str, Any] = found if isinstance(found, dict) else {}
+        flag = rule_ref.get("is_building_block")
+        values = [row.get("technique_id")] if section == "technique_mappings" else []
+        values += [rule_ref.get("name"), rule_ref.get("rule_type"),
+                   str(flag).lower() if isinstance(flag, bool) else None]
     elif section == "email_recipients":
         values = [row.get("address")]
     elif section == "email_templates":
@@ -384,6 +416,18 @@ def _stamp(value: Any) -> datetime:
 def _alert_policies(ctx: _Ctx, row: dict[str, Any], local_id: str | None) -> Result:
     _shape(row, {"scope", "scope_kind", "family", "log_source", "source_class", "watch",
                  "detector_type", "mode"})
+    if row["scope_kind"] not in tuple(item.value for item in AlertPolicyScope):
+        raise RowError("alert policy scope_kind is not CLASS or SOURCE")
+    # The route's rule (alert_policy.py `_checked`): a watch-family row is SOURCE with a watch,
+    # any other SOURCE row names a log source, and a CLASS row names a class. One reference only.
+    refs = (row["watch"] is not None, row["log_source"] is not None,
+            row["source_class"] is not None)
+    watch_family = row["family"] == AnomalyFamily.PROPERTY_WATCH.value
+    expected = ((True, False, False) if watch_family else (False, True, False)
+                ) if row["scope_kind"] == AlertPolicyScope.SOURCE.value else (
+                    None if watch_family else (False, False, True))
+    if refs != expected:
+        raise RowError("alert policy scope does not match scope_kind and family")
     if row["watch"] is not None:
         scope_value = _only(ctx.catalog.match_watch(row["watch"]))
     elif row["log_source"] is not None:
@@ -623,6 +667,163 @@ def _ldap_config(ctx: _Ctx, row: dict[str, Any], local_id: str | None) -> Result
     return "conflict", None
 
 
+def _rule_target(ctx: _Ctx, ref: Any) -> AnalyticsRule:
+    """The one local rule a file ref names; a missing or ambiguous rule is never created."""
+    return ctx.existing["analytics_rules"][str(_only(ctx.catalog.match_analytics_rule(ref)))]
+
+
+def _finite(value: Any, label: str) -> None:
+    """A number the column compares equal to itself: JSON `NaN` and `Infinity` never do."""
+    if value is not None and (type(value) is bool or not isinstance(value, int | float)
+                              or not math.isfinite(value)):
+        raise RowError(f"{label} is not a finite number")
+
+
+def _analytics_rule_settings(ctx: _Ctx, row: dict[str, Any], local_id: str | None) -> Result:
+    _shape(row, {"rule", *RULE_DEFAULTS})
+    rule = _rule_target(ctx, row["rule"])
+    if type(row["health_monitoring_enabled"]) is not bool or row["mitre_techniques"] is None:
+        raise RowError("non-null rule SOC field is null or not the right type")
+    _finite(row["expected_daily_firings"], "expected_daily_firings")
+    if isinstance(row["owner"], str) and len(row["owner"]) > 255:
+        raise RowError("rule owner is longer than 255 characters")
+    values = RuleUpdate.model_validate({key: row[key] for key in RULE_DEFAULTS}).model_dump(
+        exclude_unset=True)
+    return _merge(rule, values, all(
+        getattr(rule, key) == value for key, value in RULE_DEFAULTS.items())), None
+
+
+def _technique_mappings(ctx: _Ctx, row: dict[str, Any], local_id: str | None) -> Result:
+    _shape(row, {"technique_id", "technique_name", "tactic", "rule", "source", "confidence",
+                 "provenance"})
+    rule = _rule_target(ctx, row["rule"])
+    if row["source"] != MappingSource.EXPLICIT.value:
+        raise RowError("technique mapping source is not EXPLICIT")
+    if type(row["confidence"]) is bool:
+        raise RowError("technique confidence is not a number")
+    payload = TechniqueMappingIn.model_validate({
+        **{key: row[key] for key in ("technique_id", "technique_name", "tactic", "source",
+                                     "confidence", "provenance")}, "rule_id": rule.id})
+    values = {"technique_name": payload.technique_name, "tactic": payload.tactic,
+              "source": payload.source.value, "confidence": payload.confidence,
+              "provenance": payload.provenance}
+    key = (str(rule.id), payload.technique_id)
+    existing = ctx.existing["technique_mappings"].get(key)
+    if existing is None:
+        mapping = TechniqueMapping(instance_id=ctx.instance.id, technique_id=payload.technique_id,
+                                   rule_id=rule.id, **values)
+        ctx.session.add(mapping)
+        ctx.existing["technique_mappings"][key] = mapping
+        return "created", None
+    # An INFERRED row under the same key is the platform's own: it differs, so it conflicts.
+    stored = {name: getattr(existing, name) for name in values}
+    return ("unchanged" if stored == values else "conflict"), None
+
+
+def _watch_scope(ctx: _Ctx, row: dict[str, Any]) -> dict[str, Any]:
+    """The one scope column the kind names, resolved on this console; the other two stay NULL."""
+    refs = {PwScopeKind.LOG_SOURCE.value: row["log_source"],
+            PwScopeKind.LOG_SOURCE_TYPE.value: row["scope_type"],
+            PwScopeKind.LOG_SOURCE_GROUP.value: row["scope_group"]}
+    kind = row["scope_kind"]
+    if not isinstance(kind, str) or kind not in refs:
+        raise RowError("watch scope_kind is not a known scope")
+    if any((ref is not None) != (name == kind) for name, ref in refs.items()):
+        raise RowError("watch scope does not match scope_kind")
+    columns: dict[str, Any] = {"log_source_id": None, "scope_type_id": None,
+                               "scope_group_id": None}
+    if kind == PwScopeKind.LOG_SOURCE.value:
+        columns["log_source_id"] = uuid.UUID(str(_only(ctx.catalog.match_log_source(refs[kind]))))
+    elif kind == PwScopeKind.LOG_SOURCE_TYPE.value:
+        columns["scope_type_id"] = _only(ctx.catalog.match_log_source_type(refs[kind]))
+    else:
+        columns["scope_group_id"] = _only(ctx.catalog.match_log_source_group(refs[kind]))
+    return columns
+
+
+def _property_watches(ctx: _Ctx, row: dict[str, Any], local_id: str | None) -> Result:
+    _shape(row, {"name", "description", "enabled_on_source", "scope_kind", "log_source",
+                 "scope_type", "scope_group", "properties", "pinned_values", "detectors",
+                 "severity"})
+    if type(row["enabled_on_source"]) is not bool:
+        raise RowError("enabled_on_source must be a boolean")
+    if not isinstance(row["detectors"], list):
+        raise RowError("watch detectors must be a list")
+    scope = _watch_scope(ctx, row)
+    payload = PropertyWatchCreate.model_validate({
+        key: row[key] for key in ("name", "description", "scope_kind", "properties",
+                                  "pinned_values", "detectors", "severity")})
+    properties = [{"kind": ref.kind.value, "name": ref.name} for ref in payload.properties]
+    detectors = list(dict.fromkeys(item.value for item in payload.detectors or ()))
+    reasons = validate_draft(WatchDraft(
+        scope_kind=payload.scope_kind, **scope, properties=properties,
+        pinned_values=payload.pinned_values, detectors=detectors),
+        max_pinned=get_settings().pw_max_pinned_values)
+    if reasons:  # a reason can name a property, so only the fixed sentence is reported
+        raise RowError("watch failed the draft validation")
+    values = {"description": payload.description, "scope_kind": payload.scope_kind.value,
+              **scope, "properties": properties,
+              "pinned_values": [list(entry) for entry in payload.pinned_values],
+              "detectors": detectors, "severity": payload.severity.value}
+    existing = ctx.existing["property_watches"].get(payload.name)
+    if existing is None:
+        watch = PropertyWatch(
+            id=uuid.uuid4(), instance_id=ctx.instance.id, name=payload.name, **values,
+            watch_version=1, enabled=False, history_days=None,
+            history_state=PwHistoryState.NOT_REQUESTED, created_by=ctx.actor[:255],
+            updated_by=ctx.actor[:255])
+        ctx.session.add(watch)
+        ctx.existing["property_watches"][payload.name] = watch
+        # A policy or suppression later in this file may name the watch just created.
+        ctx.catalog = replace(ctx.catalog, watches=(*ctx.catalog.watches,
+                                                    (str(watch.id), payload.name)))
+        return "created", None
+    if existing.instance_id != ctx.instance.id:
+        return "conflict", "a watch with this name belongs to another console"
+    # `enabled`, `history_days` and every cursor are the operator's and never compared.
+    stored = {key: getattr(existing, key) for key in values}
+    return ("unchanged" if stored == values else "conflict"), None
+
+
+SEARCH_COLUMNS = ("description", "owner", "category", "mitre_techniques", "aql_query",
+                  "schedule_cron", "schedule_timezone", "threshold_value", "threshold_operator",
+                  "severity", "timeout_seconds", "max_time_range_hours", "max_result_rows",
+                  "visualization_type")
+
+
+def _scheduled_searches(ctx: _Ctx, row: dict[str, Any], local_id: str | None) -> Result:
+    _shape(row, {"name", *SEARCH_COLUMNS, "enabled_on_source"})
+    if type(row["enabled_on_source"]) is not bool:
+        raise RowError("enabled_on_source must be a boolean")
+    for key in ("aql_query", "schedule_cron", "schedule_timezone"):
+        if not isinstance(row[key], str):
+            raise RowError(f"{key} must be text")
+    # The floor first, as `ScheduledSearchService.create` does; its reason names the cron.
+    if not check_cron_floor(row["schedule_cron"], row["schedule_timezone"]).accepted:
+        raise RowError("search schedule fails the cron floor")
+    try:
+        validate_aql(row["aql_query"])  # never executed; the AQL string stays out of the report
+    except AQLValidationError as exc:
+        raise RowError("search AQL failed validation") from exc
+    _finite(row["threshold_value"], "threshold_value")
+    payload = ScheduledSearchCreate.model_validate(
+        {key: row[key] for key in ("name", *SEARCH_COLUMNS)} | {"enabled": False})
+    dumped = payload.model_dump(mode="json")
+    values = {key: dumped[key] for key in SEARCH_COLUMNS}
+    existing = ctx.existing["scheduled_searches"].get(payload.name)
+    if existing is None:
+        search = ScheduledSearch(id=uuid.uuid4(), name=payload.name, **values, query_version=1,
+                                 enabled=False)
+        ctx.session.add(search)
+        ctx.session.add(SearchQueryVersion(
+            search_id=search.id, version=1, aql_query=search.aql_query,
+            changed_by=ctx.actor[:255], change_note="initial version"))
+        ctx.existing["scheduled_searches"][payload.name] = search
+        return "created", None
+    stored = {key: getattr(existing, key) for key in values}  # `enabled` is the operator's
+    return ("unchanged" if stored == values else "conflict"), None
+
+
 APPLIERS: dict[str, Applier] = {
     "log_source_settings": _log_source_settings,
     "classification_overrides": _classification_overrides,
@@ -639,6 +840,10 @@ APPLIERS: dict[str, Applier] = {
     "email_templates": _email_templates,
     "email_recipients": _email_recipients,
     "ldap_config": _ldap_config,
+    "analytics_rule_settings": _analytics_rule_settings,
+    "technique_mappings": _technique_mappings,
+    "property_watches": _property_watches,
+    "scheduled_searches": _scheduled_searches,
 }
 
 
@@ -670,8 +875,11 @@ async def plan(session: AsyncSession, document: dict[str, Any], instance: QRadar
         profiles[name] = {}
         for profile in await session.scalars(select(model).where(model.instance_id == instance.id)):
             profiles[name][str(profile.log_source_id)] = profile
-    watches = list(await session.scalars(select(PropertyWatch).where(
-        PropertyWatch.instance_id == instance.id)))
+    # A watch name is unique across consoles, so every watch is read to find a name's owner.
+    all_watches = list(await session.scalars(select(PropertyWatch)))
+    watches = [row for row in all_watches if row.instance_id == instance.id]
+    types = list(await session.scalars(select(LogSourceType).where(
+        LogSourceType.instance_id == instance.id)))
     groups = list(await session.scalars(select(LogSourceGroup).where(
         LogSourceGroup.instance_id == instance.id)))
     analytics_rules = list(await session.scalars(select(AnalyticsRule).where(
@@ -684,6 +892,7 @@ async def plan(session: AsyncSession, document: dict[str, Any], instance: QRadar
                   NotificationDestination.url))))
     catalog = ResolutionCatalog(log_sources=tuple(
         (str(row.id), row.name, row.type_name) for row in sources),
+        log_source_types=tuple((row.type_id, row.name) for row in types),
         log_source_groups=tuple((row.qradar_id, row.name, row.parent_qradar_id) for row in groups),
         analytics_rules=tuple((str(row.id), row.name, row.rule_type, row.is_building_block)
                               for row in analytics_rules),
@@ -711,6 +920,12 @@ async def plan(session: AsyncSession, document: dict[str, Any], instance: QRadar
         "notification_rules": await load(NotificationRule, lambda r: r.name),
         "email_templates": await load(EmailTemplate, lambda r: r.alert_type),
         "email_recipients": await load(EmailRecipient, lambda r: r.address),
+        "analytics_rules": {str(row.id): row for row in analytics_rules},
+        "technique_mappings": await load(
+            TechniqueMapping, lambda r: (str(r.rule_id), r.technique_id),
+            TechniqueMapping.instance_id == instance.id),
+        "property_watches": {row.name: row for row in all_watches},
+        "scheduled_searches": await load(ScheduledSearch, lambda r: r.name),
     }
     ctx = _Ctx(
         session, instance, actor, datetime.now(UTC), {str(row.id): row for row in sources},
