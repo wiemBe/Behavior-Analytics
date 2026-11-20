@@ -669,7 +669,7 @@ with it. Two commands move that operator configuration as one secret-free JSON f
 
 ```text
 ./qradar-dash config-export [--label LABEL] [--instance NAME] [--output FILE]
-./qradar-dash config-import FILE (--dry-run | --apply) [--non-interactive --yes]
+./qradar-dash config-import FILE (--dry-run | --apply) [--instance NAME] [--non-interactive --yes]
 ```
 
 Export writes the file on the host; import merges it into this site's database against the
@@ -715,9 +715,8 @@ Run the steps in this order:
    ```
 
    A dry run rolls back the plan and commits only its audit row (`"committed": false`), printing
-   the JSON report on stdout. The wrapper `config-import` has no `--instance` flag
-   (`qradar-dash:5071-5073`); with two or more consoles registered, use the in-container
-   `python -m app.cli.config import` form below with `--instance <console name>`. Both commands
+   the JSON report on stdout. With two or more consoles registered, pass
+   `--instance <console name>` to either command. Both commands
    target the sole registered console or `--instance NAME` and exit `2` if none or several are
    registered without it (`backend/app/cli/config.py:42-64`).
 
