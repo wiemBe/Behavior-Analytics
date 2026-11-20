@@ -1753,6 +1753,41 @@ REGISTRY: tuple[MessageSpec, ...] = (
             ),
         },
     ),
+    _text(
+        "validation.waf.breakdown.outcome_feature_off",
+        "{family} is off. An administrator can turn it on under Administration → Features.",
+        family="outcome collection",
+    ),
+    _text(
+        "validation.waf.breakdown.client_feature_off",
+        "{family} is off. An administrator can turn it on under Administration → Features.",
+        family="client collection",
+    ),
+    _text(
+        "validation.waf.ineligible.feature_off",
+        "{family} is off. An administrator can turn it on under Administration → Features.",
+        family="WAF collection",
+    ),
+    _text(
+        "custom_rule.status.feature_off",
+        "{family} is off. An administrator can turn it on under Administration → Features.",
+        family="Custom rule evaluation",
+    ),
+    _text(
+        "custom_rule.family.feature_off",
+        "{family} is off. An administrator can turn it on under Administration → Features.",
+        family="WAF collection",
+    ),
+    _text(
+        "history.family.feature_on",
+        "{family} is on.",
+        family="WAF collection",
+    ),
+    _text(
+        "history.family.feature_off",
+        "{family} is off. An administrator can turn it on under Administration → Features.",
+        family="IPS collection",
+    ),
     MessageSpec(
         code="validation.waf.ineligible.collection_disabled",
         template="WAF collection is disabled (WAF_COLLECTION_ENABLED=false)",
@@ -5256,6 +5291,12 @@ REGISTRY: tuple[MessageSpec, ...] = (
         {"sources": 4, "days": 28, "hours": 61.2},
     ),
     # Why an estimate is missing (the service's `no estimate: ...` shapes).
+    _msg(
+        "history.estimate.feature_off",
+        "no estimate: collection is switched off ({reason})",
+        {"reason": ParamSpec(ParamKind.REF, ref_codes=("history.family.feature_off",))},
+        {"reason": MessageRef("history.family.feature_off", {"family": "IPS collection"})},
+    ),
     _msg(
         "history.estimate.no_collection",
         "no estimate: collection is switched off ({reason})",

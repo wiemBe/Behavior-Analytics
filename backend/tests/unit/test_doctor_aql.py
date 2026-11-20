@@ -661,8 +661,8 @@ async def test_a_family_that_is_off_is_skipped_and_sends_nothing(tmp_path) -> No
     lines = await _full(settings, provider)
     off = set(doctor_aql.FAMILIES) - {"log_source_volume", "history"}
     for family in off:
-        assert lines[family].verdict == doctor_aql.SKIP, family
-        assert "is off" in lines[family].message
+        assert lines[family].verdict == doctor_aql.INFO, family
+        assert "off:" in lines[family].message
     assert lines["log_source_volume"].verdict == doctor_aql.PASS
     assert lines["history"].verdict == doctor_aql.PASS
     assert [name for name, _ in provider.calls] == [

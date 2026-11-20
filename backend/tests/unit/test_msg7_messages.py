@@ -88,7 +88,7 @@ def test_stale_reason_preserves_minute_and_unbounded_hour_english() -> None:
 @pytest.mark.parametrize(
     ("overrides", "code"),
     [
-        ({"platform_enabled": False}, "custom_rule.status.platform_off"),
+        ({"platform_enabled": False}, "custom_rule.status.feature_off"),
         ({"enabled": False}, "custom_rule.status.disabled"),
         ({"retired": True}, "custom_rule.status.subject_retired"),
         ({"family_collected": False}, "custom_rule.status.family_not_collected"),

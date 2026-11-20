@@ -59,6 +59,7 @@ from app.rules.matches import SKIPPED_REASON
 from app.schemas.qradar_health import HaPairState, ServerEntry
 from app.security.redaction import redact
 from app.services import ariel_search_log as ariel_log
+from app.services import feature_switches
 from app.services.ariel_permit import ArielPermitBudget
 from app.services.qradar_health import HealthReadCache, read_qradar_health
 from app.services.qradar_health_detail import read_latest
@@ -82,6 +83,7 @@ QRADAR_EPS_WARN_SHARE = 0.9
 _CHECK_RUNBOOKS = (
     ("db_connect", "OPS-R36"),
     ("migration_head", "OPS-R11"),
+    ("feature_switch_read", "OPS-R7"),
     ("timescale", "OPS-R14"),
     ("retention_policy", "OPS-R14"),
     ("batch_retention", "OPS-R14"),
@@ -126,6 +128,7 @@ _SECRET_ASSIGNMENT_RE = re.compile(
 
 class Status(StrEnum):
     PASS = "PASS"  # noqa: S105 - diagnostic status, not a credential
+    INFO = "INFO"
     SKIP = "SKIP"
     WARN = "WARN"
     FAIL = "FAIL"
@@ -555,10 +558,17 @@ class Doctor:
         environ: Mapping[str, str] | None = None,
         check_smtp: bool = False,
         check_aql: bool = False,
+        resolved_features: feature_switches.ResolvedFeatures | None = None,
     ) -> None:
         self.check_smtp = check_smtp
         self.check_aql = check_aql
-        self.settings = settings or get_settings()
+        self.base_settings = settings or get_settings()
+        self._injected_features = resolved_features
+        self.resolved_features = resolved_features
+        self.settings = (
+            feature_switches.effective_settings(self.base_settings, resolved_features)
+            if resolved_features is not None else self.base_settings
+        )
         self.sessionmaker = sessionmaker or get_sessionmaker()
         self.now = now or (lambda: datetime.now(UTC))
         self.migration_head = migration_head
@@ -612,6 +622,34 @@ class Doctor:
                 f"could not compare migration heads ({type(exc).__name__})",
                 "OPS-R11",
             )
+
+    async def check_feature_switch_read(self) -> CheckResult:
+        """Prepare the one effective snapshot every check in this run reads."""
+        if self.resolved_features is None:
+            try:
+                async with asyncio.timeout(CHECK_TIMEOUT_SECONDS):
+                    async with self.sessionmaker() as session:
+                        self.resolved_features = await feature_switches.resolve(
+                            session, self.base_settings
+                        )
+            except Exception:
+                self.resolved_features = feature_switches.unreadable_features()
+        self.settings = feature_switches.effective_settings(
+            self.base_settings, self.resolved_features
+        )
+        if self.resolved_features.reason:
+            return CheckResult(
+                "feature_switch_read", Status.FAIL, self.resolved_features.reason, "OPS-R7"
+            )
+        return CheckResult("feature_switch_read", Status.PASS, "family switches read")
+
+    def _feature_off(self, check_id: str, key: str) -> CheckResult:
+        if self.resolved_features is not None and self.resolved_features.reason:
+            return CheckResult(
+                check_id, Status.FAIL,
+                f"off: {feature_switches.FAMILY_LABELS[key]}; {self.resolved_features.reason}",
+            )
+        return CheckResult(check_id, Status.INFO, doctor_aql.feature_off_message(key))
 
     async def check_timescale(self) -> CheckResult:
         try:
@@ -1057,7 +1095,16 @@ class Doctor:
         on_text = " ".join(["LOG_SOURCE_VOLUME", *on])
         off_text = " ".join(off) if off else "none"
         return CheckResult(
-            "families_off", Status.PASS, f"{summary}; on: {on_text}; off: {off_text}"
+            "families_off", Status.PASS,
+            f"{summary}; on: {on_text}; off: {off_text}; source: " + " ".join(
+                f"{name}=" + (
+                    "table" if self.resolved_features is not None
+                    and self.resolved_features.values[name.lower()].source == "db"
+                    else "unreadable" if self.resolved_features is not None
+                    and self.resolved_features.reason else "env"
+                )
+                for name in flags
+            ),
         )
 
     async def check_errors_recent(self) -> CheckResult:
@@ -1467,11 +1514,7 @@ class Doctor:
         how many were skipped beyond the catch-up horizon and never will be.
         """
         if not self.settings.rule_match_collection_enabled:
-            return CheckResult(
-                "rule_match_coverage",
-                Status.SKIP,
-                "rule-match collection is off; windows are not measured",
-            )
+            return self._feature_off("rule_match_coverage", "rule_match_collection_enabled")
         failed_status = RuleMatchWindowStatus.FAILED
         truncated_status = RuleMatchWindowStatus.TRUNCATED
         now = self.now()
@@ -1932,7 +1975,7 @@ class Doctor:
     ) -> CheckResult:
         """One line from the latest stored QRadar health window of every enabled console."""
         if not self.settings.qradar_health_collection_enabled:
-            return CheckResult(check_id, Status.SKIP, "QRadar health collection is off")
+            return self._feature_off(check_id, "qradar_health_collection_enabled")
         try:
             async with self.sessionmaker() as session:
                 latest = await read_latest(session, self.settings)
@@ -1972,7 +2015,7 @@ class Doctor:
         check_id = "geo_country_source"
         settings = self.settings
         if not settings.geo_collection_enabled:
-            return CheckResult(check_id, Status.SKIP, "geography collection is off")
+            return self._feature_off(check_id, "geo_collection_enabled")
         directions = list(settings.geo_directions)
         if settings.geo_country_source == "lookup":
             named = " and ".join(directions)
@@ -2067,12 +2110,22 @@ class Doctor:
         return CheckResult(check_id, Status.PASS, message)
 
     async def run(self) -> list[CheckResult]:
+        self.resolved_features = self._injected_features
         results: list[CheckResult] = []
         for check_id, runbook in _CHECK_RUNBOOKS:
             check = getattr(self, f"check_{check_id}")
             try:
                 result = await asyncio.wait_for(check(), timeout=CHECK_TIMEOUT_SECONDS)
             except TimeoutError:
+                if check_id == "feature_switch_read":
+                    self.resolved_features = feature_switches.unreadable_features()
+                    self.settings = feature_switches.effective_settings(
+                        self.base_settings, self.resolved_features
+                    )
+                    results.append(CheckResult(
+                        check_id, Status.FAIL, self.resolved_features.reason or "", runbook
+                    ))
+                    continue
                 result = CheckResult(
                     check_id,
                     Status.FAIL,
@@ -2096,9 +2149,17 @@ class Doctor:
         the whole run, whatever the number of searches. A failed flush is counted by the
         log; it never changes a verdict or the exit code.
         """
+        if self.resolved_features is None:
+            switch_read = await self.check_feature_switch_read()
+        else:
+            switch_read = None
         token = ariel_log.open_run_buffer()
         try:
-            return await self._run_aql_recorded()
+            lines = await self._run_aql_recorded()
+            return (
+                [switch_read] if switch_read is not None and switch_read.status is Status.FAIL
+                else []
+            ) + lines
         finally:
             try:
                 await ariel_log.finish_worker_buffer(token)
@@ -2115,21 +2176,26 @@ class Doctor:
         try:
             instances = await self._enabled_instances()
         except Exception as exc:
-            return [
-                CheckResult(
-                    check_id,
-                    Status.SKIP,
-                    f"the registered consoles could not be read ({type(exc).__name__})",
-                    runbook,
-                )
-                for check_id, runbook in _AQL_CHECK_RUNBOOKS
-            ]
+            if self.resolved_features is None or not self.resolved_features.reason:
+                return [
+                    CheckResult(
+                        check_id,
+                        Status.SKIP,
+                        f"the registered consoles could not be read ({type(exc).__name__})",
+                        runbook,
+                    )
+                    for check_id, runbook in _AQL_CHECK_RUNBOOKS
+                ]
+            instances = []
         lines = await doctor_aql.run_aql_checks(
             settings=self.settings,
             sessionmaker=self.sessionmaker,
             instances=instances,
             provider_factory=self.provider_factory,
             now=self.now(),
+            feature_read_reason=(
+                self.resolved_features.reason if self.resolved_features is not None else None
+            ),
         )
         return [
             CheckResult(

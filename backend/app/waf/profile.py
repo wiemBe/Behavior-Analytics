@@ -23,6 +23,7 @@ from app.models.enums import (
 from app.models.log_source import LogSource
 from app.models.waf import WafSourceProfile
 from app.providers.base import PROPERTY_NAME_PATTERN
+from app.services.feature_switches import FAMILY_LABELS
 
 #: Fields collection cannot run without.
 REQUIRED_FIELDS = frozenset({WafLogicalField.URL, WafLogicalField.METHOD})
@@ -257,7 +258,10 @@ def collection_ineligibility_message(
     after its last validation does not run on the unvalidated mapping.
     """
     if not settings.waf_collection_enabled:
-        return MessageRef("validation.waf.ineligible.collection_disabled")
+        return MessageRef(
+            "validation.waf.ineligible.feature_off",
+            {"family": FAMILY_LABELS["waf_collection_enabled"]},
+        )
     if log_source is None:
         return MessageRef("validation.waf.ineligible.source_missing")
     if not profile.enabled:
@@ -343,7 +347,9 @@ def breakdown_plan(profile: WafSourceProfile, settings: Settings) -> BreakdownPl
         return None
 
     if not settings.waf_outcome_collection_enabled:
-        reason = "outcome collection is disabled (WAF_OUTCOME_COLLECTION_ENABLED=false)"
+        reason = render(MessageRef(
+            "validation.waf.breakdown.outcome_feature_off", {"family": "outcome collection"}
+        ))
         skipped[WafBreakdown.ACTION] = reason
         skipped[WafBreakdown.RESPONSE_CODE] = reason
     else:
@@ -375,7 +381,7 @@ def breakdown_plan(profile: WafSourceProfile, settings: Settings) -> BreakdownPl
     if settings.waf_client_collection_enabled:
         collect.add(WafBreakdown.SOURCE_IP)
     else:
-        skipped[WafBreakdown.SOURCE_IP] = (
-            "client collection is disabled (WAF_CLIENT_COLLECTION_ENABLED=false)"
-        )
+        skipped[WafBreakdown.SOURCE_IP] = render(MessageRef(
+            "validation.waf.breakdown.client_feature_off", {"family": "client collection"}
+        ))
     return BreakdownPlan(frozenset(collect), skipped)

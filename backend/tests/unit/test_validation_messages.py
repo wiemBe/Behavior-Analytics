@@ -398,8 +398,9 @@ def test_waf_ineligibility_sites_render_the_same_english_from_refs() -> None:
             _waf_profile(),
             _source(),
             Settings(waf_collection_enabled=False),
-            "WAF collection is disabled (WAF_COLLECTION_ENABLED=false)",
-            "validation.waf.ineligible.collection_disabled",
+            "WAF collection is off. An administrator can turn it on under "
+            "Administration → Features.",
+            "validation.waf.ineligible.feature_off",
         ),
         (
             _waf_profile(),

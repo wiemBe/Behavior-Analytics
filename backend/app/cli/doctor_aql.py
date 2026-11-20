@@ -75,12 +75,14 @@ from app.providers.qradar_rest import (
 from app.repositories.property_watch import PropertyWatchRepository
 from app.services import ariel_search_log as ariel_log
 from app.services.ariel_permit import ArielPermitUnavailable
+from app.services.feature_switches import FAMILY_LABELS
 from app.waf.profile import WafFieldMapping, WafProfileError, breakdown_plan
 
 PASS = "PASS"  # noqa: S105 - diagnostic verdict, not a credential
 WARN = "WARN"
 FAIL = "FAIL"
 SKIP = "SKIP"
+INFO = "INFO"
 
 RUNBOOK = "OPS-R72"
 #: The window and the bucket every family asks about: one whole 5-minute bucket.
@@ -111,6 +113,7 @@ _SWITCHES: dict[str, str] = {
     "catchall_senders": "catchall_collection_enabled",
     "geo_collection": "geo_collection_enabled",
     "qradar_health": "qradar_health_collection_enabled",
+    "identity_collection": "identity_collection_enabled",
 }
 
 UNVERSIONED = "this family's query has no version number"
@@ -678,6 +681,13 @@ def _merge(parts: Sequence[tuple[str, str, str]]) -> tuple[str, str]:
     return verdict, message
 
 
+def feature_off_message(key: str) -> str:
+    return (
+        f"off: {FAMILY_LABELS[key]}. Turn it on under Administration → Features "
+        "(or python -m app.cli.features set)."
+    )
+
+
 async def run_aql_checks(
     *,
     settings: Settings,
@@ -686,6 +696,7 @@ async def run_aql_checks(
     provider_factory: Callable[[QRadarInstance], QRadarProvider],
     now: datetime,
     families: Sequence[str] = FAMILIES,
+    feature_read_reason: str | None = None,
 ) -> list[AqlLine]:
     """One line per family. Each family sends one search per provider method its collector calls."""
     rest = [item for item in instances if item.provider_kind == "rest"]
@@ -696,6 +707,12 @@ async def run_aql_checks(
     lines: list[AqlLine] = []
     try:
         for family in families:
+            switch = _SWITCHES.get(family)
+            if switch is not None and feature_read_reason:
+                lines.append(AqlLine(
+                    family, FAIL, f"off: {FAMILY_LABELS[switch]}; {feature_read_reason}"
+                ))
+                continue
             if not rest:
                 reason = (
                     "AQL runs only on the REST provider; no enabled console uses it"
@@ -707,7 +724,7 @@ async def run_aql_checks(
             switch = _SWITCHES.get(family)
             if switch is not None and not getattr(settings, switch):
                 lines.append(
-                    AqlLine(family, SKIP, f"{switch.upper()} is off; the family is not collected")
+                    AqlLine(family, INFO, feature_off_message(switch))
                 )
                 continue
             parts: list[tuple[str, str, str]] = []

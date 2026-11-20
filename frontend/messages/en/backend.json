@@ -279,6 +279,7 @@
   "custom_rule": {
     "family": {
       "collection_off": "{setting} is off",
+      "feature_off": "{family} is off. An administrator can turn it on under Administration → Features.",
       "unknown": "no collection family is known for subject kind {kind}"
     },
     "reading": {
@@ -305,6 +306,7 @@
       "bucket_not_measured": "the bucket was not measured",
       "disabled": "the rule is disabled",
       "family_not_collected": "the subject''s family is not collected",
+      "feature_off": "{family} is off. An administrator can turn it on under Administration → Features.",
       "lower_bound_below_threshold": "a lower bound below the threshold proves nothing",
       "lower_bound_cannot_prove_under": "a lower bound cannot prove the reading is under the threshold",
       "maintenance": "the source is in maintenance",
@@ -448,6 +450,7 @@
       "all_fit": "all {sources} per-source {days}-day windows fit; the console total is an estimated {hours} hours",
       "all_refused": "all {sources} sources are unavailable: even {days} days exceed the {limit}-hour per-source limit",
       "empty_sources": "{reason}; {count} source(s) fitted with no {noun} yet; the {limit}-hour limit still bounds the reading",
+      "feature_off": "no estimate: collection is switched off ({reason})",
       "no_catchall": "no estimate: no catch-all bucket has been collected in the last {days} days",
       "no_collection": "no estimate: collection is switched off ({reason})",
       "no_ips": "no estimate: no IPS source is enabled on this console",
@@ -463,6 +466,8 @@
     "family": {
       "always_on": "source-volume collection is the platform''s base collection",
       "fair_share": "fitted with a fair share of {share} of the {total} shared history searches per tick",
+      "feature_off": "{family} is off. An administrator can turn it on under Administration → Features.",
+      "feature_on": "{family} is on.",
       "switch_off": "{setting} is off",
       "switch_on": "{setting} is on",
       "zero_endpoint": "fitted with no tracked endpoint yet; the {limit}-hour limit still bounds the reading",
@@ -1276,6 +1281,10 @@
       "total_not_measured": "total event volume was not measured ({error})"
     },
     "waf": {
+      "breakdown": {
+        "client_feature_off": "{family} is off. An administrator can turn it on under Administration → Features.",
+        "outcome_feature_off": "{family} is off. An administrator can turn it on under Administration → Features."
+      },
       "field": {
         "implausible_no_values": "no values of sampled events carry a plausible {logical} value, below the required {required}",
         "implausible_ratio": "{plausible} of sampled events carry a plausible {logical} value, below the required {required}",
@@ -1285,6 +1294,7 @@
       },
       "ineligible": {
         "collection_disabled": "WAF collection is disabled (WAF_COLLECTION_ENABLED=false)",
+        "feature_off": "{family} is off. An administrator can turn it on under Administration → Features.",
         "monitoring_disabled": "monitoring is disabled for the log source",
         "source_missing": "the profile''s log source no longer exists"
       },

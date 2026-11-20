@@ -23,6 +23,30 @@ from app.models.feature_switch import FEATURE_KEYS, FeatureSwitch
 
 logger = logging.getLogger("app.feature_switches")
 
+#: English family names used by backend messages and the doctor.
+FAMILY_LABELS: dict[str, str] = {
+    "waf_collection_enabled": "WAF collection",
+    "waf_alerting_enabled": "WAF alerting",
+    "waf_outcome_collection_enabled": "WAF outcome collection",
+    "waf_client_collection_enabled": "WAF client collection",
+    "ips_collection_enabled": "IPS collection",
+    "ips_alerting_enabled": "IPS alerting",
+    "rule_match_collection_enabled": "Rule-match collection",
+    "rule_alerting_enabled": "Rule alerting",
+    "pw_collection_enabled": "Property watch collection",
+    "pw_alerting_enabled": "Property watch alerting",
+    "custom_rules_enabled": "Custom rule evaluation",
+    "custom_rules_alerting_enabled": "Custom rule alerting",
+    "identity_collection_enabled": "Identity collection",
+    "identity_alerting_enabled": "Identity alerting",
+    "catchall_collection_enabled": "Catch-all sender collection",
+    "catchall_new_sender_alerts_enabled": "Catch-all new sender alerts",
+    "geo_collection_enabled": "Geography collection",
+    "qradar_health_collection_enabled": "QRadar health collection",
+    "explanation_enabled": "Anomaly explanations",
+    "inventory_new_source_alerts_enabled": "Inventory new source alerts",
+}
+
 #: An alerting or modifier switch, and the collection switch it needs (design
 #: section 2.5 rules 1 and 2): inert while its prerequisite is off.
 ALERTING_REQUIRES: dict[str, str] = {

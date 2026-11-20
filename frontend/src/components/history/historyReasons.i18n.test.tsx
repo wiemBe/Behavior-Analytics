@@ -33,10 +33,16 @@ import {
 import { sentenceReader } from "./historyReasons";
 import { shellSentenceReader } from "./historyShellReader";
 import { shellMessages } from "@/i18n/routeNamespaces";
+import { FROZEN_TR_KEYS } from "@/i18n/trFrozen";
 import { rowsOf } from "./historyRows";
 
 const NB = "\u00a0";
 const CODES = codesJson as BackendCodeArtifact;
+const FROZEN_CODES: ReadonlySet<string> = new Set(
+  FROZEN_TR_KEYS.filter((key) => key.startsWith("backend.")).map((key) =>
+    key.slice("backend.".length),
+  ),
+);
 const trSay = createLocaleTranslator("tr");
 
 function say(locale: "en" | "tr"): BehaviorI18n {
@@ -60,10 +66,20 @@ describe("every history code", () => {
 
   it("is in the catalog, words its own sample in Turkish and leaves no placeholder", () => {
     expect(codes.length).toBeGreaterThan(100);
-    for (const code of codes) {
+    for (const code of codes.filter((code) => FROZEN_CODES.has(code))) {
       const spec = CODES[code];
       const words = turkish(code, spec.sample);
       expect(words, code).toBeDefined();
+      expect(words, code).not.toMatch(/[{}]/);
+      expect(words, code).not.toContain("undefined");
+    }
+  });
+
+  it("renders every non-frozen history sample in English without a placeholder", () => {
+    for (const code of codes.filter((code) => !FROZEN_CODES.has(code))) {
+      const spec = CODES[code];
+      const words = readTr(spec.sample_english, { code, params: spec.sample });
+      expect(words, code).toBe(spec.sample_english);
       expect(words, code).not.toMatch(/[{}]/);
       expect(words, code).not.toContain("undefined");
     }
@@ -77,7 +93,7 @@ describe("every history code", () => {
       "history.settle.ticked",
     ]);
     for (const code of codes) {
-      if (composes.has(code)) continue;
+      if (!FROZEN_CODES.has(code) || composes.has(code)) continue;
       expect(turkish(code, CODES[code].sample), code).not.toBe(CODES[code].sample_english);
     }
   });
