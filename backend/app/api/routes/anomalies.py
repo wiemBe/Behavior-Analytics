@@ -40,7 +40,7 @@ from app.api.csv_export import (
     csv_slug,
     csv_stamp,
 )
-from app.api.deps import SessionDep, SettingsDep
+from app.api.deps import EffectiveSettingsDep, SessionDep, SettingsDep
 from app.core.config import Settings
 from app.history.origin import origin_of
 from app.history.state import HistoryFamily
@@ -1503,7 +1503,7 @@ def _detector_limitation(spec: DetectorSpec, state: DetectorStatus) -> str | Non
 
 
 @behavior_router.get("/detectors", response_model=list[DetectorCapabilityOut])
-async def detector_capabilities(settings: SettingsDep) -> list[DetectorCapabilityOut]:
+async def detector_capabilities(settings: EffectiveSettingsDep) -> list[DetectorCapabilityOut]:
     """Every named detector, and whether anything can actually run it.
 
     Derived from the same registry the engine enforces, and from this
@@ -1734,7 +1734,7 @@ async def _waf_source_rows(
 @behavior_router.get("/waf/sources", response_model=PagedWafSources)
 async def list_waf_sources(
     session: SessionDep,
-    settings: SettingsDep,
+    settings: EffectiveSettingsDep,
     since: datetime | None = Query(default=None),
     until: datetime | None = Query(default=None),
     limit: int = Query(default=50, ge=1, le=200),
@@ -1769,7 +1769,7 @@ async def list_waf_sources(
 async def get_waf_source(
     log_source_id: uuid.UUID,
     session: SessionDep,
-    settings: SettingsDep,
+    settings: EffectiveSettingsDep,
     since: datetime | None = Query(default=None),
     until: datetime | None = Query(default=None),
 ) -> WafSourceDetailOut:

@@ -944,7 +944,7 @@ def test_behavior_statement_counts_do_not_grow_with_the_data(db_schema) -> None:
         assert small == large, (name, small, large)
     # Pinned so a new per-row query cannot hide behind "still constant".
     assert {n: c[0] for n, c in counts.items()} == {
-        "sources": 9, "source": 7, "endpoints": 6, "metrics": 3, "baselines": 3,
+        "sources": 10, "source": 8, "endpoints": 6, "metrics": 3, "baselines": 3,
     }
 
 

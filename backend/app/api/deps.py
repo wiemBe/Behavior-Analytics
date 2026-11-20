@@ -15,6 +15,11 @@ from app.providers.base import QRadarProvider
 from app.providers.factory import get_provider
 from app.security.auth import get_principal
 from app.security.rbac import PermissionDenied, Principal, require_permission
+from app.services.feature_switches import (
+    effective_cache,
+    effective_settings,
+    unreadable_features,
+)
 
 # ``scope="function"``: the session commits (or rolls back) when the path function
 # returns, before the response is sent. The default ``"request"`` scope runs the
@@ -25,6 +30,28 @@ ProviderDep = Annotated[QRadarProvider, Depends(get_provider)]
 # Injected rather than imported at call sites so a test can override the
 # guardrail values (page caps, SLA hours, health thresholds) per request.
 SettingsDep = Annotated[Settings, Depends(get_settings)]
+
+
+async def get_effective_settings(
+    base: Annotated[Settings, Depends(get_settings)],
+    session: Annotated[AsyncSession, Depends(get_session, scope="function")],
+) -> Settings:
+    """The settings with the feature switches resolved: row over `.env` over default.
+
+    Read through a connection of its own, so a failed read cannot poison the request's
+    transaction, and cached for five seconds (`EffectiveSettingsCache`). A read that
+    cannot be made leaves every switch off, never the `.env` value.
+    """
+    try:
+        async with AsyncSession(session.bind, expire_on_commit=False) as own:
+            return await effective_cache.get(own, base)
+    except Exception:
+        # No usable engine behind the request's session: the same fail-closed answer.
+        return effective_settings(base, unreadable_features())
+
+
+# Routes that read one of the feature switches take this instead of `SettingsDep`.
+EffectiveSettingsDep = Annotated[Settings, Depends(get_effective_settings, scope="function")]
 
 
 async def _provider_dep() -> AsyncGenerator[QRadarProvider, None]:

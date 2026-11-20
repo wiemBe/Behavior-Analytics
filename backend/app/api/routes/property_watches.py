@@ -44,7 +44,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.alerts.dispatcher import NotificationDispatcher
 from app.alerts.routing import default_policy
-from app.api.deps import SessionDep, SettingsDep
+from app.api.deps import EffectiveSettingsDep, SessionDep
 from app.core.config import Settings, get_settings
 from app.core.rate_limit import limiter
 from app.custom_rules.alerts import alerting_mode
@@ -327,7 +327,7 @@ def _raw_properties(refs: list) -> list[dict[str, str]]:
 
 # ------------------------------------------------------------------------ editor reads
 @router.get("/catalog", response_model=WatchCatalogOut)
-async def get_catalog(session: SessionDep, settings: SettingsDep) -> WatchCatalogOut:
+async def get_catalog(session: SessionDep, settings: EffectiveSettingsDep) -> WatchCatalogOut:
     """The editor's switches and bounds. Registered before ``/{watch_id}``."""
     enabled, used = await svc.enabled_cost_total(session, settings)
     reading = await svc.reading_count(session)
@@ -368,7 +368,7 @@ async def get_catalog(session: SessionDep, settings: SettingsDep) -> WatchCatalo
 @router.get("/scope-options", response_model=list[ScopeOptionOut])
 async def scope_options(
     session: SessionDep,
-    settings: SettingsDep,
+    settings: EffectiveSettingsDep,
     kind: PwScopeKind,
     q: Annotated[str | None, Query(max_length=100)] = None,
     limit: Annotated[int, Query(ge=1, le=10_000)] = 50,
@@ -488,7 +488,7 @@ async def _resolved_options(
 @router.get("/property-options", response_model=PropertyOptionsOut)
 async def property_options(
     session: SessionDep,
-    settings: SettingsDep,
+    settings: EffectiveSettingsDep,
     scope_kind: PwScopeKind,
     scope_id: Annotated[str, Query(min_length=1, max_length=64)],
     q: Annotated[str | None, Query(max_length=100)] = None,
@@ -565,7 +565,7 @@ async def property_options(
 @router.get("", response_model=list[PropertyWatchOut])
 async def list_watches(
     session: SessionDep,
-    settings: SettingsDep,
+    settings: EffectiveSettingsDep,
     limit: Annotated[int, Query(ge=1, le=10_000)] = 200,
     offset: Annotated[int, Query(ge=0)] = 0,
 ) -> list[PropertyWatchOut]:
@@ -588,7 +588,7 @@ async def create_watch(
     body: PropertyWatchCreate,
     session: SessionDep,
     principal: PrincipalDep,
-    settings: SettingsDep,
+    settings: EffectiveSettingsDep,
 ) -> PropertyWatchOut:
     _guard(principal)
     properties = _raw_properties(body.properties)
@@ -678,7 +678,7 @@ async def create_watch(
 
 @router.get("/{watch_id}", response_model=PropertyWatchOut)
 async def get_watch(
-    watch_id: uuid.UUID, session: SessionDep, settings: SettingsDep
+    watch_id: uuid.UUID, session: SessionDep, settings: EffectiveSettingsDep
 ) -> PropertyWatchOut:
     watch = await _load(session, watch_id)
     return await _one_out(session, watch, settings, detail=True)
@@ -686,7 +686,7 @@ async def get_watch(
 
 @router.get("/{watch_id}/scope", response_model=WatchScopeOut)
 async def get_watch_scope(
-    watch_id: uuid.UUID, session: SessionDep, settings: SettingsDep
+    watch_id: uuid.UUID, session: SessionDep, settings: EffectiveSettingsDep
 ) -> WatchScopeOut:
     """The resolved scope, the groups walked, the inventory age and the membership history.
 
@@ -819,7 +819,7 @@ async def update_watch(
     payload: PropertyWatchUpdate,
     session: SessionDep,
     principal: PrincipalDep,
-    settings: SettingsDep,
+    settings: EffectiveSettingsDep,
 ) -> PropertyWatchOut:
     _guard(principal)
     watch = await _locked(session, watch_id)
@@ -1053,7 +1053,7 @@ async def list_buckets(
 
 @router.get("/{watch_id}/aql", response_model=WatchAqlOut)
 async def get_watch_aql(
-    watch_id: uuid.UUID, session: SessionDep, settings: SettingsDep
+    watch_id: uuid.UUID, session: SessionDep, settings: EffectiveSettingsDep
 ) -> WatchAqlOut:
     """The generated AQL of the stored watch, read-only text.
 
@@ -1067,7 +1067,7 @@ async def get_watch_aql(
 async def list_values(
     watch_id: uuid.UUID,
     session: SessionDep,
-    settings: SettingsDep,
+    settings: EffectiveSettingsDep,
     hours: HoursQuery = svc.HOURS_DEFAULT,
     sort: Literal["events", "value", "first_seen"] = "events",
     limit: Annotated[int, Query(ge=1, le=10_000)] = 50,
@@ -1112,7 +1112,7 @@ async def preview_watch(
     watch_id: uuid.UUID,
     session: SessionDep,
     principal: PrincipalDep,
-    settings: SettingsDep,
+    settings: EffectiveSettingsDep,
     factory: ProviderFactoryDep,
 ) -> PreviewOut:
     """One real bounded run of the stored watch over the last closed hour.
@@ -1158,7 +1158,7 @@ async def put_pins(
     payload: PinsIn,
     session: SessionDep,
     principal: PrincipalDep,
-    settings: SettingsDep,
+    settings: EffectiveSettingsDep,
 ) -> PinsOut:
     """Replace the pinned list. Each pin is checked against ``PW_PINNED_VALUE_PATTERN``.
 
@@ -1233,7 +1233,7 @@ async def request_history(
     payload: HistoryRequestIn,
     session: SessionDep,
     principal: PrincipalDep,
-    settings: SettingsDep,
+    settings: EffectiveSettingsDep,
 ) -> PropertyWatchOut:
     """Ask for `history_days` of QRadar's past, read once by the collector (design §H.5.5).
 

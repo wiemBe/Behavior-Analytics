@@ -9,7 +9,8 @@ cannot be trusted to speak for what it collects.
 from __future__ import annotations
 
 import logging
-from collections.abc import Mapping
+import time
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Literal
@@ -127,3 +128,49 @@ def effective_settings(base: Settings, resolved: ResolvedFeatures) -> Settings:
         key: resolved.values[key].enabled for key in FEATURE_KEYS if key in resolved.values
     }
     return base.model_copy(update=update)
+
+
+#: How long the API keeps one resolved read (design section 2.3). A write on this
+#: replica drops it at once; another replica sees the change within this many seconds.
+EFFECTIVE_CACHE_SECONDS = 5.0
+
+
+class EffectiveSettingsCache:
+    """One resolved read per ``ttl`` seconds for the API, however many requests arrive.
+
+    Keyed on the identity of ``base`` so a test (or a reload) that supplies other
+    settings never sees another's switches. A failed read is cached like any other:
+    it is every switch off, and the next read is at most ``ttl`` seconds away.
+    """
+
+    def __init__(
+        self, ttl: float = EFFECTIVE_CACHE_SECONDS, clock: Callable[[], float] = time.monotonic
+    ) -> None:
+        self.ttl = ttl
+        self.clock = clock
+        self._entry: tuple[float, Settings, Settings] | None = None
+        self._generation = 0
+
+    def invalidate(self) -> None:
+        """Forget the cached read; called by the writer after its commit."""
+        self._generation += 1
+        self._entry = None
+
+    async def get(self, session: AsyncSession, base: Settings) -> Settings:
+        entry = self._entry
+        if entry is not None and entry[1] is base and self.clock() < entry[0]:
+            return entry[2]
+        generation = self._generation
+        resolved = await resolve(session, base)
+        effective = effective_settings(base, resolved)
+        # A write that committed while this read was in flight made it stale.
+        if generation == self._generation:
+            self._entry = (self.clock() + self.ttl, base, effective)
+        return effective
+
+
+effective_cache = EffectiveSettingsCache()
+
+
+def invalidate_effective_settings() -> None:
+    effective_cache.invalidate()

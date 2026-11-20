@@ -16,7 +16,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Query, status
 
-from app.api.deps import SessionDep, SettingsDep
+from app.api.deps import EffectiveSettingsDep, SessionDep
 from app.i18n.messages import MessageRef
 from app.i18n.refusal import CodedHTTPException
 from app.schemas.qradar_health_detail import HistoryOut, LatestOut
@@ -35,7 +35,7 @@ HOURS_CODE = "qradar_health_detail.hours.invalid"
 @router.get("/latest", response_model=LatestOut)
 async def qradar_health_latest(
     session: SessionDep,
-    settings: SettingsDep,
+    settings: EffectiveSettingsDep,
     notifications_hours: Annotated[int | None, Query(ge=1, le=NOTIFICATION_HOURS_MAX)] = None,
 ) -> LatestOut:
     return await read_latest(session, settings, notifications_hours=notifications_hours)
@@ -44,7 +44,7 @@ async def qradar_health_latest(
 @router.get("/history", response_model=HistoryOut)
 async def qradar_health_history(
     session: SessionDep,
-    settings: SettingsDep,
+    settings: EffectiveSettingsDep,
     hours: Annotated[int, Query()] = 24,
 ) -> HistoryOut:
     if hours not in HISTORY_HOURS:

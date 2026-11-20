@@ -1,4 +1,4 @@
-"""Operator-owned feature switches; runtime consumers arrive in S3."""
+"""Operator-owned feature switches."""
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
@@ -9,6 +9,7 @@ from app.api.request_meta import client_ip
 from app.security.rbac import PERM_FEATURES_ADMIN, PERM_FEATURES_READ, Principal
 from app.services.feature_management import FeatureError, change
 from app.services.feature_overview import overview
+from app.services.feature_switches import invalidate_effective_settings
 
 router = APIRouter(prefix="/admin/features", tags=["features"])
 Reader = Annotated[Principal, Depends(requires(PERM_FEATURES_READ))]
@@ -33,6 +34,9 @@ async def _write(session: SessionDep, settings: SettingsDep, key: str, enabled: 
     except FeatureError as exc:
         raise HTTPException(exc.status, {"code": exc.code, "problems": exc.problems,
                                          "message": "; ".join(exc.problems)}) from exc
+    # Commit first, then drop the cache: a read between the two would cache the old value.
+    await session.commit()
+    invalidate_effective_settings()
 
 
 @router.put("/{key}", status_code=204)

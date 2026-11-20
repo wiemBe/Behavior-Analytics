@@ -21,7 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.anomaly.capabilities import RULE_DETECTORS, DetectorStatus, detector_status
 from app.anomaly.evidence import AnomalyEvidence
-from app.api.deps import SessionDep, SettingsDep
+from app.api.deps import EffectiveSettingsDep, SessionDep
 from app.core.config import Settings
 from app.i18n.messages import MessageRef
 from app.i18n.refusal import permission_refusal
@@ -183,7 +183,7 @@ async def _page(
 @router.get("", response_model=RulePage)
 async def list_rules(
     session: SessionDep,
-    settings: SettingsDep,
+    settings: EffectiveSettingsDep,
     limit: int = Query(default=50, ge=1, le=1000),
     offset: int = Query(default=0, ge=0),
     enabled: bool | None = Query(default=None),
@@ -231,7 +231,7 @@ async def health_summary(
 @router.get("/statistics", response_model=RuleStatistics)
 async def rule_statistics(
     session: SessionDep,
-    settings: SettingsDep,
+    settings: EffectiveSettingsDep,
     instance_id: uuid.UUID | None = Query(default=None),
     days: int = Query(default=7, ge=1, le=30),
     top: int = Query(default=10, ge=1, le=50),
@@ -264,7 +264,7 @@ def _row_state(details: object) -> MatchAnomalyRowState:
 @router.get("/match-anomalies", response_model=RuleMatchAnomalies)
 async def rule_match_anomalies(
     session: SessionDep,
-    settings: SettingsDep,
+    settings: EffectiveSettingsDep,
     instance_id: uuid.UUID | None = Query(default=None),
     days: int = Query(default=7, ge=1, le=30),
     limit: int = Query(default=50, ge=1, le=200),
@@ -381,7 +381,7 @@ def _health_view(
     @router.get(f"/{name}", response_model=RulePage, name=f"rules_{name}", summary=description)
     async def _view(
         session: SessionDep,
-        settings: SettingsDep,
+        settings: EffectiveSettingsDep,
         limit: int = Query(default=50, ge=1, le=1000),
         offset: int = Query(default=0, ge=0),
         instance_id: uuid.UUID | None = Query(default=None),
@@ -800,7 +800,7 @@ def _match_section(read: RuleSectionRead, settings: Settings) -> RuleMatchSectio
 async def rule_match_section(
     rule_id: uuid.UUID,
     session: SessionDep,
-    settings: SettingsDep,
+    settings: EffectiveSettingsDep,
 ) -> RuleMatchSection:
     """Whether this rule's match rate is being judged, and any open change (design §7.3).
 
@@ -817,7 +817,7 @@ async def rule_match_section(
 async def rule_health_history(
     rule_id: uuid.UUID,
     session: SessionDep,
-    settings: SettingsDep,
+    settings: EffectiveSettingsDep,
     limit: int = Query(default=100, ge=1, le=1000),
     days: int = Query(default=90, ge=1),
 ) -> list[RuleHealthSnapshotOut]:
@@ -855,7 +855,7 @@ async def rule_capacity_history(
 async def rule_transitions(
     rule_id: uuid.UUID,
     session: SessionDep,
-    settings: SettingsDep,
+    settings: EffectiveSettingsDep,
     limit: int = Query(default=50, ge=1, le=500),
 ) -> list[RuleStateTransitionOut]:
     repo = RuleRepository(session)

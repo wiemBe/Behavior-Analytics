@@ -37,7 +37,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.alerts.dispatcher import NotificationDispatcher
 from app.alerts.routing import default_policy
-from app.api.deps import SessionDep, SettingsDep
+from app.api.deps import EffectiveSettingsDep, SessionDep
 from app.core.config import Settings
 from app.custom_rules.alerts import alerting_mode, resolve_deleted_rule_alert
 from app.custom_rules.catalog import CUSTOM_RULE_METRICS, catalog_entry
@@ -642,7 +642,7 @@ def _kind_of(rule: CustomRule) -> CustomRuleSubjectKind:
 @router.get("", response_model=list[CustomRuleOut])
 async def list_rules(
     session: SessionDep,
-    settings: SettingsDep,
+    settings: EffectiveSettingsDep,
     limit: Annotated[int, Query(ge=1, le=10_000)] = 200,
     offset: Annotated[int, Query(ge=0)] = 0,
 ) -> list[CustomRuleOut]:
@@ -669,7 +669,7 @@ async def create_rule(
     body: CustomRuleCreate,
     session: SessionDep,
     principal: PrincipalDep,
-    settings: SettingsDep,
+    settings: EffectiveSettingsDep,
 ) -> CustomRuleOut:
     _guard(principal)
     draft = _draft_from_create(body)
@@ -722,7 +722,7 @@ async def create_rule(
 async def preview_draft(
     body: CustomRulePreviewIn,
     session: SessionDep,
-    settings: SettingsDep,
+    settings: EffectiveSettingsDep,
     hours: Annotated[int, Query(ge=PREVIEW_HOURS_MIN, le=PREVIEW_HOURS_MAX)] = 24,
 ) -> PreviewOut:
     """Replay a draft over stored buckets. Nothing is written and nothing is audited."""
@@ -762,7 +762,7 @@ async def preview_draft(
 
 
 @router.get("/catalog", response_model=CustomRuleCatalogOut)
-async def get_catalog(session: SessionDep, settings: SettingsDep) -> CustomRuleCatalogOut:
+async def get_catalog(session: SessionDep, settings: EffectiveSettingsDep) -> CustomRuleCatalogOut:
     """Metrics, pairing and switches for the rule editor.
 
     Registered before ``/{rule_id}`` so ``catalog`` is not parsed as a UUID.
@@ -792,7 +792,7 @@ async def get_catalog(session: SessionDep, settings: SettingsDep) -> CustomRuleC
 async def get_rule(
     rule_id: uuid.UUID,
     session: SessionDep,
-    settings: SettingsDep,
+    settings: EffectiveSettingsDep,
 ) -> CustomRuleOut:
     rule = await _load_rule(session, rule_id)
     breach = None
@@ -807,7 +807,7 @@ async def update_rule(
     payload: CustomRuleUpdate,
     session: SessionDep,
     principal: PrincipalDep,
-    settings: SettingsDep,
+    settings: EffectiveSettingsDep,
 ) -> CustomRuleOut:
     _guard(principal)
     rule = await _locked(session, rule_id)
@@ -889,7 +889,7 @@ async def delete_rule(
 async def preview_rule(
     rule_id: uuid.UUID,
     session: SessionDep,
-    settings: SettingsDep,
+    settings: EffectiveSettingsDep,
     hours: Annotated[int, Query(ge=PREVIEW_HOURS_MIN, le=PREVIEW_HOURS_MAX)] = 24,
 ) -> PreviewOut:
     """Replay the stored rule. A disabled rule still answers the historical question."""
@@ -921,7 +921,7 @@ async def preview_rule(
 async def list_breaches(
     rule_id: uuid.UUID,
     session: SessionDep,
-    settings: SettingsDep,
+    settings: EffectiveSettingsDep,
     limit: Annotated[int, Query(ge=1, le=10_000)] = 50,
     offset: Annotated[int, Query(ge=0)] = 0,
 ) -> list[BreachOut]:
