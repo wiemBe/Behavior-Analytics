@@ -234,33 +234,69 @@ def test_bounds_fixed_code_for_repository_errors(db_schema: str) -> None:
     assert resp.json()["detail"] == "flow_state_unknown" and CANARY not in resp.text
 
 
-async def _corrupt_config(value: str) -> None:
+async def _corrupt_config(source_id: str, value: str) -> None:
+    """Corrupt one config row only, by its source id."""
     engine = create_async_engine(os.environ["TEST_DATABASE_URL"], future=True, poolclass=NullPool)
     try:
         async with async_sessionmaker(engine, expire_on_commit=False)() as s:
-            await s.execute(update(JdbcSourceConfig.__table__).values(database_type=value))
+            await s.execute(
+                update(JdbcSourceConfig.__table__)
+                .where(JdbcSourceConfig.__table__.c.log_source_id == uuid.UUID(source_id))
+                .values(database_type=value))
             await s.commit()
+    finally:
+        await engine.dispose()
+
+
+async def _seed_second_config() -> str:
+    """A second, valid JDBC config beside the one the test corrupts."""
+    engine = create_async_engine(os.environ["TEST_DATABASE_URL"], future=True, poolclass=NullPool)
+    try:
+        async with async_sessionmaker(engine, expire_on_commit=False)() as s:
+            inst = await s.scalar(select(QRadarInstance).limit(1))
+            assert inst is not None
+            source = LogSource(instance_id=inst.id, qradar_id=11, name="jdbc-src-2",
+                               protocol_type_id=8, enabled=True)
+            s.add(source)
+            await s.flush()
+            s.add(JdbcSourceConfig(
+                log_source_id=source.id, protocol_type_id=8, database_type="Postgres",
+                database_host="db2.lab.local", database_port=1433,
+                field_states={"database_type": {"code": "SET", "reason": None}},
+                allowlist_version=1, config_state="COMPLETE", observed_at=datetime.now(UTC)))
+            await s.commit()
+            return str(source.id)
     finally:
         await engine.dispose()
 
 
 def test_bad_stored_value_still_answers_200(db_schema: str) -> None:
     ids = _run(_seed())
+    good_id = _run(_seed_second_config())
     bad_value = "BADVALUE-SHOULD-NOT-APPEAR"
-    _run(_corrupt_config(bad_value))
+    _run(_corrupt_config(ids["jdbc"], bad_value))
     client = _client()
     listed = client.get("/api/v1/log-sources/jdbc")
     assert listed.status_code == 200
-    assert listed.json()["total"] == 2
+    assert listed.json()["total"] == 3  # two JDBC sources and the ODBC source
     bad = next(i for i in listed.json()["items"] if i["id"] == ids["jdbc"])
     assert bad["config"]["safe_fields"]["database_type"] is None
     assert bad["config"]["field_states"]["database_type"] == {
         "code": "UNAVAILABLE", "reason": "unsupported_value"}
     assert (bad["config"]["state"], bad["config"]["stale"]) == ("PARTIAL", True)
+    good = next(i for i in listed.json()["items"] if i["id"] == good_id)
+    assert (good["config"]["state"], good["config"]["stale"]) == ("COMPLETE", False)
+    assert good["config"]["safe_fields"]["database_type"] == "Postgres"
+    assert good["config"]["field_states"] == {
+        "database_type": {"code": "SET", "reason": None}}
     detail = client.get(f"/api/v1/log-sources/{ids['jdbc']}/jdbc")
     assert detail.status_code == 200
     assert detail.json()["config"] == bad["config"]
+    good_detail = client.get(f"/api/v1/log-sources/{good_id}/jdbc")
+    assert good_detail.status_code == 200
+    assert good_detail.json()["config"] == good["config"]
     assert bad_value not in listed.text and bad_value not in detail.text
+    assert bad_value not in good_detail.text
 
 
 def test_statement_budget_list_and_detail(db_schema: str) -> None:
