@@ -156,12 +156,15 @@ from app.waf.bucketed import (
 logger = logging.getLogger("app.providers.qradar_rest")
 
 
+#: LAB-50: rejected by offenses at 12.0/20.0/29.0; `_to_offense` still reads them.
+OFFENSE_FIELDS_ABSENT_ON_QRADAR = frozenset({"closing_reason", "usernames"})
+
 OFFENSE_LIST_FIELDS = (
-    "id,offense_type,closing_reason,closing_reason_id,description,status,magnitude,"
+    "id,offense_type,closing_reason_id,description,status,magnitude,"
     "severity,credibility,relevance,assigned_to,offense_source,source_network,event_count,"
     "flow_count,device_count,source_count,local_destination_count,start_time,"
     "last_persisted_time,last_updated_time,close_time,categories,source_address_ids,"
-    "local_destination_address_ids,usernames,log_sources,rules"
+    "local_destination_address_ids,log_sources,rules"
 )
 
 
@@ -191,13 +194,36 @@ DEFAULT_MAX_PAGES = 200
 #: The fields the inventory reads from `GET .../log_sources`, and no others: a full row carries
 #: `protocol_parameters` (several KB with credentials-bearing keys) for every source, which on
 #: a console of thousands is the difference between a pass that finishes and one that times
-#: out. Every key `_to_log_source` reads is here (a test pins it); `type` (a nested object) is
-#: only read from the single-source detail, which sends no `fields=`.
+#: out. `type` lives only in the single-source detail (no `fields=`); the identifier below is
+#: version-dependent; the rest exist at every supported version (20.0 and up).
 LOG_SOURCE_LIST_FIELDS = (
     "id,name,description,type_id,protocol_type_id,enabled,status,credibility,"
     "target_event_collector_id,last_event_time,creation_date,modified_date,"
-    "auto_discovered,group_ids,log_source_identifiers,internal"
+    "auto_discovered,group_ids,internal"
 )
+
+#: LAB-50: rejected below API 28.0; `_to_log_source` still reads it, so below that it stays None.
+LOG_SOURCE_FIELDS_VERSIONED_ON_QRADAR = frozenset({"log_source_identifiers"})
+_LOG_SOURCE_IDENTIFIERS_MIN_VERSION = (28, 0)
+
+
+def _parse_api_version(value: object) -> tuple[int, int] | None:
+    """`20.0` -> `(20, 0)`, else `None`: a numeric tuple, never a float or string compare."""
+    if not isinstance(value, str) or not value:
+        return None
+    parts = value.split(".")
+    if len(parts) > 2 or not all(part.isascii() and part.isdigit() for part in parts):
+        return None
+    return int(parts[0]), int(parts[1]) if len(parts) == 2 else 0
+
+
+def log_source_list_fields(api_version: object) -> str:
+    """The slim log-source list for this API version: identifier only at >= 28.0."""
+    parsed = _parse_api_version(api_version)
+    if parsed is not None and parsed >= _LOG_SOURCE_IDENTIFIERS_MIN_VERSION:
+        return f"{LOG_SOURCE_LIST_FIELDS},log_source_identifiers"
+    return LOG_SOURCE_LIST_FIELDS
+
 
 #: A Range walk of thousands of rows needs a stable order, or a source created or removed
 #: between two pages shifts the rows and one is read twice or never. QRadar's `sort=+id` is
@@ -207,11 +233,16 @@ LOG_SOURCE_LIST_SORT = "+id"
 JDBC_LIST_FIELDS = "id,protocol_type_id,protocol_parameters"
 JDBC_PAGE_SIZE = 100
 
-#: Exactly the keys read by `_to_rule`, shared by rules and building blocks.
+#: LAB-50: rejected by rules and building blocks at 12.0/20.0/29.0; `_to_rule` still reads them.
+RULE_FIELDS_ABSENT_ON_QRADAR = frozenset({
+    "rule_responses", "description", "categories", "building_block_ids",
+    "log_source_type_ids", "last_triggered_time", "event_count", "offense_count",
+})
+
+#: The remaining keys read by `_to_rule`, shared by rules and building blocks.
 RULE_LIST_FIELDS = (
-    "id,name,type,rule_responses,description,enabled,origin,owner,average_capacity,"
-    "base_capacity,base_host_id,capacity_timestamp,categories,creation_date,modification_date,"
-    "building_block_ids,log_source_type_ids,last_triggered_time,event_count,offense_count"
+    "id,name,type,enabled,origin,owner,average_capacity,"
+    "base_capacity,base_host_id,capacity_timestamp,creation_date,modification_date"
 )
 
 #: Version of the stored rule-match AQL. Bump it with any change to the query
@@ -468,6 +499,7 @@ class QRadarRestProvider(QRadarProvider):
         if not base_url.startswith("https://"):
             raise ValueError("QRadar base_url must be https://")
 
+        self._api_version = api_version
         self._max_retries = max(0, max_retries)
         self._retry_base = retry_base_seconds
         self._retry_max = retry_max_seconds
@@ -1030,7 +1062,8 @@ class QRadarRestProvider(QRadarProvider):
         rows = await self._paginate(
             "/config/event_sources/log_source_management/log_sources",
             category=EndpointCategory.LOG_SOURCE_LIST,
-            params={"fields": LOG_SOURCE_LIST_FIELDS, "sort": LOG_SOURCE_LIST_SORT},
+            params={"fields": log_source_list_fields(self._api_version),
+                    "sort": LOG_SOURCE_LIST_SORT},
         )
         return [dto for dto in (self._to_log_source(r) for r in rows) if dto is not None]
 
@@ -1162,7 +1195,8 @@ class QRadarRestProvider(QRadarProvider):
                     "GET",
                     path,
                     category=EndpointCategory.LOG_SOURCE_LIST,
-                    params={"fields": LOG_SOURCE_LIST_FIELDS, "sort": LOG_SOURCE_LIST_SORT},
+                    params={"fields": log_source_list_fields(self._api_version),
+                            "sort": LOG_SOURCE_LIST_SORT},
                     headers={"Range": f"items={index * size}-{index * size + size - 1}"},
                     max_attempts=page_attempts,
                     timeout=page_timeout_seconds,

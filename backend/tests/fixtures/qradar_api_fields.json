@@ -1,0 +1,117 @@
+{
+  "versions": ["20.0", "29.0"],
+  "endpoints": {
+    "log_sources": {
+      "20.0": [
+        "auto_discovered", "average_eps", "coalesce_events", "creation_date", "credibility",
+        "description", "disconnected_log_collector_id", "enabled", "gateway", "group_ids",
+        "id", "internal", "language_id", "last_event_time", "log_source_extension_id",
+        "modified_date", "name", "parsing_order", "protocol_parameters", "protocol_type_id",
+        "requires_deploy", "sending_ip", "status", "store_event_payload",
+        "target_event_collector_id", "type_id", "wincollect_external_destination_ids",
+        "wincollect_internal_destination_id"
+      ],
+      "29.0": [
+        "auto_discovered", "average_eps", "coalesce_events", "creation_date", "credibility",
+        "description", "disconnected_log_collector_id", "enabled", "gateway", "group_ids",
+        "id", "internal", "language_id", "last_event_time", "log_source_extension_id",
+        "log_source_identifiers", "modified_date", "name", "parsing_order",
+        "protocol_parameters", "protocol_type_id", "requires_deploy", "sending_ip", "status",
+        "store_event_payload", "syslog_event_timeout", "target_event_collector_id", "type_id",
+        "wincollect_external_destination_ids", "wincollect_internal_destination_id"
+      ]
+    },
+    "log_sources_jdbc": {
+      "20.0": [
+        "auto_discovered", "average_eps", "coalesce_events", "creation_date", "credibility",
+        "description", "disconnected_log_collector_id", "enabled", "gateway", "group_ids",
+        "id", "internal", "language_id", "last_event_time", "log_source_extension_id",
+        "modified_date", "name", "parsing_order", "protocol_parameters", "protocol_type_id",
+        "requires_deploy", "sending_ip", "status", "store_event_payload",
+        "target_event_collector_id", "type_id", "wincollect_external_destination_ids",
+        "wincollect_internal_destination_id"
+      ],
+      "29.0": [
+        "auto_discovered", "average_eps", "coalesce_events", "creation_date", "credibility",
+        "description", "disconnected_log_collector_id", "enabled", "gateway", "group_ids",
+        "id", "internal", "language_id", "last_event_time", "log_source_extension_id",
+        "log_source_identifiers", "modified_date", "name", "parsing_order",
+        "protocol_parameters", "protocol_type_id", "requires_deploy", "sending_ip", "status",
+        "store_event_payload", "syslog_event_timeout", "target_event_collector_id", "type_id",
+        "wincollect_external_destination_ids", "wincollect_internal_destination_id"
+      ]
+    },
+    "rules": {
+      "20.0": [
+        "average_capacity", "base_capacity", "base_host_id", "capacity_timestamp",
+        "creation_date", "enabled", "id", "identifier", "linked_rule_identifier",
+        "modification_date", "name", "origin", "owner", "type"
+      ],
+      "29.0": [
+        "average_capacity", "base_capacity", "base_host_id", "capacity_timestamp",
+        "creation_date", "enabled", "id", "identifier", "linked_rule_identifier",
+        "modification_date", "name", "origin", "owner", "type"
+      ]
+    },
+    "building_blocks": {
+      "20.0": [
+        "average_capacity", "base_capacity", "base_host_id", "capacity_timestamp",
+        "creation_date", "enabled", "id", "identifier", "linked_rule_identifier",
+        "modification_date", "name", "origin", "owner", "type"
+      ],
+      "29.0": [
+        "average_capacity", "base_capacity", "base_host_id", "capacity_timestamp",
+        "creation_date", "enabled", "id", "identifier", "linked_rule_identifier",
+        "modification_date", "name", "origin", "owner", "type"
+      ]
+    },
+    "offenses": {
+      "20.0": [
+        "assigned_to", "categories", "category_count", "close_time", "closing_reason_id",
+        "closing_user", "credibility", "description", "destination_networks", "device_count",
+        "domain_id", "event_count", "first_persisted_time", "flow_count", "follow_up", "id",
+        "inactive", "last_persisted_time", "last_updated_time", "local_destination_address_ids",
+        "local_destination_count", "log_sources", "magnitude", "offense_source", "offense_type",
+        "policy_category_count", "protected", "relevance", "remote_destination_count", "rules",
+        "security_category_count", "severity", "source_address_ids", "source_count",
+        "source_network", "start_time", "status", "username_count"
+      ],
+      "29.0": [
+        "assigned_to", "categories", "category_count", "close_time", "closing_reason_id",
+        "closing_user", "credibility", "description", "destination_networks", "device_count",
+        "domain_id", "event_count", "first_persisted_time", "flow_count", "follow_up", "id",
+        "inactive", "last_assigned_user_time", "last_persisted_time", "last_updated_time",
+        "local_destination_address_ids", "local_destination_count", "log_sources", "magnitude",
+        "offense_source", "offense_type", "policy_category_count", "protected", "relevance",
+        "remote_destination_count", "rules", "security_category_count", "severity",
+        "source_address_ids", "source_count", "source_network", "start_time", "status",
+        "username_count"
+      ]
+    },
+    "regex_properties": {
+      "20.0": [
+        "auto_discovered", "creation_date", "datetime_format", "description", "id",
+        "identifier", "is_list_type", "locale", "modification_date", "name", "property_type",
+        "use_for_rule_engine", "username"
+      ],
+      "29.0": [
+        "auto_discovered", "creation_date", "datetime_format", "description", "id",
+        "identifier", "is_list_type", "locale", "modification_date", "name", "property_type",
+        "use_for_rule_engine", "username"
+      ]
+    },
+    "property_expressions": {
+      "20.0": [
+        "capture_group", "creation_date", "enabled", "id", "identifier", "log_source_id",
+        "log_source_type_id", "low_level_category_id", "modification_date", "payload", "qid",
+        "regex", "regex_property_identifier", "username"
+      ],
+      "29.0": [
+        "capture_group", "creation_date", "enabled", "format_string", "id", "identifier",
+        "log_source_id", "log_source_type_id", "low_level_category_id", "match_limit",
+        "modification_date", "parse_control", "payload", "predictive_parsing", "qid", "rank",
+        "regex", "regex_property_identifier", "username"
+      ]
+    }
+  }
+}

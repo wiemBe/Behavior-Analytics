@@ -14,7 +14,12 @@ from app.providers.base import (
     ProviderUnavailableError,
     failure_kind,
 )
-from app.providers.qradar_rest import LOG_SOURCE_LIST_FIELDS, QRadarRestProvider
+from app.providers.qradar_rest import (
+    LOG_SOURCE_FIELDS_VERSIONED_ON_QRADAR,
+    LOG_SOURCE_LIST_FIELDS,
+    QRadarRestProvider,
+    log_source_list_fields,
+)
 
 PATH = "/api/config/event_sources/log_source_management/log_sources"
 
@@ -49,7 +54,8 @@ def slim(row: dict, request: httpx.Request) -> dict:
     return {key: value for key, value in row.items() if key in wanted}
 
 
-def provider(handler, *, page_size: int = 500, retries: int = 2) -> QRadarRestProvider:  # type: ignore[no-untyped-def]
+def provider(handler, *, page_size: int = 500, retries: int = 2,  # type: ignore[no-untyped-def]
+             api_version: str = "20.0") -> QRadarRestProvider:
     async def no_sleep(_seconds: float) -> None:
         return None
 
@@ -59,6 +65,7 @@ def provider(handler, *, page_size: int = 500, retries: int = 2) -> QRadarRestPr
     return QRadarRestProvider(
         base_url="https://qradar.example",
         sec_token="t",
+        api_version=api_version,
         client=client,
         page_size=page_size,
         max_retries=retries,
@@ -75,13 +82,17 @@ def page_of(request: httpx.Request, total: int, page_size: int) -> list[dict]:
 
 
 def test_the_field_list_never_asks_for_protocol_parameters_and_names_every_mapped_key() -> None:
-    fields = set(LOG_SOURCE_LIST_FIELDS.split(","))
-    assert "protocol_parameters" not in fields
+    slim = set(LOG_SOURCE_LIST_FIELDS.split(","))
+    full = set(log_source_list_fields("29.0").split(","))
+    assert "protocol_parameters" not in slim and "protocol_parameters" not in full
     assert {
         "id", "name", "description", "type_id", "protocol_type_id", "enabled", "status",
         "credibility", "target_event_collector_id", "last_event_time", "creation_date",
-        "modified_date", "auto_discovered", "group_ids", "log_source_identifiers", "internal",
-    } == fields
+        "modified_date", "auto_discovered", "group_ids", "internal",
+    } == slim
+    # The < 28.0 form is the slim list; the >= 28.0 form adds exactly the versioned identifier.
+    assert set(log_source_list_fields("20.0").split(",")) == slim
+    assert full == slim | LOG_SOURCE_FIELDS_VERSIONED_ON_QRADAR
 
 
 @pytest.mark.asyncio
@@ -92,7 +103,8 @@ async def test_a_slim_real_shaped_row_maps_to_every_inventory_field() -> None:
         seen.append(request)
         return httpx.Response(200, json=[slim(real_row(41), request)])
 
-    walker = provider(handler)
+    # At 29.0 the identifier is requested, so the row maps to every inventory field.
+    walker = provider(handler, api_version="29.0")
     try:
         walk = await walker.walk_log_sources()
         (listed,) = await walker.list_log_sources()
@@ -109,10 +121,27 @@ async def test_a_slim_real_shaped_row_maps_to_every_inventory_field() -> None:
     assert source.auto_discovered is False and source.group_ids == [20]
     assert source.identifier == "10.0.0.41" and source.internal is False
     assert source.description == "edge waf"
-    assert all(r.url.params["fields"] == LOG_SOURCE_LIST_FIELDS for r in seen)
+    assert all(r.url.params["fields"] == log_source_list_fields("29.0") for r in seen)
     # A stable order, so a source created between two pages cannot shift rows across them.
     assert all(r.url.params["sort"] == "+id" for r in seen)
     assert "protocol_parameters" not in LOG_SOURCE_LIST_FIELDS
+
+    # Below 28.0 the same slim walk succeeds but leaves the identifier None, as in 0.1.16.
+    below: list[httpx.Request] = []
+
+    def handler_below(request: httpx.Request) -> httpx.Response:
+        below.append(request)
+        return httpx.Response(200, json=[slim(real_row(41), request)])
+
+    walker_below = provider(handler_below, api_version="20.0")
+    try:
+        walk_below = await walker_below.walk_log_sources()
+    finally:
+        await walker_below.aclose()
+    (source_below,) = walk_below.sources
+    assert walk_below.complete and source_below.identifier is None
+    assert all(r.url.params["fields"] == log_source_list_fields("20.0") for r in below)
+    assert "protocol_parameters" not in log_source_list_fields("20.0")
 
 
 @pytest.mark.asyncio

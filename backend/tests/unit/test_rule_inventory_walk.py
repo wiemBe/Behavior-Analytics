@@ -12,7 +12,11 @@ import pytest
 
 from app.core.config import Settings
 from app.providers.dto import RuleInventoryWalk
-from app.providers.qradar_rest import RULE_LIST_FIELDS, QRadarRestProvider
+from app.providers.qradar_rest import (
+    RULE_FIELDS_ABSENT_ON_QRADAR,
+    RULE_LIST_FIELDS,
+    QRadarRestProvider,
+)
 
 
 def provider(handler, *, page_size=2, max_pages=20, sleep=None):
@@ -51,8 +55,11 @@ def test_fields_equal_every_literal_mapper_read():
                 and node.value.id == "row"):
             assert isinstance(node.slice, ast.Constant)
             keys.add(node.slice.value)
-    assert set(RULE_LIST_FIELDS.split(",")) == keys
-    assert len(RULE_LIST_FIELDS.split(",")) == len(keys)
+    fields = set(RULE_LIST_FIELDS.split(","))
+    fields_list = RULE_LIST_FIELDS.split(",")
+    assert fields | RULE_FIELDS_ABSENT_ON_QRADAR == keys
+    assert fields & RULE_FIELDS_ABSENT_ON_QRADAR == set()
+    assert len(fields_list) == len(fields)  # no duplicate count check lost
 
 
 @pytest.mark.asyncio

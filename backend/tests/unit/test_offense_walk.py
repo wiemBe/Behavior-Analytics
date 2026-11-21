@@ -15,7 +15,11 @@ from pydantic import ValidationError
 
 from app.core.config import Settings
 from app.providers.dto import PageWalkBudget
-from app.providers.qradar_rest import OFFENSE_LIST_FIELDS, QRadarRestProvider
+from app.providers.qradar_rest import (
+    OFFENSE_FIELDS_ABSENT_ON_QRADAR,
+    OFFENSE_LIST_FIELDS,
+    QRadarRestProvider,
+)
 from tests.unit.test_rule_inventory_walk import provider
 
 
@@ -40,8 +44,11 @@ def test_fields_equal_every_mapper_read():
                 and isinstance(node.func.value, ast.Name) and node.func.value.id == "row"):
             assert node.func.attr == "get" and isinstance(node.args[0], ast.Constant)
             keys.add(node.args[0].value)
-    assert set(OFFENSE_LIST_FIELDS.split(",")) == keys
-    assert len(OFFENSE_LIST_FIELDS.split(",")) == len(keys)
+    fields = set(OFFENSE_LIST_FIELDS.split(","))
+    fields_list = OFFENSE_LIST_FIELDS.split(",")
+    assert fields | OFFENSE_FIELDS_ABSENT_ON_QRADAR == keys
+    assert fields & OFFENSE_FIELDS_ABSENT_ON_QRADAR == set()
+    assert len(fields_list) == len(fields)  # no duplicate count check lost
 
 
 @pytest.mark.asyncio
