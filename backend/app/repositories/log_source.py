@@ -10,6 +10,7 @@ from typing import TypedDict
 from sqlalchemy import ColumnElement, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.log_source_policy import active_source
 from app.models.enums import ACTIVE_ANOMALY_STATES
 from app.models.log_source import LogSource, LogSourceAnomaly
 
@@ -98,7 +99,7 @@ class LogSourceRepository:
         return {row.qradar_id: row for row in rows}
 
     async def open_anomaly_counts(
-        self, log_source_ids: Sequence[uuid.UUID] | None = None
+        self, log_source_ids: Sequence[uuid.UUID] | None = None, *, source_pause: bool = False
     ) -> dict[uuid.UUID, int]:
         """Map of log_source_id -> count of active, unsuppressed anomalies.
 
@@ -114,11 +115,15 @@ class LogSourceRepository:
         )
         if log_source_ids is not None:
             stmt = stmt.where(LogSourceAnomaly.log_source_id.in_(list(log_source_ids)))
+        if source_pause:
+            stmt = stmt.join(LogSource, LogSource.id == LogSourceAnomaly.log_source_id).where(
+                active_source(LogSource.enabled.expression)
+            )
         rows = await self.session.execute(stmt)
         return {row[0]: row[1] for row in rows}
 
     async def open_anomalies_for(
-        self, log_source_id: uuid.UUID
+        self, log_source_id: uuid.UUID, *, source_pause: bool = False
     ) -> builtins.list[LogSourceAnomaly]:
         stmt = (
             select(LogSourceAnomaly)
@@ -128,6 +133,10 @@ class LogSourceRepository:
             )
             .order_by(LogSourceAnomaly.detected_at.desc())
         )
+        if source_pause:
+            stmt = stmt.join(LogSource, LogSource.id == LogSourceAnomaly.log_source_id).where(
+                active_source(LogSource.enabled.expression)
+            )
         return list((await self.session.scalars(stmt)).all())
 
     # -- aggregate counts for the SOC overview ------------------------------
@@ -155,9 +164,13 @@ class LogSourceRepository:
             "maintenance": maintenance,
         }
 
-    async def anomalous_source_count(self) -> int:
+    async def anomalous_source_count(self, *, source_pause: bool = False) -> int:
         stmt = select(func.count(func.distinct(LogSourceAnomaly.log_source_id))).where(
             LogSourceAnomaly.state.in_(_ACTIVE_STATES),
             LogSourceAnomaly.suppressed.is_(False),
         )
+        if source_pause:
+            stmt = stmt.join(LogSource, LogSource.id == LogSourceAnomaly.log_source_id).where(
+                active_source(LogSource.enabled.expression)
+            )
         return await self.session.scalar(stmt) or 0
