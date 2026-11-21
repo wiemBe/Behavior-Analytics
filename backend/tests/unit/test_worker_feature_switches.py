@@ -139,7 +139,13 @@ def test_routes_that_read_a_switch_take_the_effective_settings(module: str) -> N
 
 
 def test_the_anomaly_routes_that_reach_a_switch_take_the_effective_settings() -> None:
-    """Only these handlers read one (detector status, WAF collection health)."""
+    """Only these handlers read a switch, so they take the effective settings.
+
+    `detector_capabilities` reads detector status; `list_waf_sources` and
+    `get_waf_source` read WAF collection health; `list_anomalies`,
+    `export_anomalies_csv` and `anomaly_summary` apply the D-52 source-pause
+    policy.
+    """
     tree = ast.parse((APP / "api" / "routes" / "anomalies.py").read_text())
     effective = {
         fn.name
@@ -148,7 +154,14 @@ def test_the_anomaly_routes_that_reach_a_switch_take_the_effective_settings() ->
         and any("EffectiveSettingsDep" in ast.unparse(a.annotation) for a in fn.args.args
                 if a.annotation is not None)
     }
-    assert effective == {"detector_capabilities", "list_waf_sources", "get_waf_source"}
+    assert effective == {
+        "detector_capabilities",
+        "list_waf_sources",
+        "get_waf_source",
+        "list_anomalies",
+        "export_anomalies_csv",
+        "anomaly_summary",
+    }
 
 
 def test_no_route_module_reads_a_switch_from_a_plain_settings_dependency() -> None:
