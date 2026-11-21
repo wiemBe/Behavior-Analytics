@@ -6,6 +6,7 @@ are only labelled here, never re-derived. No route, provider or QRadar call.
 from __future__ import annotations
 
 import builtins
+import logging
 import uuid
 from dataclasses import dataclass
 from datetime import datetime
@@ -15,12 +16,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings, get_settings
 from app.jdbc import flow, queries
-from app.jdbc.dto import ConfigState
+from app.jdbc.dto import ConfigState, FieldStateReason
 from app.jdbc.flow import AttemptState
-from app.jdbc.parameters import UNVERIFIED
+from app.jdbc.parameters import FIELDS, UNVERIFIED, Bad
 from app.jdbc.queries import JDBC_LIKE_PROTOCOLS, JdbcFilters
 from app.models.log_source import LogSource
 from app.schemas import jdbc as out
+
+logger = logging.getLogger(__name__)
 
 DEFAULT_LIMIT, MAX_QUERY_CHARS = 100, 200
 _FLOW_STATES = frozenset(get_args(flow.FlowState))
@@ -166,13 +169,49 @@ class JdbcRepository:
                 support="VERIFIED", state=ConfigState.NOT_COLLECTED, observed_at=None,
                 last_success_at=None, stale=True, safe_fields=None, field_states={})
         state = ConfigState(row.cfg_config_state)
+        values = {m: getattr(row, f"cfg_{m}") for m in out.JdbcSafeFields.model_fields}
+        members = {spec.member for spec in FIELDS}
+        degraded: set[str] = set()
+        # The same per-field rule as JdbcSafeFields._safe_values, applied one field at a
+        # time so a single bad stored value cannot 500 the whole list or detail row.
+        for spec in FIELDS:
+            value = values[spec.member]
+            if value is None:
+                continue
+            text = str(value).lower() if isinstance(value, bool) else str(value)
+            try:
+                if spec.parse(text) != value:
+                    raise Bad
+            except Bad:
+                values[spec.member] = None
+                degraded.add(spec.member)
+        field_states: dict[str, out.JdbcFieldState] = {}
+        for member, raw in row.cfg_field_states.items():
+            if member not in members:  # JdbcConfigOut._safe_shape forbids unknown keys
+                continue
+            if member in degraded:
+                continue
+            try:
+                field_states[member] = out.JdbcFieldState(**raw)
+            except (TypeError, ValueError):
+                values[member] = None
+                degraded.add(member)
+        if degraded:
+            unavailable = out.JdbcFieldState(
+                code="UNAVAILABLE", reason=FieldStateReason.UNSUPPORTED_VALUE)
+            for member in degraded:
+                field_states[member] = unavailable
+            logger.warning(
+                "jdbc stored config degraded for source %s: %s",
+                row.id, ", ".join(sorted(degraded)))
+            if state is ConfigState.COMPLETE:
+                state = ConfigState.PARTIAL
         return out.JdbcConfigOut(
             support="VERIFIED", state=state, failure_code=row.cfg_failure_code,
             observed_at=row.cfg_observed_at, last_success_at=row.cfg_last_success_at,
             stale=state is not ConfigState.COMPLETE or row.cfg_failure_code is not None,
-            safe_fields=out.JdbcSafeFields(
-                **{m: getattr(row, f"cfg_{m}") for m in out.JdbcSafeFields.model_fields}),
-            field_states={k: out.JdbcFieldState(**v) for k, v in row.cfg_field_states.items()})
+            safe_fields=out.JdbcSafeFields(**values),
+            field_states=field_states)
 
     def _row(
         self, row: Any, window: queries.TargetWindow, now: datetime, cadence_seconds: int,
