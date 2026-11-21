@@ -1109,19 +1109,21 @@ class QRadarRestProvider(QRadarProvider):
                     reason = JdbcRowRejection.WRONG_PROTOCOL
                 elif row["id"] in seen or row["id"] in page_ids:
                     reason = JdbcRowRejection.DUPLICATE_ID
-                else:
-                    page_ids.add(row["id"])
-                    config = project_jdbc_config(
-                        qradar_id=row["id"], protocol_type_id=8,
-                        protocol_parameters=row.get("protocol_parameters"),
-                    )
-                    if config.config_state is ConfigState.NOT_COLLECTED:
-                        reason = JdbcRowRejection.PARAMETERS_UNAVAILABLE
-                    else:
-                        projected.append(config)
                 if reason is not None:
                     rejected[reason] = rejected.get(reason, 0) + 1
-                    invalid = True
+                    invalid = True  # D-96 (b): integrity rejects drop the page
+                    continue
+                page_ids.add(row["id"])
+                config = project_jdbc_config(
+                    qradar_id=row["id"], protocol_type_id=8,
+                    protocol_parameters=row.get("protocol_parameters"),
+                )
+                if config.config_state is ConfigState.NOT_COLLECTED:
+                    # D-96 (a): count it, but pass the DTO through; the page keeps
+                    # its valid rows and completeness is unaffected.
+                    reason = JdbcRowRejection.PARAMETERS_UNAVAILABLE
+                    rejected[reason] = rejected.get(reason, 0) + 1
+                projected.append(config)
             if invalid:
                 raise MalformedUpstreamResponse("QRadar returned an invalid JDBC page")
             configs.extend(projected)

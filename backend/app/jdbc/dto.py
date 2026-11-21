@@ -124,8 +124,9 @@ class JdbcRowRejection(StrEnum):
 class JdbcConfigWalk:
     """Safe configs, received list-page/row counts and terminal fixed failure code.
 
-    Rejected pages contribute counts but no configs. Only a successful short
-    terminator without any failure proves completeness, including empty.
+    A content-rejected row contributes a count and a NOT_COLLECTED config; an
+    integrity-rejected page contributes counts but no configs. Only a successful
+    short terminator without any failure proves completeness, including empty.
     """
 
     configs: list[JdbcConfigDTO]

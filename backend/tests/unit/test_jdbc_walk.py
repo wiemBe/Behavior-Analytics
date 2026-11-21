@@ -74,6 +74,33 @@ def row(index: int) -> dict:
     }
 
 
+#: The 18 allow-listed parameters with valid values, so a projected row is COMPLETE.
+COMPLETE_PARAMETERS = [
+    {"id": 8000, "name": "identifier", "value": "labjdbc-flowing"},
+    {"id": 8005, "name": "databaseType", "value": "Postgres"},
+    {"id": 8010, "name": "databaseName", "value": "app_audit"},
+    {"id": 8017, "name": "schema", "value": "public"},
+    {"id": 8020, "name": "databaseServerHostname", "value": "db.example.com"},
+    {"id": 8030, "name": "databasePort", "value": "5432"},
+    {"id": 8080, "name": "queryList", "value": "none"},
+    {"id": 8090, "name": "eventTable", "value": "app_audit_flowing"},
+    {"id": 8100, "name": "eventQuery", "value": "id,event_time"},
+    {"id": 8110, "name": "compareField", "value": "id"},
+    {"id": 8120, "name": "usePreparedStatements", "value": "true"},
+    {"id": 8130, "name": "startTime", "value": "2026-11-20 10:30"},
+    {"id": 8140, "name": "pollingInterval", "value": "30"},
+    {"id": 8150, "name": "epsThrottle", "value": "20000"},
+    {"id": 8210, "name": "useSSL", "value": "false"},
+    {"id": 8280, "name": "MSSQLServerHostname", "value": "tls.example.com"},
+    {"id": 8290, "name": "enableAdvancedOptions", "value": "false"},
+    {"id": 8320, "name": "allowUntrusted", "value": "false"},
+]
+
+
+def complete_row(index: int) -> dict:
+    return {"id": index, "protocol_type_id": 8, "protocol_parameters": COMPLETE_PARAMETERS}
+
+
 def page(request: httpx.Request, total: int) -> list[dict]:
     start, end = map(int, request.headers["Range"].removeprefix("items=").split("-"))
     return [row(index) for index in range(start, min(end + 1, total))]
@@ -388,7 +415,6 @@ async def test_remaining_deadline_includes_retry_sleep(
 @pytest.mark.parametrize("bad", [
     "wrong_protocol", "duplicate", "within_page", "shape", "identity", "protocol_type",
     "identity_bool", "identity_float", "protocol_bool", "protocol_float",
-    "missing_parameters", "null_parameters", "empty_parameters", "malformed_parameters",
 ])
 async def test_wrong_protocol_duplicate_malformed_not_complete(bad: str) -> None:
     rejected = {
@@ -429,6 +455,85 @@ async def test_wrong_protocol_duplicate_malformed_not_complete(bad: str) -> None
     assert result.rejected_rows == {reason: 1}
     assert (result.pages_read, result.rows_read) == (3, 102)
     assert [config.qradar_id for config in result.configs] == list(range(100))
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("bad", [
+    "missing_parameters", "null_parameters", "empty_parameters", "malformed_parameters",
+])
+async def test_content_rejection_keeps_page_and_completes(
+    bad: str, caplog: pytest.LogCaptureFixture,
+) -> None:
+    caplog.set_level(logging.DEBUG)
+    rejected = {
+        "missing_parameters": {"id": 101, "protocol_type_id": 8},
+        "null_parameters": {**complete_row(101), "protocol_parameters": None},
+        "empty_parameters": {**complete_row(101), "protocol_parameters": []},
+        "malformed_parameters": {**complete_row(101), "protocol_parameters": [{"value": CANARY}]},
+    }[bad]
+    calls = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            start, end = map(int, request.headers["Range"].removeprefix("items=").split("-"))
+            body = [complete_row(index) for index in range(start, min(end + 1, 100))]
+        else:
+            body = [complete_row(100), rejected] if calls == 2 else []
+        return httpx.Response(200, json=body)
+
+    walker = provider(handler)
+    try:
+        result = await walker.walk_jdbc_configs()
+    finally:
+        await walker.aclose()
+    assert result.state is JdbcWalkState.COMPLETE and result.complete
+    assert result.failure_code is None and result.pages_failed == 0
+    assert result.rejected_rows == {JdbcRowRejection.PARAMETERS_UNAVAILABLE: 1}
+    # D-96 (a) keeps the short page, so it is the terminator: two GETs, 102 rows.
+    assert (result.pages_read, result.rows_read) == (2, 102)
+    assert [config.qradar_id for config in result.configs] == list(range(102))
+    assert result.configs[101].config_state is ConfigState.NOT_COLLECTED
+    assert all(config.config_state is ConfigState.COMPLETE for config in result.configs[:101])
+    assert CANARY not in repr(result) + caplog.text
+    assert all(CANARY not in repr(record.__dict__) for record in caplog.records)
+
+
+@pytest.mark.asyncio
+async def test_integrity_rejection_drops_page_with_content_rejection(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A page-integrity reject still drops the page, taking the content DTO with it (D-96 b)."""
+    caplog.set_level(logging.DEBUG)
+    calls = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            start, end = map(int, request.headers["Range"].removeprefix("items=").split("-"))
+            body = [complete_row(index) for index in range(start, min(end + 1, 100))]
+        else:
+            body = ([complete_row(100), {**complete_row(101), "protocol_parameters": []}, CANARY]
+                    if calls == 2 else [])
+        return httpx.Response(200, json=body)
+
+    walker = provider(handler)
+    try:
+        result = await walker.walk_jdbc_configs()
+    finally:
+        await walker.aclose()
+    assert result.state is JdbcWalkState.PARTIAL and not result.complete
+    assert result.failure_code is JdbcWalkFailure.MALFORMED and result.pages_failed == 1
+    assert result.rejected_rows == {
+        JdbcRowRejection.MALFORMED_ROW: 1,
+        JdbcRowRejection.PARAMETERS_UNAVAILABLE: 1,
+    }
+    assert (result.pages_read, result.rows_read) == (3, 103)
+    assert [config.qradar_id for config in result.configs] == list(range(100))
+    assert all(config.config_state is ConfigState.COMPLETE for config in result.configs)
+    assert CANARY not in repr(result) + caplog.text
 
 
 @pytest.mark.asyncio
