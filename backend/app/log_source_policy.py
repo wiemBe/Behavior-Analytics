@@ -6,7 +6,9 @@ with the switch off they retain legacy behavior.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from datetime import datetime
+from typing import TYPE_CHECKING
 from uuid import UUID
 
 from sqlalchemy import ColumnElement, DateTime, cast, event, func, literal, select
@@ -15,6 +17,9 @@ from sqlalchemy.orm import QueryableAttribute, Session
 
 from app.core.config import Settings
 from app.models.log_source import LogSource
+
+if TYPE_CHECKING:
+    from app.anomaly.baseline import BaselineBuilder
 
 #: An open pause has no end: half-open overlap uses positive infinity for it.
 _INFINITY = cast(literal("infinity"), DateTime(timezone=True))
@@ -107,3 +112,28 @@ async def lock_sources(session: AsyncSession, ids: list[UUID]) -> list[LogSource
         for source in rows:
             held[source.id] = (owner, source)
     return [held[key][1] for key in ordered if key in held]
+
+
+async def rebuild_baselines_locked(
+    session: AsyncSession,
+    builder: BaselineBuilder,
+    source_ids: Sequence[UUID],
+    *,
+    now: datetime,
+    source_pause_policy: bool,
+) -> int:
+    """Rebuild under source locks, committing each ordered batch of at most 100.
+
+    This entry owns the transaction; callers must have no pending collection or
+    network work. Observations are read only after the refreshed source lock,
+    so an inventory disable that wins the lock is visible before training.
+    """
+    ordered = sorted(set(source_ids))
+    cells = 0
+    for offset in range(0, len(ordered), 100):
+        sources = await lock_sources(session, ordered[offset : offset + 100])
+        if source_pause_policy:
+            sources = [source for source in sources if source.enabled is True]
+        cells += await builder.rebuild_many(sources, now=now)
+        await session.commit()
+    return cells

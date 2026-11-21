@@ -1626,8 +1626,25 @@ async def collect_anomaly_explanations(instance_name: str | None = None) -> dict
 
 # ------------------------------------------------------------------ baselines
 async def rebuild_baselines() -> dict:
+    from app.log_source_policy import rebuild_baselines_locked, target_filters
+
+    settings, _reason = await _effective_settings("rebuild_baselines")
+    policy = source_pause_enabled(settings)
     maker = get_sessionmaker()
     async with maker() as session:
+        if policy:
+            builder = BaselineBuilder(session, settings=settings, source_pause_policy=True)
+            ids = list(
+                (await session.scalars(
+                    select(LogSource.id).where(*target_filters(
+                        settings, LogSource.monitoring_enabled, LogSource.enabled,
+                    )).order_by(LogSource.id)
+                )).all()
+            )
+            cells = await rebuild_baselines_locked(
+                session, builder, ids, now=datetime.now(UTC), source_pause_policy=policy,
+            )
+            return {"sources": len(ids), "cells": cells}
         builder = BaselineBuilder(session)
         sources = list(
             (
