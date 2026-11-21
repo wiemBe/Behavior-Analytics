@@ -67,3 +67,39 @@
   max-width: none;
   white-space: nowrap;
 }
+
+/* Independent detail blocks; long configuration values yield inside their definition row. */
+.jdbc-detail,
+.jdbc-detail section,
+.jdbc-facts > div,
+.jdbc-facts dd {
+  min-width: 0;
+}
+.jdbc-detail section + section {
+  margin-top: var(--sp-6);
+}
+.jdbc-detail h2 {
+  font-size: var(--fs-md);
+  font-weight: var(--fw-semibold);
+}
+.jdbc-facts {
+  display: grid;
+  gap: var(--sp-3);
+  margin: var(--sp-4) 0;
+}
+.jdbc-facts > div {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
+  gap: var(--sp-3);
+}
+.jdbc-facts dt {
+  color: var(--text-2);
+}
+.jdbc-facts dd {
+  margin: 0;
+  overflow-wrap: break-word;
+}
+.jdbc-detail summary {
+  min-height: var(--target-min);
+  cursor: pointer;
+}
