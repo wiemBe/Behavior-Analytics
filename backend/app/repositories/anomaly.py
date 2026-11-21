@@ -36,6 +36,7 @@ from sqlalchemy.dialects.postgresql import UUID as PgUUID
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import defer, selectinload
 
+from app.log_source_policy import active_source
 from app.models.enums import (
     ACTIVE_ANOMALY_STATES,
     AnomalyFamily,
@@ -534,6 +535,7 @@ class AnomalyRepository:
         triage_owner: str | None = None,
         triage_disposition: TriageDisposition | None = None,
         active_only: bool = False,
+        source_pause: bool = False,
         since: datetime | None = None,
         until: datetime | None = None,
     ) -> tuple[list[dict], int]:
@@ -631,6 +633,8 @@ class AnomalyRepository:
         branches: list[Select] = []
         if phase_a:
             conditions = common(LogSourceAnomaly)
+            if source_pause and active_only:
+                conditions.append(active_source(LogSource.enabled.expression))
             if log_source_id is not None:
                 conditions.append(LogSourceAnomaly.log_source_id == log_source_id)
             if instance_id is not None:
@@ -916,7 +920,7 @@ class AnomalyRepository:
         return {(str(s), str(t)): int(c) for s, t, c in rows.all()}
 
     async def active_family_counts(
-        self, *, since: datetime | None, until: datetime
+        self, *, since: datetime | None, until: datetime, source_pause: bool = False
     ) -> dict[tuple[str, str], int]:
         """Active anomalies keyed by (family, state): one statement over the six families.
 
@@ -926,6 +930,8 @@ class AnomalyRepository:
         bound, as on that list: an active incident older than the range ceiling is
         still active. The family key is `log_source`, `waf`, `ips`,
         `property_watch`, `rule` or `identity`.
+
+        With `source_pause`, both reads exclude stored-disabled Phase A sources.
         """
         active = [s.value for s in ACTIVE_ANOMALY_STATES]
 
@@ -943,6 +949,9 @@ class AnomalyRepository:
             ]
             if since is not None:
                 conditions.append(model.detected_at >= since)
+            if source_pause and family == "log_source":
+                stmt = stmt.join(LogSource, LogSource.id == model.log_source_id)
+                conditions.append(active_source(LogSource.enabled.expression))
             return stmt.where(*conditions).group_by(model.state)
 
         union = union_all(
