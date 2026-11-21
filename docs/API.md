@@ -322,6 +322,90 @@ recorded one): `status` (`COMPLETE`, `PARTIAL`, `FAILED`), `finished_at`, `elaps
 run table for this collector: the state comes from its watermark row, the pass summary kept in its
 metadata and its advisory lock. The error text is not returned.
 
+## JDBC log sources
+
+The JDBC view answers one question: which JDBC-like sources are configured, enabled in QRadar
+and receiving attributed events? It is a read-only view over stored inventory and aggregates;
+it builds no provider and runs no AQL. All three routes are included on the log-source router
+(`backend/app/api/routes/log_sources.py:57`), which is mounted with `read:log_sources`
+(`backend/app/api/router.py:113-115`); the value of that permission is `read:log_sources`
+(`backend/app/security/rbac.py:104`). The browser link is "View JDBC" on `/log-sources`.
+
+### `GET /log-sources/jdbc`
+
+`read:log_sources`. One page of JDBC-like sources in the envelope
+`{items, total, limit, offset, snapshot}`. The request runs a constant number of data SELECTs —
+four with rows to look up, three when the page is empty (`backend/app/repositories/jdbc.py:97`)
+— and applies every filter in SQL before count and paging.
+
+| Parameter | Meaning |
+|---|---|
+| `limit`, `offset` | `limit` defaults to 100 and is clamped to `api_max_page_size` (minimum 1); `offset` must be at least 0. The envelope reports the values used. |
+| `q` | Case-insensitive substring of name or identifier, at most 200 characters; `%` and `_` are literal. |
+| `instance_id` | A registered console's UUID. |
+| `protocol` | One of the eight JDBC-like protocol ids `8, 20, 21, 37, 42, 49, 55, 67`. Id `8` is the verified JDBC protocol; the other seven are included with unverified configuration support. |
+| `enabled` | Tri-state on the stored QRadar flag: `true`, `false` or absent. |
+| `flow_state` | One of `DISABLED_IN_QRADAR`, `RECEIVING`, `NO_ATTRIBUTED_EVENTS`, `NOT_MEASURED`. |
+
+Out-of-range bounds and unknown filter values are refused in the repository with a fixed reason
+code and no echoed value (`backend/app/repositories/jdbc.py:66-88`;
+`backend/app/api/routes/jdbc.py:70-72`). Wrong-typed values such as `limit=abc`, `protocol=x` or
+`enabled=maybe` are rejected by FastAPI's default request validation before the handler; that 422
+body is FastAPI's own and can echo the rejected input value (no `RequestValidationError` handler
+is registered in `backend/app/main.py`). `total` counts the stored matching inventory; `snapshot`
+(`complete`, `state`, `stale`, `last_complete_at`, `consoles`) reports whether that inventory is
+a finished pass, so `total` is not a promise about QRadar's current count.
+
+Each item carries `id`, `qradar_id`, `name`, `protocol_type_id`, `protocol_name`; `qradar`
+(`enabled`, `status`, `inconsistency`, `inventory_last_complete_at`,
+`inventory_last_attempt_at`, `inventory_state`, `inventory_stale`, `reason_code`); `config`
+(`support`, `state`, `failure_code`, `observed_at`, `last_success_at`, `stale`, `safe_fields`,
+`field_states`); `volume` (`measurement`, `target_start`, `target_end`, `bucket_seconds`,
+`event_count`, `average_eps`, `collected_at`, `stale`, `reason_code`, `last_observation`);
+`flow` (`state`, `reason_code`); and `monitoring` (`enabled`, the SOC monitoring switch,
+independent of the QRadar flag). `status` is `CONNECTED`, `WARNING`, `CONNECTION_ERROR`,
+`DISABLED_STATUS` or null; `inventory_state` is `IDLE`, `QUEUED`, `RUNNING`, `COMPLETE`,
+`PARTIAL`, `FAILED`, `NOT_COLLECTED` or `UNSUPPORTED`. No QRadar status message, credential,
+username, key path or connection string is returned.
+
+Honesty is explicit and per block. `safe_fields` is `null` for an unverified protocol, not an
+empty object. A field whose stored value fails the allow-list grammar shows field state
+`UNAVAILABLE` with reason `unsupported_value` (the other fixed reasons are
+`id_name_mismatch`, `duplicate_name`, `wrong_type` and `missing`); the rejected value is never
+returned or logged. Configuration `state` is `COMPLETE`, `PARTIAL`, `NOT_COLLECTED`,
+`UNVERIFIED_PROTOCOL` or `NOT_JDBC`; volume `measurement` is `EXACT`, `PARTIAL`, `TRUNCATED`
+or `NOT_COLLECTED`. A failed read keeps the last safe configuration with its old timestamp and
+`stale: true`; a missing measurement stays `null`, never a zero. `EXACT` — and therefore a
+`RECEIVING` or `NO_ATTRIBUTED_EVENTS` verdict — needs a complete live bucket in the target
+window; no lower-bound reasoning is granted. A stale or never-collected inventory is named by
+`inventory_stale` and the `inventory_stale` / `inventory_not_collected` reason codes.
+
+### `GET /log-sources/{id}/jdbc`
+
+`read:log_sources`. One source's configuration and flow block in the same row shape as a list
+item, including unverified and not-collected states. An unknown id, or a source that is not
+JDBC-like, gives 404 with the fixed message `No JDBC block for this log source.`. The source
+detail page calls this route independently, so a failure here leaves the general source
+metadata readable.
+
+### `POST /log-sources/jdbc/sync`
+
+`admin:*` in addition to the router's read permission; a caller without it gets 403 before any
+other check (`backend/app/api/routes/jdbc.py:104-107`). Queues the bounded JDBC parameter pass
+for every enabled console, or for one console when `instance_id` is given. The handler touches
+only the stored lease/queue state and the Celery queue; it builds no provider and calls no
+QRadar API. Success is 202 with `{"queued": bool, "already_running": bool, "task_ids": [...]}`;
+a request already queued or a live lease coalesces to `already_running: true` with no new task.
+When no console is enabled and no `instance_id` is given, there is nothing to queue and the route
+still answers 202 with `{"queued": false, "already_running": false, "task_ids": []}`
+(`backend/app/api/routes/jdbc.py:112-119, 125, 144`). A named console that is not enabled gives
+404 (`No enabled console matches.`). With the collection switch off the route gives 409 with the
+fixed text `JDBC collection is turned off. An administrator can turn it on under Administration
+-> Features.`. A broker failure rolls the request back and gives 503 with `the JDBC refresh could
+not be queued`. A `jdbc.sync` audit row is written for requests that reach the queue (success and
+broker failure); the 403, 409 and 404 refusals write none. Read-only analysts see sync state in the
+list and detail responses, so no separate admin status endpoint exists.
+
 ## Log-source fleet summary
 
 `GET /fleet/summary` returns one class summary for each non-internal source class. Its `buckets`

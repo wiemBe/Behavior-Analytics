@@ -242,6 +242,21 @@ reference heading for them.
 array or a comma-separated list: `["qid", "username"]` or `qid, username`. A source is
 trimmed to the dimensions its DSM populates; the rest are recorded unavailable.
 
+The four `JDBC_*` bounds above are ordinary `.env` settings with no feature-switch row; they set
+the cadence and the page/walk budgets of the `collect_jdbc_configs` task on the `qradar_walks`
+queue. The one runtime switch is `jdbc_collection_enabled`: it ships `false` in the code
+default (and in `.env` when set there), but the effective value is the `feature_switch` row of
+that name when one exists — shown in the feature overview as the "JDBC" family with the "Collect"
+toggle. With `FEATURE_SWITCHES_DB`
+true, which is the default, a row set under **Administration → Features** wins over both `.env`
+and the code default until it is reset there; the key can also be set or reset offline in the
+container with
+`docker compose exec -T backend python -m app.cli.features set jdbc_collection_enabled on` and
+`docker compose exec -T backend python -m app.cli.features reset jdbc_collection_enabled`.
+`.env` supplies only the initial default and is not imported into the switch table on upgrade.
+The switch governs collection and queued refresh; `GET /log-sources/jdbc` still reads stored
+configurations while it is off.
+
 ## Anomaly triage
 
 | Setting | Default | Meaning |

@@ -866,6 +866,40 @@ checks health. A failed upgrade automatically restores the prior release. Downgr
 revision can discard data from columns and tables introduced by that revision; it is not the
 operational rollback procedure. See [`OPERATIONS.md`](OPERATIONS.md) for exact procedures.
 
+### Enable JDBC monitoring after an upgrade
+
+JDBC monitoring ships off: no new switch exists and no new command is needed to activate it. After
+the upgrade gates are green (`./qradar-dash doctor` has no `FAIL`) turn on the existing feature
+switch, either in the browser at Administration → Features (`/admin/features`; reading needs
+`read:features`, changing needs `admin:features`) — the "JDBC" family, toggle "Collect" — or
+offline:
+
+```bash
+docker compose exec -T backend python -m app.cli.features set jdbc_collection_enabled on
+```
+
+With `FEATURE_SWITCHES_DB=true`, which is the default, that row wins over the
+`JDBC_COLLECTION_ENABLED=false` code default. Setting `JDBC_COLLECTION_ENABLED=true` in `.env`
+only changes the default used when no row exists; upgrade does not import it into the switch
+table. To turn monitoring off again, use the "Reset to .env/default" control on the "JDBC" row
+under Features or run:
+
+```bash
+docker compose exec -T backend python -m app.cli.features reset jdbc_collection_enabled
+```
+
+The `collect_jdbc_configs` task runs on the `qradar_walks` queue every
+`JDBC_WALK_INTERVAL_SECONDS` (default 900 s). While the switch is off the task returns
+`disabled` and builds no provider. After the first walk with the switch on, open Log sources →
+"View JDBC" (`/log-sources/jdbc`). The page lists the JDBC-like sources — protocol 8, plus the
+unverified protocols 20, 21, 37, 42, 49, 55 and 67 — with the columns Source, Database, Host,
+QRadar enabled, Connection, Flow, Events (count) and Observed UTC. Before any walk it reads
+"JDBC inventory has not been collected."; a finished inventory with no matching sources reads
+"No JDBC sources were found in the completed inventory."; neither is a failure. The "Refresh
+JDBC" button appears only for administrators (`admin:*`); a read-only analyst gets no control.
+The view stays useful with the switch off: it still shows stored configuration and labels a
+source disabled in QRadar.
+
 ## Release images
 
 A release is identified by a repository tag and the shared version in `VERSION`,

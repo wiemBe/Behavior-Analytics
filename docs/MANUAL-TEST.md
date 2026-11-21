@@ -16,6 +16,7 @@ The results are written to `docs/MANUAL-TEST-RESULTS.md`. This guide is divided 
 **Contents**
 
 1. [0.1.16](#0116)
+2. [JDBC log sources (JDBC-1)](#jdbc-log-sources-jdbc-1)
 
 ---
 
@@ -3246,3 +3247,195 @@ The check was "Language, round C": switching the language back to English and re
 - There is no empty result cell on the page. These are **written nowhere**: passwords, tokens, `.env` values, `ENCRYPTION_KEY`, the QRadar token, the contents of `env.bak` and `secrets.tar`, user names, customer data (log source names, IP addresses, URL paths; more than the check asks). Use a placeholder for the page if needed (`<site>`, `https://<host>`).
 
 **Record:** The delivery time (UTC) and the files delivered.
+
+---
+
+## JDBC log sources (JDBC-1)
+
+This section checks the read-only JDBC view on a real console. It does not change QRadar: the
+page reads stored inventory and aggregates, and the refresh button queues a bounded read task.
+Enable the switch first as described in `docs/INSTALL.md`, "Enable JDBC monitoring after an
+upgrade", and let one `JDBC_WALK_INTERVAL_SECONDS` (default 900 s) pass so the first walk has
+stored configuration. Labels below are quoted from `frontend/messages/en/logSources.json`; the
+interface is English only. A raw message key or Turkish text is a Fail. No password, username,
+key path or connection string may appear in the page or in any API response. The `curl` calls use
+`--cookie "$SESSION"`, where `$SESSION` is the `qd_session=<value>` cookie of the signed-in window
+(as defined in MT-144's precondition); treat it as a secret and write it nowhere.
+
+#### JDBC-MT-1 — The list page loads and the counts match QRadar's protocol-8 sources
+
+**Precondition:** Signed in with an account holding `read:log_sources`. JDBC collection has been
+on for at least one walk. The QRadar console administrator has the console's own source list.
+
+**Action:**
+
+- Open Log sources (`/log-sources`) and follow "View JDBC" to `/log-sources/jdbc`.
+- Set the "Protocol" filter to `8` and read the source count and the "Last complete inventory" /
+  "Attempt" snapshot line. Compare the count with the number of protocol-8 (JDBC) sources in the
+  QRadar console's source list.
+
+```bash
+curl -s --cookie "$SESSION" 'https://<host>/api/v1/log-sources/jdbc?protocol=8'
+```
+
+**Expected:**
+
+- The page shows the table with the columns "Source", "Database", "Host", "QRadar enabled",
+  "Connection", "Flow", "Events (count)" and "Observed UTC". Numbers are right-aligned and a
+  missing measurement is a dash with a reason, never a zero.
+- The API envelope is `{items, total, limit, offset, snapshot}`; `total` is the count shown on
+  the page and `snapshot.complete` / `snapshot.state` / `snapshot.stale` say whether the inventory
+  is a finished pass. With a complete snapshot the count matches QRadar's protocol-8 sources.
+  A partial or stale snapshot, or "JDBC inventory has not been collected.", is recorded on the
+  results page with its snapshot state; it is not a Fail. The page has a notes list, not a Note
+  field: it can show "QRadar inventory is stale." or "JDBC configuration is partial; some sources
+  were not read."; record any that appear. The unfiltered page also includes the unverified
+  protocols 20, 21, 37, 42, 49, 55 and 67, so its count can be higher on purpose.
+- No field holds a rejected upstream value: a value the allow-list cannot parse shows
+  "Field unavailable" with reason "Unsupported value", and the rejected text is absent from the
+  response.
+
+**Record:** The page count, `total`, `snapshot.complete` / `state` / `stale`, the protocol filter
+used, and QRadar's protocol-8 count.
+
+#### JDBC-MT-2 — The detail block appears only on JDBC sources
+
+**Precondition:** JDBC-MT-1 is done and at least one JDBC source is listed.
+
+**Action:**
+
+- Click a JDBC source's name in the list and read its "JDBC configuration" section on
+  `/log-sources/{id}`. Open a source of another protocol type, and request the block for an
+  unknown id:
+
+```bash
+curl -s --cookie "$SESSION" -o /dev/null -w '%{http_code}\n' https://<host>/api/v1/log-sources/<jdbc-id>/jdbc
+curl -s --cookie "$SESSION" -o /dev/null -w '%{http_code}\n' https://<host>/api/v1/log-sources/<non-jdbc-id>/jdbc
+curl -s --cookie "$SESSION" -o /dev/null -w '%{http_code}\n' https://<host>/api/v1/log-sources/00000000-0000-0000-0000-000000000000/jdbc
+```
+
+**Expected:**
+
+- The JDBC source shows the definition list of its safe fields (database type, host, TLS
+  hostname, port, database name, schema, table, select list, compare field, polling interval,
+  start time, prepared statements, predefined query, EPS throttle, source label, use SSL, allow
+  untrusted, advanced options), with units, "Timezone unknown" for the start time and actual UTC
+  for the observed and measured times. The section is not nested inside the general
+  configuration card.
+- The non-JDBC source keeps its general log-source detail readable and has no "JDBC
+  configuration" section; its block request and the unknown id both return 404 with the fixed
+  message `No JDBC block for this log source.` and no upstream text. A block failure leaves the
+  general metadata readable.
+- An unverified protocol shows "Unverified protocol" support with unavailable configuration
+  cells, not an empty configuration.
+
+**Record:** The three HTTP codes, the 404 message, and whether the non-JDBC detail stayed
+readable.
+
+#### JDBC-MT-3 — A WARN status shows "Warning", not a flow verdict
+
+**Precondition:** A listed JDBC source whose QRadar status is `WARN` exists (a console
+administrator can point one out). If none exists, write `Not run`.
+
+**Action:** Compare the QRadar status of that source in the console with the "Connection" and
+"Flow" cells of its row on `/log-sources/jdbc`.
+
+**Expected:**
+
+- "Connection" reads "Warning". That label is the QRadar connection status only. "Flow" is
+  decided from a complete live event bucket and reads "Receiving", "No attributed events",
+  "Not measured" or "Disabled in QRadar"; it never becomes "Warning" and no empty-table
+  diagnosis is invented. An exact zero with "Connected" reads "Connected; no attributed events"
+  and keeps the count and window visible.
+- No free-text QRadar status message is shown on the page or returned by the API.
+
+**Record:** The QRadar status, the Connection label, the Flow label and the Events value.
+
+#### JDBC-MT-4 — A source disabled in QRadar
+
+**Precondition:** A listed JDBC source with QRadar `enabled = false` exists. If none exists,
+write `Not run`.
+
+**Action:** Filter the list with "QRadar enabled = Disabled" and open the source's detail.
+
+**Expected:**
+
+- Its "Flow" cell and detail read "Disabled in QRadar"; no current flow verdict is given, while
+  any separately dated historical count stays accessible with its own UTC observation time. The
+  "QRadar enabled" cell reads "Disabled". A source enabled in QRadar but reporting status
+  `DISABLED` additionally shows the inconsistency "Enabled with disabled QRadar status".
+- Collected counts are not shown as zero when the measurement is missing; "Not collected" or
+  "Not measured" is used instead.
+
+**Record:** The source name, the enabled flag, the Connection and Flow labels and any historical
+count with its UTC time.
+
+#### JDBC-MT-5 — Forbidden for a user without the permission
+
+**Precondition:** An account without `read:log_sources` (and without `read:*` or `admin:*`) is
+available. Do not create one here; use the site's own procedure.
+
+**Action:** Sign in with that account, open `/log-sources/jdbc` and call the list endpoint.
+
+```bash
+curl -s --cookie "$SESSION_LOW" -o /dev/null -w '%{http_code}\n' https://<host>/api/v1/log-sources/jdbc
+```
+
+**Expected:**
+
+- The page shows "JDBC sources require read:log_sources." and no refresh control; the API
+  returns 403. No source names, configuration or snapshot fields are returned.
+- The same account opening a source's detail gets the detail-level refusal text
+  "JDBC details require read:log_sources." without the JDBC block.
+- No `read:fleet` substitute is used: an account holding only `read:fleet` is still refused.
+
+**Record:** The two HTTP codes and the two refusal texts.
+
+#### JDBC-MT-6 — The refresh button outcomes
+
+**Precondition:** Signed in as an administrator. JDBC-MT-1 is done. The refresh button
+"Refresh JDBC" is present.
+
+**Action:** Press "Refresh JDBC" once; press it again while the first pass is still running.
+With the switch turned off under Administration → Features, press it once more. If a console
+administrator can make the broker unavailable, repeat there as well.
+
+**Expected:**
+
+- A new request answers 202 and shows "Refresh queued."; a second request while a pass holds
+  the lease answers 202 with `already_running: true` and shows "A refresh is already running.".
+  The response is `{queued, already_running, task_ids}`. Only the JDBC parameter task is queued;
+  the inventory sync is a separate action and neither writes to QRadar.
+- With the switch off the call gives 409 and a neutral, non-alert line reading "JDBC collection
+  is off. Turn it on under Administration → Features." with the link to `/admin/features`.
+- A broker failure gives 503 and "Refresh could not be queued. Try again."; any other failure
+  gives "Refresh failed. Try again.". A `jdbc.sync` audit row is written for the requests that
+  reach the queue (success and broker failure), with the queued flag and task ids and no error
+  text; the 403, 409 and 404 refusals write none.
+- A read-only session has no button at all, not a disabled one.
+
+**Record:** Each HTTP status, the message shown and the `queued` / `already_running` values.
+
+#### JDBC-MT-7 — No credential, username or key path is exposed
+
+**Precondition:** JDBC-MT-1 and JDBC-MT-2 are done with at least one JDBC source configured.
+
+**Action:** Search the rendered list and detail pages and the raw list and detail responses for
+the words `password`, `username`, `user`, `key` and `token`, and compare the safe field list with
+the configuration held on the QRadar console.
+
+**Expected:**
+
+- No password, username, token, private-key path or JDBC connection string appears in the page,
+  the API response, a browser URL or the browser's network payload. The API returns only the
+  bounded safe fields and fixed state codes; no upstream parameter bag or status message is
+  included.
+- Host, database name, schema, table and select list may appear as operational metadata. Their
+  presence is expected; a credential or an account name in any of them is a Fail.
+- The same holds for the config-export file: `python -m app.cli.config export` writes no JDBC
+  section and no JDBC mirror column (the integration test
+  `tests/integration/test_jdbc_config_export_exclusion.py` pins both the success and warning
+  paths).
+
+**Record:** The search terms used, where each was found or that none was found, and the export
+check result.
