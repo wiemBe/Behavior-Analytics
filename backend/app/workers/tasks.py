@@ -1416,7 +1416,7 @@ async def evaluate_anomalies() -> dict:
     # The engine's per-bucket idempotency reads the watermark and the detector
     # state without a row lock, so two overlapping runs could evaluate the same
     # bucket and move an alert's repeat counter twice. The lock is held on a
-    # connection of its own: this session commits per source, and a lock taken
+    # connection of its own: this session can commit batches, and a lock taken
     # on it would follow its connection back to the pool.
     async with maker() as session, CollectorAdvisoryLock(
         session, settings, ANOMALY_EVALUATION_LOCK_ID, "anomaly_evaluation"
@@ -1431,11 +1431,79 @@ async def evaluate_anomalies() -> dict:
         # Enqueue-only dispatcher: notifiers not needed to create rows.
         enqueuer = NotificationDispatcher(session, notifiers={}, policy=policy)
         engine = AnomalyEngine(session, settings=settings, enqueuer=enqueuer)
-        selection = select(LogSource).where(LogSource.monitoring_enabled.is_(True))
         if source_pause_enabled(settings):
-            # SQLAlchemy's InstrumentedAttribute is a ColumnElement at runtime;
-            # the stub for the shared predicate is narrower than the real call.
-            selection = selection.where(active_source(LogSource.enabled))  # type: ignore[arg-type]
+            from app.anomaly.engine import EvaluationReport
+            from app.log_source_policy import lock_sources
+
+            ids = list((await session.scalars(
+                select(LogSource.id)
+                .where(
+                    LogSource.monitoring_enabled.is_(True),
+                    active_source(LogSource.enabled),  # type: ignore[arg-type]
+                )
+                .order_by(LogSource.id)
+            )).all())
+            opened = resolved = failed = given_up = 0
+
+            def record(report: EvaluationReport) -> None:
+                nonlocal opened, resolved, failed, given_up
+                opened += len(report.opened)
+                resolved += len(report.resolved)
+                failed += report.failed
+                given_up += report.given_up
+
+            def fresh_engine() -> AnomalyEngine:
+                # A rollback discards ORM rows; rebuild only then, never per batch.
+                return AnomalyEngine(
+                    session, settings=settings,
+                    enqueuer=NotificationDispatcher(session, notifiers={}, policy=policy),
+                )
+
+            for offset in range(0, len(ids), 100):
+                batch = ids[offset:offset + 100]
+                try:
+                    sources = await lock_sources(session, batch)
+                    reports = []
+                    for source in sources:
+                        if source.enabled is not True:
+                            continue
+                        reports.append(await engine.evaluate_pending(source))
+                    await session.commit()
+                except Exception:
+                    await session.rollback()
+                    engine = fresh_engine()
+                    logger.exception(
+                        "anomaly evaluation batch rolled back",
+                        extra={"batch_offset": offset, "batch_sources": len(batch)},
+                    )
+                    # Isolate the failed batch's sources: one poison source must not
+                    # starve the other 99 on every run. Each source gets its own
+                    # lock/evaluate/commit; one that fails alone is counted failed.
+                    for source_id in batch:
+                        try:
+                            locked = await lock_sources(session, [source_id])
+                            if not locked or locked[0].enabled is not True:
+                                await session.commit()
+                                continue
+                            report = await engine.evaluate_pending(locked[0])
+                            await session.commit()
+                            record(report)
+                        except Exception:
+                            await session.rollback()
+                            engine = fresh_engine()
+                            failed += 1
+                            logger.exception(
+                                "anomaly evaluation source failed in batch retry",
+                                extra={"source_id": str(source_id), "batch_offset": offset},
+                            )
+                    continue
+                for report in reports:
+                    record(report)
+            return {
+                "sources": len(ids), "opened": opened, "resolved": resolved,
+                "failed": failed, "given_up": given_up,
+            }
+        selection = select(LogSource).where(LogSource.monitoring_enabled.is_(True))
         sources = list((await session.scalars(selection)).all())
         opened = resolved = failed = given_up = 0
         for source in sources:
