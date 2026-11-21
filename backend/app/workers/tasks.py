@@ -1139,10 +1139,12 @@ def _log_source_stale_threshold_seconds(collection_interval_seconds: int) -> int
 async def detect_stale_log_source_collection(instance_name: str | None = None) -> dict:
     """Open/resolve one deduplicated alert per stale log-source metric collector.
 
-    Two states are not judged, so the alert never claims a health verdict the data
+    Some states are not judged, so the alert never claims a health verdict the data
     cannot support. A console with no monitored source has nothing its collection
     could protect: the alert is resolved if one was open, with a not-judged reason rather
-    than a recovery, and the run reports `no_monitored_sources`. A console registered
+    than a recovery, and the run reports `no_monitored_sources`. With the pause policy
+    on, a console whose monitored sources are all QRadar-disabled instead reports
+    `all_sources_disabled`, also without a verdict. A console registered
     less than the stale threshold ago that has neither a successful nor a failed run yet
     is still in its first-run window: the run reports `awaiting_first_run` and opens
     nothing. A failing collector is stale at once, grace or not. Past that grace, a
@@ -1150,6 +1152,8 @@ async def detect_stale_log_source_collection(instance_name: str | None = None) -
     `never_collected`, with its own description: silence would claim health no read
     supports.
     """
+
+    policy_settings, _reason = await _effective_settings("detect_stale_log_source_collection")
 
     async def run(
         session: AsyncSession, instance: QRadarInstance, _: QRadarProvider | None
@@ -1178,7 +1182,7 @@ async def detect_stale_log_source_collection(instance_name: str | None = None) -
 
             # One statement, never a count per source: the alert asks only whether
             # there is anything whose silence this collection could confirm.
-            monitored_source_id = await session.scalar(
+            monitored_query = (
                 select(LogSource.id)
                 .where(
                     LogSource.instance_id == instance.id,
@@ -1186,15 +1190,26 @@ async def detect_stale_log_source_collection(instance_name: str | None = None) -
                 )
                 .limit(1)
             )
+            eligible_query = monitored_query
+            if source_pause_enabled(policy_settings):
+                eligible_query = eligible_query.where(active_source(LogSource.enabled.expression))
+            monitored_source_id = await session.scalar(eligible_query)
             if monitored_source_id is None:
-                # Nothing is monitored, so freshness was not measured again: closing the
+                reason = "no_monitored_sources"
+                reason_message = MessageRef(
+                    "alert.log_source_collection.not_judged_no_monitored_sources"
+                )
+                if source_pause_enabled(policy_settings) and await session.scalar(monitored_query):
+                    reason = "all_sources_disabled"
+                    reason_message = MessageRef(
+                        "alert.log_source_collection.not_judged_all_sources_disabled"
+                    )
+                # No eligible source, so freshness was not measured again: closing the
                 # alert must not read as a recovery (rule 8).
                 resolved = await alerts.resolve_by_fingerprint(
                     fingerprint,
                     actor="system:log-source-collection-monitor",
-                    reason_message=MessageRef(
-                        "alert.log_source_collection.not_judged_no_monitored_sources"
-                    ),
+                    reason_message=reason_message,
                 )
                 if resolved is not None and resolved.transition is not None:
                     await dispatcher.enqueue(resolved.alert, resolved.transition)
@@ -1202,7 +1217,7 @@ async def detect_stale_log_source_collection(instance_name: str | None = None) -
                     "status": "ok",
                     "stale": False,
                     "judged": False,
-                    "reason": "no_monitored_sources",
+                    "reason": reason,
                     "duration_ms": int((time.perf_counter() - started) * 1000),
                 }
 

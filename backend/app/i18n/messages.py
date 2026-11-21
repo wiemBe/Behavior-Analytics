@@ -2825,6 +2825,11 @@ REGISTRY: tuple[MessageSpec, ...] = (
         "Closed without a verdict: no log source of this console is monitored, so collection "
         "freshness is not judged.",
     ),
+    _fixed(
+        "alert.log_source_collection.not_judged_all_sources_disabled",
+        "Closed without a verdict: every monitored log source of this console is disabled "
+        "in QRadar, so collection freshness is not judged.",
+    ),
     _text("alert.inventory.log_source.title", "New log source: {name}", name="Edge firewall"),
     _fixed(
         "alert.inventory.log_source.description",
