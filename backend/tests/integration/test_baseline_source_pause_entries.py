@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import re
 import uuid
 from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock
@@ -173,8 +174,9 @@ async def test_one_lock_select_per_batch_plus_three_per_source(rig, policy, hour
     assert sum(s == "COMMIT" for s, _ in operations) == batches
     if policy:
         # Each batch's reads and writes end before the next lock starts.
-        boundaries = ["lock" if "FOR UPDATE" in s else "commit"
-                      for s, _ in operations if "FOR UPDATE" in s or s == "COMMIT"]
+        boundaries = ["lock" if re.search(r"FOR (NO KEY )?UPDATE", s) else "commit"
+                      for s, _ in operations
+                      if re.search(r"FOR (NO KEY )?UPDATE", s) or s == "COMMIT"]
         assert boundaries == ["lock", "commit", "lock", "commit"]
 
 
@@ -195,7 +197,7 @@ async def test_direct_rebuild_wrapper_locked(rig, enabled, policy):
     rebuilt = enabled or not policy
     assert cells == (2 if rebuilt else 0)
     assert len(_locks(operations)) == 1
-    assert "FOR UPDATE" in operations[0][0]
+    assert re.search(r"FOR (NO KEY )?UPDATE", operations[0][0])
     assert sum(s == "COMMIT" for s, _ in operations) == 1
     assert len(await _cells(maker)) == cells
 

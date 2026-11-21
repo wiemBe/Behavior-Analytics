@@ -68,6 +68,8 @@ def pause_overlaps_bucket(
 async def lock_sources(session: AsyncSession, ids: list[UUID]) -> list[LogSource]:
     """Lock at most 100 sources in UUID order, refreshing after any inventory wait.
 
+    NO KEY UPDATE permits child-insert FK KEY SHARE locks while excluding
+    inventory updates and other source-lock holders.
     Ownership follows the transaction: rollback invalidates it and a committed
     savepoint transfers it to its parent. Outer locks are reused inside savepoints.
     No helper commits; callers own the transaction and must do no network work.
@@ -102,7 +104,7 @@ async def lock_sources(session: AsyncSession, ids: list[UUID]) -> list[LogSource
             select(LogSource)
             .where(LogSource.id.in_(missing))
             .order_by(LogSource.id)
-            .with_for_update()
+            .with_for_update(key_share=True)
             .execution_options(populate_existing=True)
         )
         owner = (
