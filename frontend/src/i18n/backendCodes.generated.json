@@ -533,6 +533,13 @@
     "sample_english_params": {},
     "template": "No collection has completed since install. The platform has not read log source volumes yet, so it cannot confirm whether any source is silent. NO_EVENTS alerts are not raised for the missing intervals."
   },
+  "alert.log_source_collection.not_judged_all_sources_disabled": {
+    "params": {},
+    "sample": {},
+    "sample_english": "Closed without a verdict: every monitored log source of this console is disabled in QRadar, so collection freshness is not judged.",
+    "sample_english_params": {},
+    "template": "Closed without a verdict: every monitored log source of this console is disabled in QRadar, so collection freshness is not judged."
+  },
   "alert.log_source_collection.not_judged_no_monitored_sources": {
     "params": {},
     "sample": {},
