@@ -1,20 +1,20 @@
-"""Shared flag access and SQL predicates for the D-52 source-pause policy (P0).
+"""Shared D-52 flag access, SQL predicates and transaction-owned source locks.
 
-Everything here is pure: the rollout flag and the two predicates the design
-names for the pause policy. Nothing calls them yet — S0 registers the switch and
-lands these definitions; the later P slices adopt them at their operator entry
-points. Off stays legacy behavior, so a caller adds these predicates only after
-resolving the switch.
+Callers resolve the rollout switch before applying these predicates or locks;
+with the switch off they retain legacy behavior.
 """
 
 from __future__ import annotations
 
 from datetime import datetime
+from uuid import UUID
 
-from sqlalchemy import ColumnElement, DateTime, cast, func, literal
-from sqlalchemy.orm import QueryableAttribute
+from sqlalchemy import ColumnElement, DateTime, cast, event, func, literal, select
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import QueryableAttribute, Session
 
 from app.core.config import Settings
+from app.models.log_source import LogSource
 
 #: An open pause has no end: half-open overlap uses positive infinity for it.
 _INFINITY = cast(literal("infinity"), DateTime(timezone=True))
@@ -58,3 +58,52 @@ def pause_overlaps_bucket(
     overlap.
     """
     return (bucket_start < func.coalesce(ends_at, _INFINITY)) & (bucket_end > starts_at)
+
+
+async def lock_sources(session: AsyncSession, ids: list[UUID]) -> list[LogSource]:
+    """Lock at most 100 sources in UUID order, refreshing after any inventory wait.
+
+    Ownership follows the transaction: rollback invalidates it and a committed
+    savepoint transfers it to its parent. Outer locks are reused inside savepoints.
+    No helper commits; callers own the transaction and must do no network work.
+    """
+    ordered = sorted(set(ids))
+    if len(ordered) > 100:
+        raise ValueError("source lock batch exceeds 100 ids")
+    if "source_pause_locks" not in session.info:
+        session.info["source_pause_locks"] = {}
+
+        def after_commit(sync_session: Session) -> None:
+            # A released savepoint retains its row locks in the parent transaction.
+            # A rollback leaves its owner inactive instead, so it is purged below.
+            held = sync_session.info["source_pause_locks"]
+            nested = sync_session.get_nested_transaction()
+            if nested is None:
+                held.clear()
+            else:
+                for key, (owner, source) in list(held.items()):
+                    if owner is nested:
+                        held[key] = (nested.parent, source)
+
+        event.listen(session.sync_session, "after_commit", after_commit)
+    held = session.info["source_pause_locks"]
+    for key in ordered:
+        entry = held.get(key)
+        if entry is not None and not entry[0].is_active:
+            del held[key]
+    missing = [key for key in ordered if key not in held]
+    if missing:
+        rows = await session.scalars(
+            select(LogSource)
+            .where(LogSource.id.in_(missing))
+            .order_by(LogSource.id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+        owner = (
+            session.sync_session.get_nested_transaction() or session.sync_session.get_transaction()
+        )
+        assert owner is not None
+        for source in rows:
+            held[source.id] = (owner, source)
+    return [held[key][1] for key in ordered if key in held]

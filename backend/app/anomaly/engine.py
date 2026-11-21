@@ -55,7 +55,7 @@ from app.core.config import Settings, get_settings
 from app.fleet.outage_policy import ResolvedOutage, resolve
 from app.history.origin import is_live_clause
 from app.i18n.messages import MessageRef, render
-from app.log_source_policy import source_pause_enabled
+from app.log_source_policy import lock_sources, source_pause_enabled
 from app.models.alert import Alert
 from app.models.enums import (
     ACTIVE_ANOMALY_STATES,
@@ -110,6 +110,10 @@ SKIPPED_DISABLED_IN_QRADAR = "disabled in QRadar"
 #: Fixed skip reason for a bucket whose half-open interval overlaps a QRadar
 #: pause. The bucket is not judged and nothing is written for it (D-52 P6).
 SKIPPED_OVERLAPS_PAUSE = "overlaps a QRadar pause"
+
+#: Fixed skip reason when a direct caller's source row was deleted before the
+#: lock was acquired. The helper returns no row, so the entry writes nothing.
+SKIPPED_SOURCE_REMOVED = "source no longer exists"
 
 #: Rows the preceding-empty walk examines; the replay uses the same bound
 #: (`app.noise.backtest.PRECEDING_BUCKETS`). The walk needs contiguous rows only,
@@ -418,6 +422,13 @@ class AnomalyEngine:
 
     async def evaluate_pending(self, log_source: LogSource) -> EvaluationReport:
         """Evaluate unseen buckets in order and advance only after each success."""
+        if source_pause_enabled(self.settings):
+            locked = await lock_sources(self.session, [log_source.id])
+            if not locked:
+                return EvaluationReport(
+                    log_source.id, None, skipped_reason=SKIPPED_SOURCE_REMOVED
+                )
+            log_source = locked[0]
         if not log_source.monitoring_enabled:
             return EvaluationReport(
                 log_source.id, None, skipped_reason="monitoring disabled"
@@ -660,6 +671,13 @@ class AnomalyEngine:
     async def evaluate_interval(
         self, log_source: LogSource, metric: LogSourceMetric
     ) -> EvaluationReport:
+        if source_pause_enabled(self.settings):
+            locked = await lock_sources(self.session, [log_source.id])
+            if not locked:
+                return EvaluationReport(
+                    log_source.id, None, skipped_reason=SKIPPED_SOURCE_REMOVED
+                )
+            log_source = locked[0]
         report = EvaluationReport(log_source.id, metric.bucket_start)
 
         if not log_source.monitoring_enabled:
