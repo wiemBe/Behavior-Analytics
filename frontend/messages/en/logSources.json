@@ -73,7 +73,7 @@
       "CONNECTED": "Connected",
       "WARNING": "Warning",
       "CONNECTION_ERROR": "Connection error",
-      "DISABLED_STATUS": "Disabled status",
+      "DISABLED_STATUS": "Disabled",
       "unreported": "Not reported"
     },
     "fieldState": {
@@ -144,6 +144,71 @@
       "duplicate_name": "Duplicate name",
       "wrong_type": "Wrong type",
       "missing": "Missing"
+    }
+  },
+  "viewJdbc": "View JDBC",
+  "jdbcPage": {
+    "title": "JDBC Sources",
+    "loadingWhat": "JDBC sources",
+    "errorWhat": "JDBC sources",
+    "count": "{count, plural, one {# source} other {# sources}}",
+    "allSources": "View log sources",
+    "empty": "No JDBC sources were found in the completed inventory.",
+    "neverCollected": "JDBC inventory has not been collected.",
+    "noMatch": "No JDBC sources match these filters.",
+    "clearFilters": "Clear filters",
+    "pastEnd": "This page has no sources.",
+    "firstPage": "Open first page",
+    "error": "JDBC sources could not be loaded. Retry the request.",
+    "retry": "Retry request",
+    "forbidden": "JDBC sources require read:log_sources.",
+    "snapshotLast": "Last complete inventory",
+    "snapshotAttempt": "Attempt",
+    "snapshotNone": "none",
+    "inventoryStale": "QRadar inventory is stale.",
+    "partial": "JDBC configuration is partial; some sources were not read.",
+    "truncated": "Event measurement was truncated; flow is not judged.",
+    "insufficient": "Flow cannot be judged for this interval.",
+    "notMeasured": "Events were not measured for this interval.",
+    "staleBlocks": "Some configuration or volume is stale; old counts cannot prove current arrival.",
+    "details": "Details",
+    "affected": "Affected on this page: {count}",
+    "table": {
+      "label": "JDBC sources",
+      "source": "Source",
+      "database": "Database",
+      "host": "Host",
+      "enabled": "QRadar enabled",
+      "connection": "Connection",
+      "flow": "Flow",
+      "events": "Events (count)",
+      "observed": "Observed UTC"
+    },
+    "enabledYes": "Enabled",
+    "enabledNo": "Disabled",
+    "connectedZero": "Connected; no attributed events",
+    "configStale": "Configuration stale",
+    "volumeStale": "Volume stale",
+    "filters": {
+      "label": "Filter JDBC sources",
+      "search": "Search JDBC sources",
+      "placeholder": "Name or identifier",
+      "enabled": "QRadar enabled",
+      "any": "Any",
+      "flow": "Flow",
+      "protocol": "Protocol",
+      "protocolOption": "Protocol {id}",
+      "instance": "Console ID",
+      "apply": "Apply filters"
+    },
+    "refresh": {
+      "button": "Refresh JDBC",
+      "queued": "Refresh queued.",
+      "already": "A refresh is already running.",
+      "off": "JDBC collection is off. Turn it on under <features>Administration → Features</features>.",
+      "unavailable": "Refresh could not be queued. Try again.",
+      "forbidden": "Refresh requires admin:*.",
+      "failed": "Refresh failed. Try again."
     }
   }
 }

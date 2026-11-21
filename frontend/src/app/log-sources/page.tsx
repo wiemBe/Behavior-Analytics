@@ -38,6 +38,7 @@ async function LogSourcesPage({ searchParams }: { searchParams: Promise<RawQuery
     <>
       <PageHeader
         guide={guideFor("/log-sources")}
+        actions={<Link href="/log-sources/jdbc">{t("viewJdbc")}</Link>}
         title={t("title")}
         description={
           // A failed read has no count: "0 sources" would claim an empty inventory.

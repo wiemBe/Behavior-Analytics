@@ -45,6 +45,7 @@ export const GUIDE_ROUTES = {
   "/coverage": "coverage",
   "/log-sources": "log-sources",
   "/log-sources/[id]": "log-sources",
+  "/log-sources/jdbc": "log-sources",
   "/searches": "searches",
   "/searches/[id]": "searches",
   "/searches/new": "searches",
