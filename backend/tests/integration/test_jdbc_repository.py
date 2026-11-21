@@ -8,6 +8,7 @@ from __future__ import annotations
 import logging
 import uuid
 from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -248,20 +249,52 @@ async def test_limit_default_and_clamp_and_q_bound(db_session: AsyncSession) -> 
 
 BAD_VALUE = "NotATypeForJDBC"  # fits String(32); the enum parser rejects it
 
+# Every typed safe field, in the exact shape the collector stores it: bools stay bools,
+# intervals and throttles stay counts of seconds, strings stay strings.
+COMPLETE_STORED: dict[str, Any] = {
+    "database_type": "Postgres",
+    "database_host": "db.lab.local",
+    "tls_hostname": "tls.lab.local",
+    "database_port": 1433,
+    "database_name": "events",
+    "schema_name": "dbo",
+    "table_name": "Events",
+    "select_list": "id,msg",
+    "compare_field": "id",
+    "polling_interval_seconds": 3600,
+    "start_time_local": "2026-01-01 00:00",
+    "prepared_statements": False,
+    "predefined_query": "none",
+    "eps_throttle": 0,
+    "source_label": "jdbc-src",
+    "use_ssl": True,
+    "allow_untrusted": False,
+    "advanced_options": False,
+}
+COMPLETE_STATES = {m: {"code": "SET", "reason": None} for m in COMPLETE_STORED}
+
 
 async def _complete_configs(db_session: AsyncSession, ids: list[uuid.UUID]) -> None:
     for source_id in ids:
         db_session.add(JdbcSourceConfig(
-            log_source_id=source_id, protocol_type_id=8, database_type="Postgres",
-            database_host="db.lab.local", database_port=1433,
-            field_states={
-                "database_type": {"code": "SET", "reason": None},
-                "database_host": {"code": "SET", "reason": None},
-                "database_port": {"code": "SET", "reason": None},
-            },
+            log_source_id=source_id, protocol_type_id=8,
+            field_states={m: dict(s) for m, s in COMPLETE_STATES.items()},
             allowlist_version=1, config_state="COMPLETE", observed_at=NOW,
-            last_success_at=NOW))
+            last_success_at=NOW, **COMPLETE_STORED))
     await db_session.flush()
+
+
+async def test_complete_config_all_typed_fields_round_trip(db_session: AsyncSession) -> None:
+    """A stored COMPLETE row with every typed field set stays COMPLETE, not stale."""
+    instance = await console(db_session)
+    ids = await sources(db_session, instance, 1)
+    await _complete_configs(db_session, ids)
+    repo = JdbcRepository(db_session)
+    row = await repo.detail(ids[0], **TIMING)
+    assert row is not None and row.config.safe_fields is not None
+    assert (row.config.state.value, row.config.stale) == ("COMPLETE", False)
+    assert row.config.safe_fields.model_dump() == COMPLETE_STORED
+    assert {k: v.model_dump() for k, v in row.config.field_states.items()} == COMPLETE_STATES
 
 
 async def test_bad_stored_value_degrades_only_its_row(
@@ -272,7 +305,13 @@ async def test_bad_stored_value_degrades_only_its_row(
     await _complete_configs(db_session, ids)
     repo = JdbcRepository(db_session)
     baseline = {i.id: i.model_dump(mode="json") for i in (await repo.list(**TIMING)).items}
-    assert all(baseline[i]["config"]["state"] == "COMPLETE" for i in ids)
+    assert all(
+        baseline[i]["config"]["state"] == "COMPLETE"
+        and baseline[i]["config"]["stale"] is False
+        and baseline[i]["config"]["safe_fields"] == COMPLETE_STORED
+        and baseline[i]["config"]["field_states"] == COMPLETE_STATES
+        for i in ids
+    )
 
     await db_session.execute(
         update(JdbcSourceConfig.__table__)
@@ -321,3 +360,71 @@ async def test_bad_stored_field_state_degrades_same_way(db_session: AsyncSession
     assert states["database_type"] == {"code": "UNAVAILABLE", "reason": "unsupported_value"}
     assert "ghost" not in states
     assert (row.config.state.value, row.config.stale) == ("PARTIAL", True)
+
+
+def _stored_row(**over: Any) -> SimpleNamespace:
+    """A page-query-shaped config row for typed values no DB column can hold.
+
+    PostgreSQL booleans only store true/false and the integer CHECKs mirror their
+    parsers, so a bad stored bool or interval is simulated at the row boundary.
+    """
+    values = dict(COMPLETE_STORED)
+    values.update(over)
+    return SimpleNamespace(
+        id=uuid.uuid4(), protocol_type_id=8, config_present=True,
+        cfg_config_state="COMPLETE", cfg_failure_code=None,
+        cfg_observed_at=NOW, cfg_last_success_at=NOW,
+        cfg_field_states={m: dict(s) for m, s in COMPLETE_STATES.items()},
+        **{f"cfg_{m}": v for m, v in values.items()},
+    )
+
+
+@pytest.mark.parametrize("member, bad", [
+    ("use_ssl", "TRUE"),  # a stored string skips bool lowercasing, so the parser rejects it
+    ("polling_interval_seconds", "3600x"),
+])
+def test_bad_stored_typed_value_degrades_only_its_field(member: str, bad: Any) -> None:
+    config = JdbcRepository._config(_stored_row(**{member: bad}))
+    assert (config.state.value, config.stale) == ("PARTIAL", True)
+    assert config.safe_fields is not None
+    fields = config.safe_fields.model_dump()
+    assert fields[member] is None
+    assert {k: v for k, v in fields.items() if k != member} == {
+        k: v for k, v in COMPLETE_STORED.items() if k != member}
+    states = {k: v.model_dump() for k, v in config.field_states.items()}
+    assert states[member] == {"code": "UNAVAILABLE", "reason": "unsupported_value"}
+    assert {k: v for k, v in states.items() if k != member} == {
+        k: v for k, v in COMPLETE_STATES.items() if k != member}
+
+
+async def test_non_dict_field_state_degrades_typed_member(db_session: AsyncSession) -> None:
+    """A None or list entry hits the TypeError half of the field-state guard."""
+    instance = await console(db_session)
+    ids = await sources(db_session, instance, 2)
+    await _complete_configs(db_session, ids)
+    repo = JdbcRepository(db_session)
+    await db_session.execute(
+        update(JdbcSourceConfig.__table__)
+        .where(JdbcSourceConfig.__table__.c.log_source_id == ids[0])
+        .values(field_states={
+            "database_type": None,
+            "database_host": ["SET", None],
+            "database_port": {"code": "SET", "reason": None},
+        }))
+
+    row = await repo.detail(ids[0], **TIMING)
+    assert row is not None and row.config.safe_fields is not None
+    fields = row.config.safe_fields.model_dump()
+    assert fields["database_type"] is None and fields["database_host"] is None
+    assert fields["database_port"] == 1433
+    states = {k: v.model_dump() for k, v in row.config.field_states.items()}
+    assert states["database_type"] == {"code": "UNAVAILABLE", "reason": "unsupported_value"}
+    assert states["database_host"] == {"code": "UNAVAILABLE", "reason": "unsupported_value"}
+    assert states["database_port"] == {"code": "SET", "reason": None}
+    assert (row.config.state.value, row.config.stale) == ("PARTIAL", True)
+
+    good = await repo.detail(ids[1], **TIMING)
+    assert good is not None
+    assert (good.config.state.value, good.config.stale) == ("COMPLETE", False)
+    assert {k: v.model_dump() for k, v in good.config.field_states.items()} == COMPLETE_STATES
+
