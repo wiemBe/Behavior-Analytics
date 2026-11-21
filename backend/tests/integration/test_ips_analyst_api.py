@@ -602,7 +602,8 @@ def test_repeated_subject_kinds_keep_the_list_at_two_statements(db_schema) -> No
         ],
     )
     assert two.status_code == 200
-    assert client.statements == one_statements == 2
+    # +1: the effective-settings feature_switch read (D-52 P10b)
+    assert client.statements == one_statements == 3
 
 
 def test_pagination_across_a_tie_keeps_every_row(db_schema) -> None:
@@ -662,7 +663,8 @@ def test_unified_list_statement_count_is_two_at_any_size(db_schema) -> None:
     assert len(body["items"]) == 33
     assert client.statements == small, (small, client.statements)
     # Pinned so a per-family or per-row query cannot hide behind "still constant".
-    assert small == 2, small
+    # +1: the effective-settings feature_switch read (D-52 P10b)
+    assert small == 3, small
 
 
 # ---------------------------------------------------------------------- detail

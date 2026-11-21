@@ -307,7 +307,8 @@ def test_unified_list_statement_count_is_constant(db_schema) -> None:
     assert len(body["items"]) == 60
     assert client.statements == small, (small, client.statements)
     # Measured for the report; a count query plus a page query, whatever the size.
-    assert small == 2, small
+    # +1: the effective-settings feature_switch read (D-52 P10b)
+    assert small == 3, small
 
 
 # ---------------------------------------------------------------------- detail

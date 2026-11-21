@@ -8,6 +8,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings, get_settings
+from app.log_source_policy import source_pause_enabled
 from app.models.alert import Alert
 from app.models.enums import ACTIVE_ANOMALY_STATES, AlertStatus, AnomalyType
 from app.models.instance import QRadarInstance
@@ -33,7 +34,9 @@ class OverviewService:
         instance = await self.session.scalar(select(QRadarInstance).limit(1))
 
         counts = await self.ls_repo.overview_counts()
-        anomalous = await self.ls_repo.anomalous_source_count()
+        anomalous = await self.ls_repo.anomalous_source_count(
+            source_pause=source_pause_enabled(self.settings)
+        )
         silent = await self._silent_count()
         inventory_state = await self._inventory_state(instance)
 
