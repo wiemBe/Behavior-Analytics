@@ -8,3 +8,62 @@
 .log-sources-table td.cell-name {
   min-width: 22ch;
 }
+
+/* The JDBC list: values wrap inside their cell; state lines sit between the filters and the table. */
+.jdbc-table th {
+  white-space: normal;
+}
+.jdbc-table td.cell-wrap {
+  min-width: 12ch;
+  max-width: 18ch;
+  overflow-wrap: break-word;
+}
+/* Times, counts and ports never split; text breaks only at spaces and the middle dot. */
+.jdbc-table td.nowrap,
+.jdbc-table.table-dense td.num {
+  white-space: nowrap;
+}
+/* A host name keeps its dots on one line until a full name no longer fits. */
+.jdbc-table td.cell-host {
+  min-width: 19ch;
+  max-width: 22ch;
+}
+.jdbc-table td.cell-name {
+  min-width: 12ch;
+}
+.jdbc-snapshot,
+.jdbc-notes {
+  margin: 0 0 var(--sp-4);
+  font-size: var(--fs-sm);
+}
+.jdbc-stale {
+  color: var(--warn-text);
+}
+.jdbc-notes {
+  list-style: none;
+  padding: 0;
+  color: var(--text-2);
+}
+.jdbc-notes li + li {
+  margin-top: var(--sp-1);
+}
+.jdbc-details {
+  display: inline-block;
+  margin-inline-start: var(--sp-3);
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+}
+.jdbc-details p {
+  margin: var(--sp-1) 0 0;
+}
+/* The outcome hangs under the button without taking height, so the header does not move. */
+.jdbc-refresh {
+  position: relative;
+}
+.jdbc-refresh .change-status {
+  position: absolute;
+  top: 100%;
+  inset-inline-end: 0;
+  max-width: none;
+  white-space: nowrap;
+}
