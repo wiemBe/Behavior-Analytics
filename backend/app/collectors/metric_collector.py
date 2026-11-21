@@ -1402,7 +1402,14 @@ class MetricCollector:
                 )
             )
         ).all()
-        builder = BaselineBuilder(self.session, settings=self.settings)
+        if source_pause_enabled(self.settings):
+            # D-98: stay in the history savepoint without taking source locks.
+            sources = [source for source in sources if source.enabled is True]
+            builder = BaselineBuilder(
+                self.session, settings=self.settings, source_pause_policy=True
+            )
+        else:
+            builder = BaselineBuilder(self.session, settings=self.settings)
         # One read of the analyst training exclusions for the batch (SOC-13c).
         await builder.rebuild_many(sources, now=now)
         report.rebuilt = len(sources)
