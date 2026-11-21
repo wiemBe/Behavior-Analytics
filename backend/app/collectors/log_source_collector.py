@@ -151,7 +151,11 @@ class LogSourceCollector:
                     self.provider,
                     settings=self.settings,
                     clock=self._clock,
-                ).sync(instance, bootstrap_hint=watermark.watermark_at is None)
+                ).sync(
+                    instance,
+                    bootstrap_hint=watermark.watermark_at is None,
+                    previous_complete_watermark=watermark.watermark_at,
+                )
             except ProviderError as exc:
                 report.status = RUN_FAILED
                 report.failure_kind = failure_kind(exc)
