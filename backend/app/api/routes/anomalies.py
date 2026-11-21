@@ -46,6 +46,7 @@ from app.history.origin import origin_of
 from app.history.state import HistoryFamily
 from app.i18n.messages import MessageRef
 from app.i18n.refusal import CodedHTTPException, permission_refusal
+from app.log_source_policy import source_pause_enabled
 from app.models.enums import (
     AnomalyFamily,
     AnomalyState,
@@ -327,6 +328,7 @@ async def _unified_rows(
     # `owner=me` is resolved here, against the authenticated principal, not in SQL:
     # the database has no notion of the caller. `none` stays a literal and asks for
     # an unowned item, including one with no triage row at all.
+    source_pause = source_pause_enabled(settings)
     owner_filter = principal.subject if owner == "me" else owner
     rows, total = await repo.list_unified(
         limit=limit,
@@ -345,6 +347,7 @@ async def _unified_rows(
         triage_owner=owner_filter,
         triage_disposition=disposition,
         active_only=active_only,
+        source_pause=source_pause,
         since=start,
         until=end,
     )
@@ -354,7 +357,7 @@ async def _unified_rows(
 @router.get("", response_model=PagedAnomalies)
 async def list_anomalies(
     session: SessionDep,
-    settings: SettingsDep,
+    settings: EffectiveSettingsDep,
     principal: PrincipalDep,
     log_source_id: uuid.UUID | None = Query(default=None),
     instance_id: uuid.UUID | None = Query(default=None),
@@ -479,7 +482,7 @@ def _anomaly_export_row(row: dict) -> tuple[object, ...]:
 )
 async def export_anomalies_csv(
     session: SessionDep,
-    settings: SettingsDep,
+    settings: EffectiveSettingsDep,
     principal: PrincipalDep,
     log_source_id: uuid.UUID | None = Query(default=None),
     instance_id: uuid.UUID | None = Query(default=None),
@@ -645,9 +648,12 @@ async def _list_items(
 
 
 @router.get("/summary", response_model=BehaviorSummaryOut)
-async def anomaly_summary(session: SessionDep) -> BehaviorSummaryOut:
+async def anomaly_summary(
+    session: SessionDep, settings: EffectiveSettingsDep
+) -> BehaviorSummaryOut:
+    source_pause = source_pause_enabled(settings)
     repo = AnomalyRepository(session)
-    counts = await repo.state_counts()
+    counts = await repo.state_counts(source_pause=source_pause)
     evidence = await repo.evidence_counts()
     sources = await repo.monitored_sources()
 
@@ -684,7 +690,9 @@ async def anomaly_summary(session: SessionDep) -> BehaviorSummaryOut:
 
     # The same population as `GET /anomalies?active_only=true` without `since`: every active
     # incident up to `now`, however old, so the family counts add up to that list's total.
-    family_counts = await repo.active_family_counts(since=None, until=now)
+    family_counts = await repo.active_family_counts(
+        since=None, until=now, source_pause=source_pause
+    )
 
     def family(name: str) -> ActiveStateCounts:
         by_state = {s.value: family_counts.get((name, s.value), 0) for s in active}
@@ -710,7 +718,9 @@ async def anomaly_summary(session: SessionDep) -> BehaviorSummaryOut:
         buckets_not_judged=buckets_not_judged,
         resolved_last_24h=resolved_last_24h,
         recently_resolved=await _list_items(repo, await repo.recently_resolved()),
-        highest_deviation=await _list_items(repo, await repo.highest_deviation()),
+        highest_deviation=await _list_items(
+            repo, await repo.highest_deviation(source_pause=source_pause)
+        ),
         active_by_family=ActiveByFamily(
             log_source=family("log_source"),
             waf=family("waf"),

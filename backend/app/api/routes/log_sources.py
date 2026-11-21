@@ -10,13 +10,14 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
 
 from app.anomaly.thresholds import ThresholdResolver, direction_excluded
-from app.api.deps import SessionDep, SettingsDep
+from app.api.deps import EffectiveSettingsDep, SessionDep, SettingsDep
 from app.api.routes import jdbc as jdbc_routes
 from app.fleet.review import review_classification
 from app.fleet.service import reclassify_instance
 from app.fleet.sources import load_rows
 from app.i18n.messages import MessageRef
 from app.i18n.refusal import permission_refusal
+from app.log_source_policy import source_pause_enabled
 from app.models.enums import AnomalyState, Criticality
 from app.models.fleet import LogSourceClassification
 from app.models.log_source import LogSource
@@ -130,7 +131,7 @@ MAX_LIST_IDS = 200
 @router.get("", response_model=LogSourcePage)
 async def list_log_sources(
     session: SessionDep,
-    settings: SettingsDep,
+    settings: EffectiveSettingsDep,
     monitored_only: bool = Query(default=False),
     q: str | None = Query(default=None, max_length=200),
     ids: Annotated[list[uuid.UUID] | None, Query(max_length=MAX_LIST_IDS)] = None,
@@ -139,16 +140,19 @@ async def list_log_sources(
 ) -> LogSourcePage:
     """One page of the inventory by name, with the exact total of what matches.
 
-    Three statements however many sources exist: the page, its count and the open-anomaly
+    Three inventory statements however many sources exist: the page, its count and the open-anomaly
     counts of the page's sources only. A `limit` above `api_max_page_size` is clamped to it
     and the envelope says the limit used.
     """
+    source_pause = source_pause_enabled(settings)
     bounded = max(1, min(limit, settings.api_max_page_size))
     repo = LogSourceRepository(session)
     sources, total = await repo.list_page(
         limit=bounded, offset=offset, q=q, ids=ids, monitored_only=monitored_only
     )
-    counts = await repo.open_anomaly_counts([ls.id for ls in sources])
+    counts = await repo.open_anomaly_counts(
+        [ls.id for ls in sources], source_pause=source_pause
+    )
     return LogSourcePage(
         items=[_to_summary(ls, counts) for ls in sources],
         total=total,
@@ -158,12 +162,15 @@ async def list_log_sources(
 
 
 @router.get("/{log_source_id}", response_model=LogSourceDetail)
-async def get_log_source(log_source_id: uuid.UUID, session: SessionDep) -> LogSourceDetail:
+async def get_log_source(
+    log_source_id: uuid.UUID, session: SessionDep, settings: EffectiveSettingsDep
+) -> LogSourceDetail:
+    source_pause = source_pause_enabled(settings)
     repo = LogSourceRepository(session)
     ls = await repo.get(log_source_id)
     if ls is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "log source not found")
-    counts = await repo.open_anomaly_counts()
+    counts = await repo.open_anomaly_counts([log_source_id], source_pause=source_pause)
     detail = LogSourceDetail.model_validate(ls)
     detail.open_anomaly_count = counts.get(ls.id, 0)
     return detail
@@ -179,11 +186,14 @@ async def get_log_source_pivot(log_source_id: uuid.UUID, session: SessionDep) ->
 
 
 @router.get("/{log_source_id}/anomalies", response_model=list[AnomalySummary])
-async def get_anomalies(log_source_id: uuid.UUID, session: SessionDep) -> list[AnomalySummary]:
+async def get_anomalies(
+    log_source_id: uuid.UUID, session: SessionDep, settings: EffectiveSettingsDep
+) -> list[AnomalySummary]:
+    source_pause = source_pause_enabled(settings)
     repo = LogSourceRepository(session)
     if await repo.get(log_source_id) is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "log source not found")
-    anomalies = await repo.open_anomalies_for(log_source_id)
+    anomalies = await repo.open_anomalies_for(log_source_id, source_pause=source_pause)
     return [AnomalySummary.model_validate(a) for a in anomalies]
 
 
@@ -192,11 +202,13 @@ async def update_log_source(
     log_source_id: uuid.UUID,
     payload: LogSourceUpdate,
     session: SessionDep,
+    settings: EffectiveSettingsDep,
     principal: PrincipalDep,
 ) -> LogSourceDetail:
     """Update operator-owned SOC metadata. QRadar-mirrored fields are read-only
     and not present on the update schema. Requires log_source:write, and the
     change is audited as {field: {from, to}}."""
+    source_pause = source_pause_enabled(settings)
     _guard(principal, PERM_LOG_SOURCE_WRITE)
     repo = LogSourceRepository(session)
     ls = await repo.get(log_source_id)
@@ -234,7 +246,7 @@ async def update_log_source(
         object_type="log_source", object_id=str(log_source_id), detail=audit_detail,
     )
 
-    counts = await repo.open_anomaly_counts()
+    counts = await repo.open_anomaly_counts([log_source_id], source_pause=source_pause)
     detail = LogSourceDetail.model_validate(ls)
     detail.open_anomaly_count = counts.get(ls.id, 0)
     return detail

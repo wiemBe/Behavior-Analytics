@@ -908,15 +908,24 @@ class AnomalyRepository:
         )
         return {str(status): int(count) for status, count in rows.all()}
 
-    async def state_counts(self) -> dict[tuple[str, str], int]:
-        """Anomaly counts keyed by (state, anomaly_type)."""
-        rows = await self.session.execute(
-            select(
-                LogSourceAnomaly.state,
-                LogSourceAnomaly.anomaly_type,
-                func.count(),
-            ).group_by(LogSourceAnomaly.state, LogSourceAnomaly.anomaly_type)
-        )
+    async def state_counts(self, *, source_pause: bool = False) -> dict[tuple[str, str], int]:
+        """Counts by (state, anomaly_type); `source_pause` filters only active rows.
+
+        The caller resolves D-52; non-active rows remain an all-source census.
+        """
+        stmt = select(
+            LogSourceAnomaly.state,
+            LogSourceAnomaly.anomaly_type,
+            func.count(),
+        ).group_by(LogSourceAnomaly.state, LogSourceAnomaly.anomaly_type)
+        if source_pause:
+            stmt = stmt.join(LogSource, LogSource.id == LogSourceAnomaly.log_source_id).where(
+                or_(
+                    LogSourceAnomaly.state.not_in([s.value for s in ACTIVE_ANOMALY_STATES]),
+                    active_source(LogSource.enabled.expression),
+                )
+            )
+        rows = await self.session.execute(stmt)
         return {(str(s), str(t)): int(c) for s, t, c in rows.all()}
 
     async def active_family_counts(
@@ -994,27 +1003,27 @@ class AnomalyRepository:
         )
         return int(count or 0)
 
-    async def highest_deviation(self, *, limit: int = 10) -> list[LogSourceAnomaly]:
+    async def highest_deviation(
+        self, *, limit: int = 10, source_pause: bool = False
+    ) -> list[LogSourceAnomaly]:
         """Active anomalies ranked by how far they departed from expectation.
 
+        With the caller-resolved `source_pause`, require the stored source to be enabled.
         Ordered on deviation_ratio with NULLs last: an anomaly whose expected
         value was zero has no ratio, and sorting it as if it were zero would put
         the least-quantified incidents at the top.
         """
-        return list(
-            (
-                await self.session.scalars(
-                    select(LogSourceAnomaly)
-                    .where(
-                        LogSourceAnomaly.state.in_(
-                            [s.value for s in ACTIVE_ANOMALY_STATES]
-                        )
-                    )
-                    .order_by(LogSourceAnomaly.deviation_ratio.desc().nullslast())
-                    .limit(limit)
-                )
-            ).all()
+        stmt = (
+            select(LogSourceAnomaly)
+            .where(LogSourceAnomaly.state.in_([s.value for s in ACTIVE_ANOMALY_STATES]))
+            .order_by(LogSourceAnomaly.deviation_ratio.desc().nullslast())
+            .limit(limit)
         )
+        if source_pause:
+            stmt = stmt.join(LogSource, LogSource.id == LogSourceAnomaly.log_source_id).where(
+                active_source(LogSource.enabled.expression)
+            )
+        return list((await self.session.scalars(stmt)).all())
 
     # -------------------------------------------------------------- behavior
     async def latest_bucket(self, log_source_id: uuid.UUID) -> LogSourceMetric | None:

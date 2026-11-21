@@ -543,4 +543,5 @@ def test_anomalies_csv_statement_count_does_not_grow_with_the_rows(db_schema) ->
     assert client.get(ANOMALIES_CSV, params=RANGE).status_code == 200
     assert client.statements == small, (small, client.statements)
     # The union's count and its page: the same two statements the JSON list makes.
-    assert small == 2
+    # +1: the effective-settings feature_switch read (D-52 P10b)
+    assert small == 3
