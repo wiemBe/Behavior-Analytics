@@ -34,6 +34,7 @@ from typing import Any, ClassVar, NamedTuple, Protocol, cast
 from urllib.parse import quote
 
 import httpx
+from billiard.exceptions import SoftTimeLimitExceeded
 
 from app.catchall.keyed_rows import parse_catchall_rows, validate_catchall_type_ids
 from app.collectors.bucketed_metrics import (
@@ -1135,6 +1136,10 @@ class QRadarRestProvider(QRadarProvider):
                 page_size=JDBC_PAGE_SIZE, inventory_walk=budget, page_consumer=consume,
             )
             complete = not walk.truncated and budget.complete
+        except SoftTimeLimitExceeded:
+            # A Celery signal inside the coroutine must unwind, not be reported as
+            # a malformed page and keep applying past the soft limit.
+            raise
         except Exception:
             # Unexpected transport/decoder/projector errors carry no upstream evidence out.
             failed_page = budget.pages_done + budget.pages_failed

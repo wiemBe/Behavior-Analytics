@@ -64,13 +64,14 @@ def check(value: str, pattern: re.Pattern[str] | None, limit: int) -> str:
 
 
 def host(value: str) -> str:
-    try:
-        address = ipaddress.ip_address(value)
-    except ValueError:
-        return check(value, H, 253)
-    if str(address) != value:
-        raise Bad
-    return value
+    canonical: str | None = None
+    with suppress(ValueError):  # no ipaddress value in a raised error's __context__
+        canonical = str(ipaddress.ip_address(value))
+    if canonical is not None:
+        if canonical != value:
+            raise Bad
+        return value
+    return check(value, H, 253)
 
 
 def integer(value: str, low: int, high: int) -> int:

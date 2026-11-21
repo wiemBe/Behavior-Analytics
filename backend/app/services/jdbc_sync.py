@@ -12,7 +12,7 @@ from datetime import datetime
 from typing import Any, cast
 from uuid import UUID
 
-from sqlalchemy import Table, delete, or_, select
+from sqlalchemy import Table, delete, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.engine import CursorResult
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -235,7 +235,8 @@ async def apply_jdbc_walk(
     # statement (design §3).
     non_jdbc = select(LogSource.id).where(
         LogSource.instance_id == instance_id,
-        or_(LogSource.protocol_type_id.is_(None), LogSource.protocol_type_id != 8),
+        LogSource.protocol_type_id.isnot(None),
+        LogSource.protocol_type_id != 8,
     )
     result = cast(
         CursorResult[Any],

@@ -53,7 +53,7 @@ from app.identity.collector import IdentityCollector
 from app.identity.profiles import IdentityProfileError, IdentityProfileService
 from app.identity.retention import IdentityRetention
 from app.identity.revalidation import IdentityRevalidator, failure_token
-from app.jdbc.jobs import request_jdbc_run, run_jdbc_collection
+from app.jdbc.jobs import request_jdbc_run, reset_walk_attempt, run_jdbc_collection
 from app.log_source_policy import active_source, source_pause_enabled
 from app.models.enums import AlertDigestState, EvidenceStatus, ExecutionStatus, Severity
 from app.models.identity_detection import IdentitySourceProfile
@@ -151,6 +151,7 @@ _WALK_COLLECTORS = {
     "sync_log_sources": "log_source_inventory",
     "sync_rule_inventory": "rule_inventory",
     "collect_offenses": "offense_snapshot",
+    "collect_jdbc_configs": "jdbc_sync",
 }
 
 _WALK_TARGET: ContextVar[list[tuple[uuid.UUID, str]] | None] = ContextVar(
@@ -164,6 +165,9 @@ class WalkTask(Task):
     def __call__(self, *args: Any, **kwargs: Any) -> Any:
         target: list[tuple[uuid.UUID, str]] = []
         token = _WALK_TARGET.set(target)
+        # A fresh cell survives the asyncio.run context copies: the claiming
+        # coroutine publishes into it and the timeout recorder reads the same object.
+        reset_walk_attempt()
         try:
             return super().__call__(*args, **kwargs)
         except SoftTimeLimitExceeded:
@@ -184,6 +188,28 @@ async def _record_walk_timeout(instance_id: uuid.UUID, collector: str) -> None:
     from app.models.property_catalog import PropertyCatalogState
 
     now = datetime.now(UTC)
+    if collector == "jdbc_sync":
+        # Only the attempt THIS task claimed may be recorded. With no published id
+        # the signal belongs to a provider build, a coalesced pass or a finished
+        # attempt, so nothing is written: no row is created, no QUEUED request,
+        # COMPLETE row or another worker's RUNNING lease is touched.
+        from app.jdbc.jobs import (
+            FAILURE_SOFT_TIMEOUT,
+            _commit_state,
+            published_walk_attempt,
+        )
+
+        attempt_id = published_walk_attempt()
+        if attempt_id is None:
+            return
+        # Both guards matter: the id scopes the UPDATE to one claim, and the
+        # RUNNING state keeps a row this attempt already finished intact.
+        await _commit_state(
+            get_sessionmaker(), instance_id, now,
+            state="FAILED", code=FAILURE_SOFT_TIMEOUT,
+            attempt_id=attempt_id, require_running=True,
+        )
+        return
     async with get_sessionmaker()() as session:
         if collector == "property_catalog":
             state = await session.get(PropertyCatalogState, instance_id)

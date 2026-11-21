@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Callable, Mapping
+from contextvars import ContextVar
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Any, cast
@@ -31,14 +32,49 @@ from app.services.jdbc_sync import JdbcApplySummary
 logger = logging.getLogger("app.jdbc.jobs")
 SYNC = cast(Table, JdbcSyncState.__table__)
 
+# A mutable cell, not a plain value: WalkTask.__call__ creates it before asyncio.run
+# copies the context, so the id published by the claiming coroutine is visible to
+# WalkTask when it records a soft timeout in a fresh loop. Never set outside a walk.
+_WALK_ATTEMPT: ContextVar[list[UUID | None] | None] = ContextVar(
+    "jdbc_walk_attempt", default=None
+)
+
+
+def reset_walk_attempt() -> None:
+    """Start a task with an empty cell; a stale id from an earlier task must not leak."""
+    _WALK_ATTEMPT.set([None])
+
+
+def publish_walk_attempt(attempt_id: UUID) -> None:
+    """The claim that this task owns, published only after its claim commits."""
+    cell = _WALK_ATTEMPT.get()
+    if cell is not None:
+        cell[0] = attempt_id
+
+
+def clear_walk_attempt() -> None:
+    """This task no longer owns a live attempt (finished, superseded or failed)."""
+    cell = _WALK_ATTEMPT.get()
+    if cell is not None:
+        cell[0] = None
+
+
+def published_walk_attempt() -> UUID | None:
+    """The attempt a walk-timeout record may scope to, or None to record nothing."""
+    cell = _WALK_ATTEMPT.get()
+    return cell[0] if cell is not None else None
+
+
 STATE_QUEUED = "QUEUED"
 STATE_RUNNING = "RUNNING"
 STATE_FAILED = "FAILED"
+STATE_PARTIAL = "PARTIAL"
 STATE_UNSUPPORTED = "UNSUPPORTED"
 
 FAILURE_PROVIDER_UNSUPPORTED = "provider_unsupported"
 FAILURE_WORKER_LOST = "worker_lost"
 FAILURE_SOFT_TIMEOUT = "soft_timeout"
+FAILURE_EMPTY_UNPROVEN = "empty_unproven"
 FAILURE_INTERNAL_ERROR = "internal_error"
 
 _NULLABLE = (
@@ -83,7 +119,7 @@ def _emit(result: JdbcRunResult) -> JdbcRunResult:
     if result.apply:
         extra.update(
             written=result.apply.written, unmatched=result.apply.unmatched,
-            cleared=result.apply.cleared,
+            cleared=result.apply.cleared, empty_unproven=result.apply.empty_unproven,
         )
     logger.info("jdbc collection run", extra=extra)
     return result
@@ -182,15 +218,21 @@ async def _still_current(session: AsyncSession, instance_id: UUID, attempt_id: U
 
 
 async def _finish(
-    session: AsyncSession, instance_id: UUID, attempt_id: UUID, walk: JdbcConfigWalk, now: datetime
+    session: AsyncSession, instance_id: UUID, attempt_id: UUID, walk: JdbcConfigWalk, now: datetime,
+    *, empty_unproven: bool = False,
 ) -> None:
     pages, rows, failures, elapsed_ms, failed_page, code = _counts(walk)
+    state = walk.state.value
+    if empty_unproven:
+        # A COMPLETE walk with no rows but known JDBC inventory proves nothing:
+        # do not claim a clean pass or advance last_complete_at (D-95 N1).
+        state, code = STATE_PARTIAL, FAILURE_EMPTY_UNPROVEN
     values: dict[str, Any] = {
-        "state": walk.state.value, "pages": pages, "rows": rows, "failures": failures,
+        "state": state, "pages": pages, "rows": rows, "failures": failures,
         "elapsed_ms": elapsed_ms, "failed_page": failed_page, "failure_code": code,
         "finished_at": now, "lease_expires_at": None,
     }
-    if walk.state is JdbcWalkState.COMPLETE:
+    if not empty_unproven and walk.state is JdbcWalkState.COMPLETE:
         values["last_complete_at"] = now
     await session.execute(
         update(SYNC)
@@ -201,12 +243,19 @@ async def _finish(
 
 async def _commit_state(
     maker: _MAKER, instance_id: UUID, now: datetime, *, state: str, code: str,
-    attempt_id: UUID | None = None,
+    attempt_id: UUID | None = None, require_running: bool = False,
 ) -> None:
-    """A fresh, committed transaction; fixed code only, never exception text."""
+    """A fresh, committed transaction; fixed code only, never exception text.
+
+    An `attempt_id` scopes the UPDATE to one claim, so a newer claim is never
+    overwritten. `require_running` adds the live-state guard a late walk-timeout
+    needs: a row this attempt already finished keeps its COMPLETE/PARTIAL state.
+    """
     where = SYNC.c.instance_id == instance_id
     if attempt_id is not None:
         where = where & (SYNC.c.attempt_id == attempt_id)
+    if require_running:
+        where = where & (SYNC.c.state == STATE_RUNNING)
     values: dict[str, Any] = {
         "state": state, "failure_code": code, "finished_at": now, "lease_expires_at": None,
     }
@@ -249,15 +298,20 @@ async def run_jdbc_collection(
     if attempt_id is None:
         return _emit(JdbcRunResult(state="coalesced"))
 
+    publish_walk_attempt(attempt_id)
     try:
         walk = await provider.walk_jdbc_configs(**walk_kwargs)
         now = clock()
         async with sessionmaker() as apply_session:
             if not await _still_current(apply_session, instance_id, attempt_id):
                 await apply_session.rollback()
+                clear_walk_attempt()
                 return _emit(JdbcRunResult(state="superseded"))
             summary = await jdbc_sync.apply_jdbc_walk(apply_session, instance_id, walk, now=now)
-            await _finish(apply_session, instance_id, attempt_id, walk, now)
+            await _finish(
+                apply_session, instance_id, attempt_id, walk, now,
+                empty_unproven=summary.empty_unproven,
+            )
             await apply_session.commit()
     except Exception as exc:
         code = (
@@ -268,13 +322,18 @@ async def run_jdbc_collection(
         await _commit_state(
             sessionmaker, instance_id, clock(), state=STATE_FAILED, code=code, attempt_id=attempt_id
         )
+        clear_walk_attempt()
         _emit(JdbcRunResult(state=STATE_FAILED, failure_code=code))
         raise
+    clear_walk_attempt()
 
     pages, rows, failures, elapsed_ms, failed_page, walk_code = _counts(walk)
+    empty_unproven = bool(summary.empty_unproven)
+    state = STATE_PARTIAL if empty_unproven else walk.state.value
+    outcome_code = FAILURE_EMPTY_UNPROVEN if empty_unproven else walk_code
     return _emit(
         JdbcRunResult(
-            state=walk.state.value, failure_code=walk_code, pages=pages, rows=rows,
+            state=state, failure_code=outcome_code, pages=pages, rows=rows,
             failures=failures, elapsed_ms=elapsed_ms, failed_page=failed_page, apply=summary,
         )
     )

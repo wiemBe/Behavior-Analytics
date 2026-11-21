@@ -25,6 +25,7 @@ from app.jdbc.parameters import (
     ALLOWED_UPSTREAM_NAMES,
     SHAPES,
     Bad,
+    host,
     project_jdbc_config,
     start,
 )
@@ -461,6 +462,19 @@ def test_internal_parse_error_detaches_context() -> None:
         start("2026-13-20 10:30")
     assert caught.value.__cause__ is None
     assert caught.value.__context__ is None
+
+
+def test_host_parse_error_detaches_context() -> None:
+    """B6: a hostname rejected after the IP parse must not carry the raw value."""
+    raw = "jdbc:secret-canary-4d2e"
+    with pytest.raises(Bad) as caught:
+        host(raw)
+    assert caught.value.__cause__ is None
+    assert caught.value.__context__ is None
+    rendered = "".join(
+        traceback.format_exception(type(caught.value), caught.value, caught.value.__traceback__)
+    )
+    assert raw not in rendered
 
 
 def test_length_bounds_at_and_over_limit() -> None:

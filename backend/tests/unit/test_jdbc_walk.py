@@ -14,6 +14,7 @@ from dataclasses import asdict, dataclass
 import httpx
 import pytest
 import pytest_asyncio
+from billiard.exceptions import SoftTimeLimitExceeded
 
 from app.jdbc.dto import (
     ConfigState,
@@ -724,6 +725,21 @@ async def test_process_control_exceptions_propagate(signal: type[BaseException])
     walker = provider(handler)
     try:
         with pytest.raises(signal, match="control"):
+            await walker.walk_jdbc_configs()
+    finally:
+        await walker.aclose()
+
+
+@pytest.mark.asyncio
+async def test_soft_time_limit_propagates() -> None:
+    """FIX-96 B9: a Celery soft limit landing in the coroutine must not be swallowed."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise SoftTimeLimitExceeded("control")
+
+    walker = provider(handler)
+    try:
+        with pytest.raises(SoftTimeLimitExceeded, match="control"):
             await walker.walk_jdbc_configs()
     finally:
         await walker.aclose()

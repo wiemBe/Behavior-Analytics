@@ -307,6 +307,7 @@ async def test_unmatched_changed_protocol_not_written(db_session: AsyncSession) 
     await db_session.flush()
 
     statements, stop = capture(db_session)
+    before_300 = (await configs(db_session, instance_id))[300]
     try:
         summary = await apply_jdbc_walk(
             db_session,
@@ -325,14 +326,33 @@ async def test_unmatched_changed_protocol_not_written(db_session: AsyncSession) 
 
     assert summary.unmatched == 1
     assert summary.skipped_protocol == 2  # a non-8 id and a null id
-    assert summary.cleared == 2
-    assert 999 not in after and 200 not in after and 300 not in after and 100 not in after
+    assert summary.cleared == 1  # D-96 (c): only the protocol-9 source is cleared
+    assert 300 in after and after[300] == before_300  # NULL protocol keeps its snapshot
+    assert 999 not in after and 200 not in after and 100 not in after
     assert len(inventory_count) == 3  # never create or delete inventory rows
     assert any(
         statement.lstrip().upper().startswith("DELETE")
         and "protocol_type_id" in statement
         for statement in statements
     )
+
+
+async def test_null_protocol_keeps_snapshot(db_session: AsyncSession) -> None:
+    """B5 / D-96 (c): an unknown inventory protocol must not clear the last good snapshot."""
+    instance_id = await seed(db_session, [(100, 8), (200, 9), (300, None)])
+    by_qid = await ids(db_session, instance_id)
+    put(db_session, by_qid[200])
+    put(db_session, by_qid[300], database_host="last-good.example.com")
+    await db_session.flush()
+
+    summary = await apply_jdbc_walk(db_session, instance_id, walk(), now=NOW)
+    after = await configs(db_session, instance_id)
+
+    assert summary.empty_unproven is True  # inventory still knows JDBC source 100
+    assert summary.cleared == 1  # only the protocol-changed source is cleared
+    assert 200 not in after
+    assert after[300]["database_host"] == "last-good.example.com"
+    assert after[300]["config_state"] == ConfigState.COMPLETE.value
 
 
 async def test_protocol_change_between_read_and_write_is_cleared(
