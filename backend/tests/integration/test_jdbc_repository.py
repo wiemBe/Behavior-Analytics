@@ -119,6 +119,31 @@ async def test_four_data_selects_1_100_800_matches(db_session: AsyncSession, siz
     assert (found.flow.state, found.volume.event_count) == ("RECEIVING", 9)
 
 
+@pytest.mark.parametrize("size", [1, 100, 800])
+async def test_four_data_selects_with_8k_fleet(db_session: AsyncSession, size: int) -> None:
+    """The four list SELECTs stay four with 8,000 stored sources around the JDBC set."""
+    instance = await console(db_session)
+    # The non-JDBC neighbours are the bulk of the fleet; only `size` rows are JDBC.
+    await sources(db_session, instance, 8_000 - size, first=1, protocol=1)
+    jdbc_ids = await sources(db_session, instance, size, first=8_001)
+    await db_session.execute(insert(LogSourceMetric), [metric(i) for i in jdbc_ids])
+    await _complete_configs(db_session, jdbc_ids)
+    repo = JdbcRepository(db_session)
+
+    result, seen = await counted(db_session, repo.list(limit=1000, **TIMING))
+    assert len(seen) == 4
+    assert result.total == size and len(result.items) == min(size, repo.settings.api_max_page_size)
+
+    # A flow filter and a small page still cost the same four.
+    _, seen = await counted(db_session, repo.list(limit=5, flow_state="RECEIVING", **TIMING))
+    assert len(seen) == 4
+
+    # Detail stays within its own pin, with the same stored fleet behind it.
+    found, seen = await counted(db_session, repo.detail(jdbc_ids[0], **TIMING))
+    assert found is not None and len(seen) <= 4
+    assert (found.flow.state, found.volume.event_count) == ("RECEIVING", 9)
+
+
 async def test_stable_page_q_wildcards_and_filters(db_session: AsyncSession) -> None:
     one, two = await console(db_session), await console(db_session)
     same = await sources(db_session, one, 7, name="same")  # equal names, UUID breaks the tie

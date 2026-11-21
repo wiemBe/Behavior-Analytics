@@ -426,6 +426,65 @@ async def test_500_row_chunks_no_n_plus_one(db_session: AsyncSession) -> None:
     assert len(statements) == 6
 
 
+async def test_chunks_cover_keep_and_absent_rows(db_session: AsyncSession) -> None:
+    """A complete walk omitting 1,100 of 1,201 snapshots chunks both keep and absent writes."""
+    qids = list(range(1, 1202))
+    instance_id = await seed(db_session, [(qid, 8) for qid in qids])
+    by_qid = await ids(db_session, instance_id)
+    for qid in qids:
+        put(db_session, by_qid[qid], database_host="stored.example.com")
+    await db_session.flush()
+
+    # The 101 seen rows are NOT_COLLECTED (keep path); the other 1,100 are absent.
+    configs_in = [dto(qid, params="missing") for qid in qids[:101]]
+
+    statements: list[tuple[str, Any]] = []
+    bind = db_session.get_bind()
+    engine = getattr(bind, "sync_engine", bind)
+
+    def before(conn: Any, cursor: Any, statement: str, parameters: Any, context: Any,
+               many: bool) -> None:
+        statements.append((statement, parameters))
+
+    event.listen(engine, "before_cursor_execute", before)
+    try:
+        summary = await apply_jdbc_walk(db_session, instance_id, walk(*configs_in), now=NOW)
+    finally:
+        event.remove(engine, "before_cursor_execute", before)
+
+    def rows_of(parameters: Any) -> list[Any]:
+        return list(parameters) if isinstance(parameters, (list, tuple)) else [parameters]
+
+    upserts = [(sql, params) for sql, params in statements if "DO UPDATE SET" in sql]
+    absent = [(sql, params) for sql, params in upserts
+              if any(jdbc_sync.FAILURE_ABSENT in str(row) for row in rows_of(params))]
+    kept = [(sql, params) for sql, params in upserts
+            if any(jdbc_sync.FAILURE_PARAMETERS_UNAVAILABLE in str(row)
+                   for row in rows_of(params))]
+    assert (summary.written, summary.marked_absent, summary.chunks, summary.cleared) == (
+        101, 1100, 4, 0,
+    )
+    # Two reads, one keep chunk, three absent chunks and one instance-scoped DELETE.
+    assert len(statements) == 7 and len(upserts) == 4
+    assert len(absent) == 3 and sorted(len(rows_of(p)) for _, p in absent) == [100, 500, 500]
+    assert len(kept) == 1 and [len(rows_of(p)) for _, p in kept] == [101]
+
+    after = await configs(db_session, instance_id)
+    assert len(after) == 1201
+    for qid in qids[:101]:
+        row = after[qid]
+        assert (row["config_state"], row["failure_code"]) == (
+            ConfigState.NOT_COLLECTED.value, jdbc_sync.FAILURE_PARAMETERS_UNAVAILABLE,
+        )
+        assert row["database_host"] == "stored.example.com"
+    for qid in qids[101:]:
+        row = after[qid]
+        assert (row["config_state"], row["failure_code"]) == (
+            ConfigState.NOT_COLLECTED.value, jdbc_sync.FAILURE_ABSENT,
+        )
+        assert row["database_host"] == "stored.example.com"  # values kept, not cleared
+
+
 CANARIES = {
     "password": "CANARY-PASSWORD-9f3a",
     "username": "CANARY-USERNAME-7c1b",

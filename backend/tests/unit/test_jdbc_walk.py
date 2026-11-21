@@ -28,6 +28,7 @@ from app.providers.qradar_rest import LOG_SOURCE_LIST_FIELDS, QRadarRestProvider
 PATH = "/api/config/event_sources/log_source_management/log_sources"
 FIELDS = "id,protocol_type_id,protocol_parameters"
 CANARY = "DENIED-JDBC-PASSWORD-CANARY"
+FLEET_SIZE = 8_000
 
 
 @dataclass
@@ -99,6 +100,87 @@ COMPLETE_PARAMETERS = [
 
 def complete_row(index: int) -> dict:
     return {"id": index, "protocol_type_id": 8, "protocol_parameters": COMPLETE_PARAMETERS}
+
+
+#: The other 17 of JDBC-0's 35 protocol-8 names/ids (report table, lines 20-54).
+#: Their values are canaries, Unicode and a long string; the projector must drop
+#: them before it reads a value, so none of them can reach a DTO, a repr or a log.
+CANARY_DENIED = "DENIED-JDBC-35-CANARY"
+DENIED_PARAMETERS = (
+    (8022, "warehouse"), (8026, "role"), (8040, "databaseUsername"),
+    (8051, "keyPairAuthentication"), (8050, "databasePassword"),
+    (8052, "privateKeyFileName"), (8060, "databaseDomain"), (8070, "databaseInstance"),
+    (8160, "namedPipe"), (8170, "clusterName"), (8200, "useNTLMv2"),
+    (8270, "useMicrosoftJDBC"), (8220, "useOracleEncryption"),
+    (8240, "informixDatabaseLocale"), (8250, "informixCodeSet"),
+    (8260, "db2SecurityMechanism"), (8310, "addWithNoLock"),
+)
+DENIED_VALUES = (
+    f"{CANARY_DENIED}-warehouse", f"{CANARY_DENIED}-role", f"{CANARY_DENIED}-username",
+    f"{CANARY_DENIED}-keypair", f"{CANARY_DENIED}-password", f"{CANARY_DENIED}-keyfile",
+    f"{CANARY_DENIED}-domain", f"{CANARY_DENIED}-instance", f"{CANARY_DENIED}-namedpipe",
+    f"{CANARY_DENIED}-cluster", f"{CANARY_DENIED}-ntlm", f"{CANARY_DENIED}-msjdbc",
+    f"{CANARY_DENIED}-oracle", f"{CANARY_DENIED}-ПАРОЛЬ-ключ-Ω",
+    f"{CANARY_DENIED}-" + "D" * 5_000, f"{CANARY_DENIED}-db2",
+    f"{CANARY_DENIED}-nolock",
+)
+
+
+def fleet_row(index: int) -> dict:
+    """One JDBC source with the real 35-entry array, among non-JDBC fleet ids."""
+    parameters = [*COMPLETE_PARAMETERS] + [
+        {"id": parameter_id, "name": name, "value": value}
+        for (parameter_id, name), value in zip(DENIED_PARAMETERS, DENIED_VALUES, strict=True)
+    ]
+    assert len(parameters) == 35
+    row: dict = {"id": index, "protocol_type_id": 8, "protocol_parameters": parameters}
+    if index % 7 == 0:
+        row["enabled"] = False  # a disabled source is still read by the parameter walk
+    return row
+
+
+def non_jdbc_row(index: int) -> dict:
+    """A minimal fleet row the protocol-8 filter must drop (no raw parameters)."""
+    return {"id": index, "protocol_type_id": 1}
+
+
+def fleet_handler(
+    j: int, seen: list[httpx.Request],
+    inject: Callable[[int, httpx.Request], httpx.Response | None] | None = None,
+) -> Callable[[httpx.Request], httpx.Response]:
+    """An 8,000-source fleet; the MockTransport applies the protocol-8 filter itself.
+
+    Every fleet id has a row: JDBC ids are every tenth id (up to J of them) and
+    carry the real 35-entry array, the rest are non-JDBC rows the handler drops.
+    The handler keeps protocol-8 rows in id order and treats Range as an offset
+    into that filtered list. A fleet-wide request, a per-id request, a wrong path
+    or a missing/incorrect filter still fails the asserts on every request.
+    """
+    jdbc_ids = set(range(0, j * 10, 10))
+    fleet = [
+        fleet_row(index) if index in jdbc_ids else non_jdbc_row(index)
+        for index in range(FLEET_SIZE)
+    ]
+    filtered = sorted(
+        (item for item in fleet if item["protocol_type_id"] == 8),
+        key=lambda item: item["id"],
+    )
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        assert request.method == "GET" and request.url.path == PATH
+        assert list(request.url.params.multi_items()) == [
+            ("fields", FIELDS), ("sort", "+id"), ("filter", "protocol_type_id=8"),
+        ]
+        if inject is not None:
+            injected = inject(len(seen), request)
+            if injected is not None:
+                return injected
+        start, end = map(int, request.headers["Range"].removeprefix("items=").split("-"))
+        # Range is an offset into the filtered list, not a range of raw ids.
+        return httpx.Response(200, json=filtered[start : end + 1])
+
+    return handler
 
 
 def page(request: httpx.Request, total: int) -> list[dict]:
@@ -237,6 +319,81 @@ async def test_8k_fleet_projection_stays_slim() -> None:
         assert request.url.params["sort"] == "+id"
         assert "filter" not in request.url.params
         assert request.headers["Range"] == f"items={index * 500}-{index * 500 + 499}"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(("j", "gets"), [(0, 1), (20, 1), (80, 1), (200, 3), (800, 9)])
+async def test_8k_fleet_j_mix_get_counts(
+    j: int, gets: int, caplog: pytest.LogCaptureFixture,
+) -> None:
+    """floor(J/100)+1 filtered GETs inside an 8k fleet, with the real 35-entry array."""
+    caplog.set_level(logging.DEBUG)
+    seen: list[httpx.Request] = []
+    walker = provider(fleet_handler(j, seen))
+    try:
+        result = await walker.walk_jdbc_configs()
+    finally:
+        await walker.aclose()
+    assert result.state is JdbcWalkState.COMPLETE and result.complete
+    assert result.failure_code is None and result.pages_failed == 0
+    assert (result.pages_read, result.rows_read, len(result.configs)) == (gets, j, j)
+    assert [config.qradar_id for config in result.configs] == list(range(0, j * 10, 10))
+    assert all(config.config_state is ConfigState.COMPLETE for config in result.configs)
+    assert len(seen) == gets
+    for index, request in enumerate(seen):
+        assert request.headers["Range"] == f"items={index * 100}-{index * 100 + 99}"
+    # A6 tripwire: no other path and no per-id detail URL was requested.
+    assert all(request.method == "GET" and request.url.path == PATH for request in seen)
+    rendered = repr(result) + str(result) + caplog.text
+    assert CANARY_DENIED not in rendered
+    assert all(CANARY_DENIED not in repr(record.__dict__) for record in caplog.records)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(("failure", "code", "gets", "read", "rows", "failed", "failed_page"), [
+    ("rate_limited", JdbcWalkFailure.RATE_LIMITED, 7, 4, 400, 3, 4),
+    ("timeout", JdbcWalkFailure.TIMEOUT, 7, 4, 400, 3, 4),
+    ("auth", JdbcWalkFailure.AUTH, 5, 4, 400, 1, 4),
+    ("invalid_json", JdbcWalkFailure.MALFORMED, 7, 4, 400, 3, 4),
+    ("short_row", JdbcWalkFailure.MALFORMED, 7, 7, 403, 3, 4),
+    ("ceiling", JdbcWalkFailure.PAGE_CEILING, 4, 4, 400, 0, None),
+])
+async def test_8k_terminal_failures_keep_partial_state(
+    failure: str, code: JdbcWalkFailure, gets: int, read: int, rows: int,
+    failed: int, failed_page: int | None, caplog: pytest.LogCaptureFixture,
+) -> None:
+    """J=800: a terminal event on page 5 still keeps the four safe pages."""
+    caplog.set_level(logging.DEBUG)
+
+    def inject(page: int, request: httpx.Request) -> httpx.Response | None:
+        if failure == "ceiling" or page < 5:
+            return None
+        if failure == "rate_limited":
+            return httpx.Response(429, text=CANARY, headers={"Retry-After": "3"})
+        if failure == "timeout":
+            raise httpx.ReadTimeout(CANARY, request=request)
+        if failure == "auth":
+            return httpx.Response(401, text=CANARY)
+        if failure == "invalid_json":
+            return httpx.Response(200, content=b"invalid-json")
+        return httpx.Response(200, json=[CANARY])  # a malformed row shape
+
+    seen: list[httpx.Request] = []
+    walker = provider(
+        fleet_handler(800, seen, inject), max_pages=4 if failure == "ceiling" else 200,
+    )
+    try:
+        result = await walker.walk_jdbc_configs()
+    finally:
+        await walker.aclose()
+    assert result.state is JdbcWalkState.PARTIAL and not result.complete
+    assert result.failure_code is code
+    assert (result.pages_read, result.rows_read, result.pages_failed, result.failed_page) == (
+        read, rows, failed, failed_page,
+    )
+    assert [config.qradar_id for config in result.configs] == list(range(0, 4000, 10))
+    assert len(seen) == gets
+    assert CANARY not in repr(result) + caplog.text
 
 
 @pytest.mark.asyncio

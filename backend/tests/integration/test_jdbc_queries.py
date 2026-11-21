@@ -333,7 +333,8 @@ async def _explain(session: AsyncSession, statement: Any) -> list[dict[str, Any]
     sql = str(statement.compile(
         dialect=postgresql.dialect(), compile_kwargs={"literal_binds": True}
     ))
-    raw = (await session.execute(text("EXPLAIN (FORMAT JSON) " + sql))).scalar_one()
+    explain = "EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON) " + sql
+    raw = (await session.execute(text(explain))).scalar_one()
     plan = raw if isinstance(raw, list) else json.loads(raw)
     return _walk(plan[0]["Plan"], [])
 
