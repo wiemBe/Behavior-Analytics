@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import re
 import uuid
 from contextlib import contextmanager
 from datetime import timedelta
@@ -78,7 +79,7 @@ def _record(engine):
 
 
 def _locks(operations):
-    return [(sql, params) for sql, params in operations if "FOR UPDATE" in sql]
+    return [(sql, params) for sql, params in operations if re.search(r"FOR (NO KEY )?UPDATE", sql)]
 
 
 async def _seed(maker, count=1, *, metrics=False):
@@ -162,11 +163,11 @@ async def test_evaluation_locks_at_most_100_uuid_order(rig):
     locks = _locks(operations)
     assert len(locks) == 3
     assert [list(params) for _, params in locks] == [ids[:100], ids[100:200], ids[200:]]
-    assert all("ORDER BY log_source.id FOR UPDATE" in sql for sql, _ in locks)
-    assert ["lock" if "FOR UPDATE" in sql else "commit" for sql, _ in operations
-            if "FOR UPDATE" in sql or sql == "COMMIT"] == ["lock", "commit"] * 3
+    assert all(re.search(r"ORDER BY log_source\.id FOR (NO KEY )?UPDATE", sql) for sql, _ in locks)
+    assert ["lock" if re.search(r"FOR (NO KEY )?UPDATE", sql) else "commit" for sql, _ in operations
+            if re.search(r"FOR (NO KEY )?UPDATE", sql) or sql == "COMMIT"] == ["lock", "commit"] * 3
     fleet_reads = [sql for sql, _ in operations
-                   if "FROM log_source" in sql and "FOR UPDATE" not in sql
+                   if "FROM log_source" in sql and not re.search(r"FOR (NO KEY )?UPDATE", sql)
                    and "FROM log_source_metric" not in sql]
     assert len(fleet_reads) == 1 and fleet_reads[0].startswith("SELECT log_source.id ")
 
@@ -384,7 +385,7 @@ async def test_batch_failure_rolls_back_only_that_batch(rig, monkeypatch, caplog
             await super().commit()
 
         async def scalars(self, statement, *args, **kwargs):
-            if failure == "lock" and "FOR UPDATE" in str(statement):
+            if failure == "lock" and re.search(r"FOR (NO KEY )?UPDATE", str(statement)):
                 params = statement.compile().params
                 if ids[100] in next(iter(params.values())):
                     raise RuntimeError("batch lock failure")
@@ -464,7 +465,7 @@ async def test_task_rechecks_disabled_after_batch_wait(rig, monkeypatch):
 
     class WaitingSession(AsyncSession):
         async def scalars(self, statement, *args, **kwargs):
-            if "FOR UPDATE" in str(statement):
+            if re.search(r"FOR (NO KEY )?UPDATE", str(statement)):
                 pids.append(await _timeout(self))
                 started.set()
             return await super().scalars(statement, *args, **kwargs)
