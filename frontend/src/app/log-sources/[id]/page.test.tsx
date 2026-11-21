@@ -1,9 +1,21 @@
 import type { Pivot } from "@/lib/pivot";
-import { render, screen } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { render, screen, within } from "@testing-library/react";
+import { renderToReadableStream } from "react-dom/server";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import LogSourceDetailPage from "./page";
-import { ApiError, api, fleetApi, type LogSourceDetail } from "@/lib/api";
+import {
+  ApiError,
+  JDBC_PROTOCOL_IDS,
+  JDBC_SAFE_FIELDS,
+  api,
+  fleetApi,
+  type JdbcSafeFields,
+  type JdbcSourceDetail,
+  type LogSourceDetail,
+} from "@/lib/api";
+import en from "../../../../messages/en";
+import { GUIDE_SECTIONS } from "@/lib/guideSections";
 
 // States this route renders, from `page.tsx`:
 //  - the read fails: 401 session expired, 403 names read:log_sources, 404 is not
@@ -218,5 +230,131 @@ describe("Investigate in QRadar", () => {
     expect(screen.getByRole("heading", { name: "Investigate in QRadar" })).toBeInTheDocument();
     expect(screen.getByText(/could not be built/)).toBeInTheDocument();
     expect(screen.queryByText("secret")).toBeNull();
+  });
+});
+
+/** The JDBC block is an async child of a Suspense boundary: stream it to the end, then mount the HTML. */
+const streamed: HTMLElement[] = [];
+afterEach(() => streamed.splice(0).forEach((host) => host.remove()));
+
+async function renderStreamed(id = "s-1") {
+  const stream = await renderToReadableStream(
+    await LogSourceDetailPage({ params: Promise.resolve({ id }) }),
+  );
+  await stream.allReady;
+  const html = await new Response(stream).text();
+  const host = document.body.appendChild(document.createElement("div"));
+  host.innerHTML = html;
+  streamed.push(host);
+  return { container: host, unmount: () => host.remove() };
+}
+
+// JDBC block (J1p2): requested only for the JDBC protocols, read on its own, mounted beside the
+// metadata (never inside its card), and explained by one guide entry.
+function jdbcSource(): JdbcSourceDetail {
+  const at = "2026-11-05T18:00:00Z";
+  return {
+    id: "s-1", qradar_id: 7, name: "Billing DB", protocol_type_id: 8, protocol_name: "JDBC",
+    qradar: {
+      enabled: true, status: "WARNING", inconsistency: null, inventory_last_complete_at: at,
+      inventory_last_attempt_at: at, inventory_state: "COMPLETE", inventory_stale: false,
+      reason_code: null,
+    },
+    config: {
+      support: "VERIFIED", state: "COMPLETE", failure_code: null, observed_at: at,
+      last_success_at: at, stale: false,
+      safe_fields: {
+        ...Object.fromEntries(JDBC_SAFE_FIELDS.map((n) => [n, null])),
+        database_type: "MSSQL", database_name: "billing", start_time_local: "2026-11-01 03:00:00",
+      } as JdbcSafeFields,
+      field_states: Object.fromEntries(JDBC_SAFE_FIELDS.map((n) => [n, { code: "SET", reason: null }])),
+    },
+    volume: {
+      measurement: "EXACT", target_start: at, target_end: at, bucket_seconds: 3600, event_count: 120,
+      average_eps: 0.033, collected_at: at, stale: false, reason_code: "measured", last_observation: null,
+    },
+    flow: { state: "RECEIVING", reason_code: "measured" }, monitoring: { enabled: true },
+  };
+}
+
+describe("JDBC block on the source detail", () => {
+  it("only JDBC protocols request block", async () => {
+    const jdbc = vi.spyOn(api, "jdbcSource").mockResolvedValue(jdbcSource());
+    for (const protocol of [undefined, null, 1, 9, 12]) {
+      vi.spyOn(api, "logSource").mockResolvedValue(detail({ protocol_type_id: protocol } as never));
+      const view = await renderStreamed();
+      expect(screen.queryByRole("region", { name: "JDBC details" })).toBeNull();
+      view.unmount();
+    }
+    expect(jdbc).not.toHaveBeenCalled();
+    for (const protocol of JDBC_PROTOCOL_IDS) {
+      vi.spyOn(api, "logSource").mockResolvedValue(detail({ protocol_type_id: protocol } as never));
+      const view = await renderStreamed();
+      view.unmount();
+    }
+    expect(jdbc).toHaveBeenCalledTimes(JDBC_PROTOCOL_IDS.length);
+    expect(jdbc).toHaveBeenCalledWith("s-1");
+  });
+
+  it("loading: a block that never answers leaves the metadata and a loading status", async () => {
+    vi.spyOn(api, "logSource").mockResolvedValue(detail({ protocol_type_id: 8 } as never));
+    vi.spyOn(api, "jdbcSource").mockReturnValue(new Promise(() => {}));
+    await renderPage();
+    expect(screen.getByRole("heading", { name: "Core Firewall", level: 1 })).toBeInTheDocument();
+    expect(screen.getByText("Source behavior")).toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent("Loading JDBC details…");
+    expect(screen.queryByRole("region", { name: "Connection" })).toBeNull();
+  });
+
+  it("shows the block, with WARN as QRadar's status and the start time zone unknown", async () => {
+    vi.spyOn(api, "logSource").mockResolvedValue(detail({ protocol_type_id: 8 } as never));
+    vi.spyOn(api, "jdbcSource").mockResolvedValue(jdbcSource());
+    await renderStreamed();
+    const block = screen.getByRole("region", { name: "JDBC details" });
+    expect(within(block).getByRole("region", { name: "Connection" })).toHaveTextContent("Warning");
+    expect(block).toHaveTextContent("Timezone unknown");
+    expect(within(block).getByRole("link", { name: "How to read the JDBC details" })).toHaveAttribute(
+      "href",
+      "/guide/log-sources",
+    );
+  });
+
+  it.each([
+    [403, "JDBC details require read:log_sources."],
+    [404, "This source has no JDBC details in the inventory."],
+    [500, "JDBC details could not be loaded. Reload the page to retry."],
+  ])("failure leaves metadata readable (%s)", async (status, sentence) => {
+    vi.spyOn(api, "logSource").mockResolvedValue(detail({ protocol_type_id: 8 } as never));
+    vi.spyOn(api, "jdbcSource").mockRejectedValue(new ApiError(status, "secret"));
+    await renderStreamed();
+    expect(screen.getByRole("heading", { name: "Core Firewall", level: 1 })).toBeInTheDocument();
+    const config = screen.getByText("Configuration", { selector: ".k" }).closest(".card")!;
+    expect(config).toHaveTextContent("QRadar status: SUCCESS");
+    expect(screen.getByRole("region", { name: "JDBC details" })).toHaveTextContent(sentence);
+    expect(screen.queryByText(/secret/)).toBeNull();
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("no nested card", async () => {
+    vi.spyOn(api, "logSource").mockResolvedValue(detail({ protocol_type_id: 8 } as never));
+    vi.spyOn(api, "jdbcSource").mockResolvedValue(jdbcSource());
+    const { container } = await renderStreamed();
+    const block = screen.getByRole("region", { name: "JDBC details" });
+    expect(block.closest(".card")).toBeNull();
+    expect(block.querySelector(".card")).toBeNull();
+    expect(container.querySelector("[style]")).toBeNull();
+    const levels = [...container.querySelectorAll("h1, h2, h3")].map((h) => h.tagName);
+    expect(levels[0]).toBe("H1");
+    expect(levels.filter((l) => l === "H1")).toHaveLength(1);
+  });
+
+  it("guide explains attribution and WARN", () => {
+    const section = en.guide.sections["log-sources"];
+    const text = JSON.stringify(section);
+    expect(text).toMatch(/counted by log-source identity, not by the JDBC table/);
+    expect(text).toMatch(/\*\*Warning\*\* is QRadar's connection status/);
+    expect(text).toMatch(/not a verdict on whether events flow/);
+    expect(text).toContain("**Timezone unknown**");
+    expect(GUIDE_SECTIONS.find((g) => g.id === "log-sources")!.routes).toContain("/log-sources/jdbc");
   });
 });

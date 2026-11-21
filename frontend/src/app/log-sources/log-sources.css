@@ -103,3 +103,9 @@
   min-height: var(--target-min);
   cursor: pointer;
 }
+.jdbc-source {
+  margin-top: var(--sp-5);
+}
+.jdbc-guide {
+  margin: var(--sp-3) 0 0;
+}
