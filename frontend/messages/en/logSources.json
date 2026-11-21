@@ -41,6 +41,8 @@
     "unreachable": "The backend could not be reached. Reload the page to try again.",
     "summary": "{type} · criticality {criticality} · owner {owner}",
     "unknownType": "unknown type",
+    "jdbcSection": "JDBC details",
+    "jdbcGuide": "How to read the JDBC details",
     "configuration": "Configuration",
     "description": "Description: {value}",
     "businessHours": "Business hours only: {value}",

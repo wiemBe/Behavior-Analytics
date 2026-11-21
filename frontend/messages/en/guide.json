@@ -739,6 +739,12 @@
           "p": "The detail page, **Log Source Detail**, shows the type, criticality and owner, then **Configuration**: description, business hours, expected interval, last event and QRadar status. It links to the source's behavior page for the EPS trend, anomaly timeline and baseline overlay. An empty inventory says to run an inventory sync; the platform does not invent a source list."
         },
         {
+          "p": "A JDBC source also shows its JDBC details below **Configuration**: the stored JDBC configuration, the **Connection** QRadar reports and the **Flow** of events. Events are counted by log-source identity, not by the JDBC table the source reads, so a count says how many events QRadar attributed to this source and nothing about the database. **Warning** is QRadar's connection status for the source; it is not a verdict on whether events flow. **Timezone unknown** means the start time is shown as stored, because the JDBC configuration does not say which zone it is in."
+        },
+        {
+          "p": "A JDBC block that cannot be read says so inside the block; the rest of the page stays as it was. The block appears only for the JDBC protocols; other sources show no block."
+        },
+        {
           "p": "A source in maintenance shows **maint** beside its name. **Status** is the status QRadar reports for the source; **Anomalies** counts its open anomalies."
         }
       ],

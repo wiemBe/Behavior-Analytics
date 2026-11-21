@@ -251,7 +251,7 @@ export const GUIDE_SECTIONS: readonly GuideSection[] = [
   {
     id: "log-sources",
     group: "pages",
-    routes: ["/log-sources", "/log-sources/[id]"],
+    routes: ["/log-sources", "/log-sources/[id]", "/log-sources/jdbc"],
     audience: "analyst",
     permissions: ["read:log_sources"],
     related: ["source-behavior", "fleet-sources", "find-a-quiet-source"],

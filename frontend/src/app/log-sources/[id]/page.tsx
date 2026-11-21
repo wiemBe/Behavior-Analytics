@@ -1,5 +1,6 @@
 import { getLocale, getTranslations } from "next-intl/server";
 import Link from "next/link";
+import { Suspense } from "react";
 import { enumLabel } from "@/i18n/enumLabels";
 import { asTextTranslator } from "@/i18n/textTranslator";
 import { plainCount } from "@/lib/fleetText";
@@ -10,12 +11,15 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { guideFor } from "@/lib/guideRoutes";
 import {
   ApiError,
+  JDBC_PROTOCOL_IDS,
   api,
   fleetApi,
   rateLimitedText,
   type FleetSourceRow,
+  type JdbcProtocolId,
   type LogSourceDetail,
 } from "@/lib/api";
+import { JdbcDetails, type JdbcDetailsProps } from "@/components/logsources/JdbcDetails";
 import { SourceClassRow } from "@/components/fleet/SourceClassRow";
 import { UtcTime } from "@/components/ui/UtcTime";
 import { withRouteMessages } from "@/i18n/RouteMessages";
@@ -23,6 +27,33 @@ import { withRouteMessages } from "@/i18n/RouteMessages";
 import { qradarStatusLabel, qradarStatusTone } from "../qradarStatus";
 
 import "./log-source-detail.css";
+
+/** The backend sends `protocol_type_id`; the shared type does not declare it yet. */
+type WithProtocol = LogSourceDetail & { protocol_type_id?: number | null };
+
+function isJdbc(d: WithProtocol): boolean {
+  const protocol = d.protocol_type_id;
+  return protocol != null && JDBC_PROTOCOL_IDS.includes(protocol as JdbcProtocolId);
+}
+
+/** The JDBC block is read on its own: its failure never touches the source metadata. */
+async function JdbcBlock({ id, guide }: { id: string; guide: string }) {
+  let props: JdbcDetailsProps;
+  try {
+    props = { data: await api.jdbcSource(id) };
+  } catch (err) {
+    const status = err instanceof ApiError ? err.status : 0;
+    props = { failure: status === 403 ? "forbidden" : status === 404 ? "not-found" : "error" };
+  }
+  return (
+    <>
+      <JdbcDetails {...props} />
+      <p className="jdbc-guide">
+        <Link href="/guide/log-sources">{guide}</Link>
+      </p>
+    </>
+  );
+}
 
 async function LogSourceDetailPage({
   params,
@@ -116,6 +147,14 @@ async function LogSourceDetailPage({
           link: (chunks) => <Link href={`/behavior/sources/${d.id}`}>{chunks}</Link>,
         })}
       </p>
+
+      {isJdbc(d) && (
+        <section className="jdbc-source" aria-label={t("jdbcSection")}>
+          <Suspense fallback={<JdbcDetails failure="loading" />}>
+            <JdbcBlock id={d.id} guide={t("jdbcGuide")} />
+          </Suspense>
+        </section>
+      )}
 
       {pivotRead && <PivotBlock pivot={pivotRead.pivot} failed={pivotRead.failed} />}
     </>
