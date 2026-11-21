@@ -13,7 +13,8 @@ from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import cast
 
-from sqlalchemy import ARRAY, String, Table, any_, delete, literal, select
+from sqlalchemy import ARRAY, String, Table, any_, bindparam, delete, literal, select
+from sqlalchemy.dialects.postgresql import UUID as PgUUID
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -28,12 +29,15 @@ from app.models.enums import ClassificationReviewStatus, InstanceStatus, Severit
 from app.models.fleet import LogSourceGroup, LogSourceType
 from app.models.instance import QRadarInstance
 from app.models.log_source import LogSource
+from app.models.log_source_pause import LogSourcePause
 from app.providers.base import ProviderError, QRadarProvider, failure_kind
 from app.repositories.log_source import LogSourceRepository
 from app.schemas.log_source import SyncResult
 from app.security.sanitizer import sanitize_text
 from app.services.entity_mention_folds import log_source_mentions
 from app.services.entity_mentions import record_mentions
+from app.services.source_incident_closure import close_for_disabled_sources
+from app.services.source_pause_spans import close_pause, disable_edge_start, open_pause
 from app.services.waf_pipeline import sanitized_error
 
 logger = logging.getLogger("app.services.inventory_sync")
@@ -42,6 +46,7 @@ logger = logging.getLogger("app.services.inventory_sync")
 #: provider failure kind: the collector passes `failed_page=None` for a types failure and
 #: for a source-page failure alike, so the reason must name which one it was.
 FAILURE_TYPES_UNAVAILABLE = "types_unavailable"
+QRADAR_DISABLED = "QRADAR_DISABLED"
 
 
 class InventorySyncService:
@@ -60,7 +65,11 @@ class InventorySyncService:
         self._clock = clock or (lambda: datetime.now(UTC))
 
     async def sync(
-        self, instance: QRadarInstance, *, bootstrap_hint: bool = False
+        self,
+        instance: QRadarInstance,
+        *,
+        bootstrap_hint: bool = False,
+        previous_complete_watermark: datetime | None = None,
     ) -> SyncResult:
         # Read once, so the health stamp and every row written by this pass
         # carry the same observation time.
@@ -198,6 +207,30 @@ class InventorySyncService:
             await self.session.execute(group_statement, group_values)
 
         existing_by_qradar_id = await self.repo.by_qradar_id(instance.id)
+        pause_policy = source_pause_enabled(self.settings)
+        open_ids: set[uuid.UUID] = set()
+        if pause_policy:
+            stored_enabled = {qid: source.enabled for qid, source in existing_by_qradar_id.items()}
+            final_enabled = {dto.qradar_id: dto.enabled for dto in dtos}
+            reconcile_ids = {
+                source.id for qid, enabled in final_enabled.items()
+                if enabled is False
+                and (source := existing_by_qradar_id.get(qid)) is not None
+                and source.enabled is False
+            }
+            if reconcile_ids:
+                open_ids = set(await self.session.scalars(
+                    select(LogSourcePause.log_source_id).where(
+                        LogSourcePause.log_source_id == any_(bindparam(
+                            "reconcile_ids", value=sorted(reconcile_ids),
+                            type_=ARRAY(PgUUID(as_uuid=True)),
+                        )),
+                        LogSourcePause.reason == QRADAR_DISABLED,
+                        LogSourcePause.ends_at.is_(None),
+                    )
+                ))
+        disabled: list[LogSource] = []
+        reenabled: list[LogSource] = []
         # `bootstrap_hint`: no complete pass has run yet, so a first partial pass must not
         # make the rest of the console look new when a later pass reaches it.
         bootstrap = not existing_by_qradar_id or bootstrap_hint
@@ -234,6 +267,8 @@ class InventorySyncService:
                 existing.enabled = dto.enabled
             elif not source_pause_enabled(self.settings):
                 existing.enabled = True
+            else:
+                existing.enabled = stored_enabled.get(dto.qradar_id, False)
             existing.qradar_status = dto.status
             existing.credibility = dto.credibility
             existing.target_event_collector_id = dto.target_event_collector_id
@@ -245,7 +280,36 @@ class InventorySyncService:
             existing.identifier = sanitize_text(dto.identifier)
             existing.is_internal = dto.internal
 
+        if pause_policy:
+            # Decide once from the stored flag and final DTO; unknown keeps the stored value.
+            for qid, enabled in final_enabled.items():
+                source = existing_by_qradar_id[qid]
+                if enabled is False and (stored_enabled.get(qid) or source.id not in open_ids):
+                    disabled.append(source)
+                elif enabled is True and stored_enabled.get(qid) is False:
+                    reenabled.append(source)
+
         await self.session.flush()
+        # No query inside the row loop: this flush acquires all source UPDATE locks
+        # in identity (UUID) order, before any edge can lock incidents or baselines.
+        # Source attributes are never assigned after this point.
+        if disabled:
+            by_start: dict[datetime, list[uuid.UUID]] = {}
+            for source in disabled:
+                start = disable_edge_start(previous_complete_watermark, source.first_seen_at, now)
+                by_start.setdefault(start, []).append(source.id)
+            for start, ids in by_start.items():
+                await open_pause(
+                    self.session, sorted(ids), reason=QRADAR_DISABLED, starts_at=start, now=now
+                )
+            await close_for_disabled_sources(
+                self.session, sorted(source.id for source in disabled), observed_at=now
+            )
+        if reenabled:
+            await close_pause(
+                self.session, sorted(source.id for source in reenabled), reason=QRADAR_DISABLED,
+                observed_at=now, bucket_seconds=self.settings.collection_interval_seconds,
+            )
         await self._record_mentions(
             instance,
             [existing_by_qradar_id[q] for q in dict.fromkeys(d.qradar_id for d in dtos)],

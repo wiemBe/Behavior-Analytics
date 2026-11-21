@@ -1,5 +1,7 @@
 """Strict source-enabled transport and the default-off compatibility path (JDBC-1 P1)."""
 
+import uuid
+from datetime import UTC, datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, Mock
 
@@ -114,18 +116,33 @@ async def _sync_enabled(monkeypatch, *, value, policy, existing=True, stored=Fal
     monkeypatch.setattr(provider, "list_log_sources", AsyncMock(return_value=[
         LogSourceDTO(qradar_id=1, name="source", enabled=value)
     ]))
-    session = SimpleNamespace(flush=AsyncMock(), add=Mock())
+    def add(row):
+        row.id = uuid.uuid4()
+
+    session = SimpleNamespace(flush=AsyncMock(), add=Mock(side_effect=add),
+                              scalars=AsyncMock(return_value=[]))
     service = inventory_sync.InventorySyncService(
         session, provider, settings=Settings(
             _env_file=None, qradar_source_pause_enabled=policy,
             inventory_new_source_alerts_enabled=False,
         )
     )
-    rows = {1: LogSource(qradar_id=1, name="stored", enabled=stored)} if existing else {}
+    rows = {1: LogSource(id=uuid.uuid4(), qradar_id=1, name="stored", enabled=stored,
+                         first_seen_at=datetime(2026, 1, 1, tzinfo=UTC))} if existing else {}
     monkeypatch.setattr(service.repo, "by_qradar_id", AsyncMock(return_value=rows))
     monkeypatch.setattr(service, "_record_mentions", AsyncMock())
     monkeypatch.setattr(inventory_sync, "classify_sources", AsyncMock(return_value={}))
+    for name in ("open_pause", "close_pause", "close_for_disabled_sources"):
+        monkeypatch.setattr(inventory_sync, name, AsyncMock())
     await service.sync(QRadarInstance(name="test", console_host="mock", provider_kind="mock"))
+    for name in ("open_pause", "close_pause", "close_for_disabled_sources"):
+        helper = getattr(inventory_sync, name)
+        disable = policy and value is False
+        reenable = policy and existing and stored is False and value is True
+        if (name == "close_pause" and reenable) or (name != "close_pause" and disable):
+            helper.assert_awaited_once()
+        else:
+            helper.assert_not_awaited()
     return rows[1].enabled
 
 
