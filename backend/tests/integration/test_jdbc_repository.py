@@ -5,12 +5,13 @@ Gated on TEST_DATABASE_URL (the shared async schema fixture, one file at a time 
 
 from __future__ import annotations
 
+import logging
 import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import pytest
-from sqlalchemy import event, insert
+from sqlalchemy import event, insert, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.jdbc.flow import target_bucket
@@ -243,3 +244,80 @@ async def test_limit_default_and_clamp_and_q_bound(db_session: AsyncSession) -> 
     assert repo.bounds(limit=maximum + 1)[0] == maximum
     assert repo.bounds(q="x" * 200)[2].q == "x" * 200
     assert repo.bounds(q="   ")[2].q is None
+
+
+BAD_VALUE = "NotATypeForJDBC"  # fits String(32); the enum parser rejects it
+
+
+async def _complete_configs(db_session: AsyncSession, ids: list[uuid.UUID]) -> None:
+    for source_id in ids:
+        db_session.add(JdbcSourceConfig(
+            log_source_id=source_id, protocol_type_id=8, database_type="Postgres",
+            database_host="db.lab.local", database_port=1433,
+            field_states={
+                "database_type": {"code": "SET", "reason": None},
+                "database_host": {"code": "SET", "reason": None},
+                "database_port": {"code": "SET", "reason": None},
+            },
+            allowlist_version=1, config_state="COMPLETE", observed_at=NOW,
+            last_success_at=NOW))
+    await db_session.flush()
+
+
+async def test_bad_stored_value_degrades_only_its_row(
+    db_session: AsyncSession, caplog: pytest.LogCaptureFixture
+) -> None:
+    instance = await console(db_session)
+    ids = await sources(db_session, instance, 3)
+    await _complete_configs(db_session, ids)
+    repo = JdbcRepository(db_session)
+    baseline = {i.id: i.model_dump(mode="json") for i in (await repo.list(**TIMING)).items}
+    assert all(baseline[i]["config"]["state"] == "COMPLETE" for i in ids)
+
+    await db_session.execute(
+        update(JdbcSourceConfig.__table__)
+        .where(JdbcSourceConfig.__table__.c.log_source_id == ids[1])
+        .values(database_type=BAD_VALUE))
+
+    with caplog.at_level(logging.WARNING, logger="app.repositories.jdbc"):
+        page = await repo.list(**TIMING)
+    after = {i.id: i.model_dump(mode="json") for i in page.items}
+    assert after[ids[0]] == baseline[ids[0]]
+    assert after[ids[2]] == baseline[ids[2]]
+    bad = after[ids[1]]
+    assert bad["config"]["safe_fields"]["database_type"] is None
+    assert bad["config"]["safe_fields"]["database_host"] == "db.lab.local"
+    assert bad["config"]["field_states"]["database_type"] == {
+        "code": "UNAVAILABLE", "reason": "unsupported_value"}
+    assert (bad["config"]["state"], bad["config"]["stale"]) == ("PARTIAL", True)
+
+    with caplog.at_level(logging.WARNING, logger="app.repositories.jdbc"):
+        detail = await repo.detail(ids[1], **TIMING)
+    assert detail is not None and detail.config.model_dump(mode="json") == bad["config"]
+
+    jdbc_logs = [r for r in caplog.records if r.name == "app.repositories.jdbc"]
+    assert jdbc_logs and all("database_type" in r.getMessage() for r in jdbc_logs)
+    assert any(str(ids[1]) in r.getMessage() for r in jdbc_logs)
+    assert BAD_VALUE not in caplog.text
+
+
+async def test_bad_stored_field_state_degrades_same_way(db_session: AsyncSession) -> None:
+    instance = await console(db_session)
+    [source_id] = await sources(db_session, instance, 1)
+    await _complete_configs(db_session, [source_id])
+    repo = JdbcRepository(db_session)
+    await db_session.execute(
+        update(JdbcSourceConfig.__table__)
+        .where(JdbcSourceConfig.__table__.c.log_source_id == source_id)
+        .values(field_states={
+            "database_type": {"code": "BOGUS", "reason": None},
+            "ghost": {"code": "SET", "reason": None},
+        }))
+
+    row = await repo.detail(source_id, **TIMING)
+    assert row is not None and row.config.safe_fields is not None
+    assert row.config.safe_fields.database_type is None
+    states = {k: v.model_dump(mode="json") for k, v in row.config.field_states.items()}
+    assert states["database_type"] == {"code": "UNAVAILABLE", "reason": "unsupported_value"}
+    assert "ghost" not in states
+    assert (row.config.state.value, row.config.stale) == ("PARTIAL", True)

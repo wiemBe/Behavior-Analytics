@@ -13,7 +13,7 @@ from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import event, select
+from sqlalchemy import event, select, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import NullPool
 
@@ -232,6 +232,35 @@ def test_bounds_fixed_code_for_repository_errors(db_schema: str) -> None:
     assert resp.status_code == 422 and resp.json()["detail"] == "protocol_unknown"
     resp = _client().get("/api/v1/log-sources/jdbc?flow_state=" + CANARY)
     assert resp.json()["detail"] == "flow_state_unknown" and CANARY not in resp.text
+
+
+async def _corrupt_config(value: str) -> None:
+    engine = create_async_engine(os.environ["TEST_DATABASE_URL"], future=True, poolclass=NullPool)
+    try:
+        async with async_sessionmaker(engine, expire_on_commit=False)() as s:
+            await s.execute(update(JdbcSourceConfig.__table__).values(database_type=value))
+            await s.commit()
+    finally:
+        await engine.dispose()
+
+
+def test_bad_stored_value_still_answers_200(db_schema: str) -> None:
+    ids = _run(_seed())
+    bad_value = "BADVALUE-SHOULD-NOT-APPEAR"
+    _run(_corrupt_config(bad_value))
+    client = _client()
+    listed = client.get("/api/v1/log-sources/jdbc")
+    assert listed.status_code == 200
+    assert listed.json()["total"] == 2
+    bad = next(i for i in listed.json()["items"] if i["id"] == ids["jdbc"])
+    assert bad["config"]["safe_fields"]["database_type"] is None
+    assert bad["config"]["field_states"]["database_type"] == {
+        "code": "UNAVAILABLE", "reason": "unsupported_value"}
+    assert (bad["config"]["state"], bad["config"]["stale"]) == ("PARTIAL", True)
+    detail = client.get(f"/api/v1/log-sources/{ids['jdbc']}/jdbc")
+    assert detail.status_code == 200
+    assert detail.json()["config"] == bad["config"]
+    assert bad_value not in listed.text and bad_value not in detail.text
 
 
 def test_statement_budget_list_and_detail(db_schema: str) -> None:
