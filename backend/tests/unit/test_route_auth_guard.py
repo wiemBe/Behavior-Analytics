@@ -28,6 +28,9 @@ _OPEN_PATHS = {
     # beyond "ok"/"ready".
     "/api/v1/health/live",
     "/api/v1/health/ready",
+    # Whole-app monitoring probe: status and ok/fail/unknown per component only, no
+    # version, host, error text, count or worker name. Rate-limit exempt like the probes.
+    "/api/v1/healthz",
     # Build identity: version, git SHA and migration head only. An operator who cannot sign in
     # must still read which build is running.
     "/api/v1/version",

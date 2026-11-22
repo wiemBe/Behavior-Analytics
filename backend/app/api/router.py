@@ -24,6 +24,7 @@ from app.api.routes import (
     geo,
     handover,
     health,
+    healthz,
     history_backfill,
     identity,
     ips,
@@ -79,6 +80,8 @@ from app.security.rbac import (
 
 api_router = APIRouter()
 api_router.include_router(health.router)
+# Whole-app health for monitoring: open like /health, bounded and rate-limit exempt.
+api_router.include_router(healthz.router)
 # Platform-wide Ariel load. admin:* only: admin:waf and read:* do not see it.
 api_router.include_router(ariel_load.router, dependencies=[Depends(requires(PERM_ADMIN))])
 api_router.include_router(
