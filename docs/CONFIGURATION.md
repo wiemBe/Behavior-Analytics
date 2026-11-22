@@ -12,9 +12,15 @@ Four settings hold a list: `EXPLANATION_DIMENSIONS`, `CATCHALL_TYPE_IDS`, `GEO_D
 `QRADAR_HEALTH_DISK_MOUNTS`. Each accepts both a JSON array and a comma-separated string with
 optional spaces, so `["SOURCE", "DESTINATION"]` and `SOURCE, DESTINATION` mean the same thing; a
 single value needs no comma. An empty value means the setting is unset, so its documented default
-applies. A value that still cannot be read fails start-up (`migrate`, backend and worker all
-refuse), with an error naming the variable and the accepted form and never carrying a
-secret-typed setting's value.
+applies.
+
+A malformed value in one of these four list variables, or in a family switch, does not take the
+process down: for that run the switch is read as off and the list keeps its code default. Startup
+logs one WARNING per affected variable and `./qradar-dash doctor` reports it as a WARN on
+`settings_problems`; neither prints the value. A stored `feature_switch` row overrides a malformed
+environment switch, so Administration → Features is the immediate escape from a bad `.env` line.
+Every other setting is critical: a bad secret, connection or bound still refuses startup exactly
+as before, and a critical error alongside a malformed non-critical one refuses it too.
 
 ## Family defaults in 0.1.17
 

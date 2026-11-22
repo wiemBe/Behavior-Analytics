@@ -17,6 +17,7 @@ from app.api.routes.property_watches import CapacityConflict
 from app.core.config import (
     Settings,
     get_settings,
+    get_settings_problems,
     unknown_setting_canonical_hints,
     unknown_setting_names,
 )
@@ -66,6 +67,16 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             f"{name} (did you mean {hints[name]}?)" if name in hints else name for name in unknown
         )
         logger.warning("ignoring unknown settings: %s", rendered)
+    # One line per degraded setting: names, a reason code and the fallback, never the
+    # value. The app is up and safe; the operator still needs to fix the .env line.
+    for problem in get_settings_problems():
+        logger.warning(
+            "malformed non-critical setting ignored: env=%s field=%s reason=%s; using %s",
+            problem.env_name,
+            problem.field,
+            problem.reason_code,
+            problem.fallback,
+        )
     logger.info(
         "starting qradar-observability",
         extra={"environment": str(settings.environment), "provider": str(settings.qradar_provider)},

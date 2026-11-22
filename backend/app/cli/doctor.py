@@ -31,9 +31,11 @@ from app.cli import doctor_aql
 from app.cli.doctor_qradar_health import disk_line, human_bytes, pipeline_line
 from app.collectors.offense_collector import WATERMARK_STALLED_KEY
 from app.core.config import (
+    INVALID_SWITCH_VALUE,
     Environment,
     Settings,
     get_settings,
+    get_settings_problems,
     unknown_setting_canonical_hints,
     unknown_setting_names,
 )
@@ -104,6 +106,9 @@ _CHECK_RUNBOOKS = (
     ("public_origin", "OPS-R12"),
     ("version_match", "OPS-R11"),
     ("unknown_settings", "OPS-R62"),
+    # Same settings-hygiene runbook as `unknown_settings`; no new OPS-R entry is needed,
+    # and `qradar_health` must stay the last check (two older tests pin it there).
+    ("settings_problems", "OPS-R62"),
     ("ariel_permits", "OPS-R63"),
     ("geo_country_source", "OPS-R30"),
     ("rule_match_coverage", "OPS-R65"),
@@ -116,6 +121,14 @@ _CHECK_RUNBOOKS = (
     ("qradar_access", "OPS-R71"),
     ("qradar_health", "OPS-R67"),
 )
+#: The accepted short form each list setting shows in its fix line. Fixed text from
+#: the four `NoDecode` fields of config.py; never an operator's value.
+_SETTINGS_LIST_HINTS = {
+    "EXPLANATION_DIMENSIONS": "QID,EVENT_NAME",
+    "CATCHALL_TYPE_IDS": "67, 39",
+    "GEO_DIRECTIONS": "SOURCE,DESTINATION",
+    "QRADAR_HEALTH_DISK_MOUNTS": "/,/store",
+}
 #: `doctor --aql` (AQL-1): every `aql_<family>` check points to one runbook entry.
 _AQL_CHECK_RUNBOOKS = tuple((check_id, doctor_aql.RUNBOOK) for check_id in doctor_aql.CHECK_IDS)
 _TOKENISH_RE = re.compile(r"(?<![A-Za-z0-9_-])[A-Za-z0-9_-]{24,}(?![A-Za-z0-9_-])")
@@ -1457,6 +1470,33 @@ class Doctor:
             Status.WARN,
             "ignored unknown settings: " + rendered,
             "OPS-R62",
+        )
+
+    async def check_settings_problems(self) -> CheckResult:
+        """WARN on non-critical values that were replaced when settings were loaded.
+
+        A problem holds only a field, an env name and a reason code, so neither this
+        text nor the JSON output can carry the operator's malformed value.
+        """
+        problems = get_settings_problems()
+        if not problems:
+            return CheckResult(
+                "settings_problems", Status.PASS, "no malformed non-critical settings"
+            )
+        lines: list[str] = []
+        for problem in problems:
+            if problem.reason_code == INVALID_SWITCH_VALUE:
+                lines.append(
+                    f"{problem.env_name}: not true/false. Value ignored, switch off."
+                )
+            else:
+                hint = _SETTINGS_LIST_HINTS.get(problem.env_name, "a comma-separated list")
+                lines.append(
+                    f"{problem.env_name}: not a list. Use {hint} or a JSON array. "
+                    "Value ignored, default used."
+                )
+        return CheckResult(
+            "settings_problems", Status.WARN, "; ".join(lines), "OPS-R62"
         )
 
     async def check_ariel_permits(self) -> CheckResult:
