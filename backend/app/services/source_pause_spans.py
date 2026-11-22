@@ -11,7 +11,19 @@ from datetime import UTC, datetime, timedelta
 from typing import NamedTuple
 from uuid import UUID
 
-from sqlalchemy import DateTime, Exists, cast, exists, func, literal, literal_column, select, update
+from sqlalchemy import (
+    DateTime,
+    Exists,
+    any_,
+    bindparam,
+    cast,
+    exists,
+    func,
+    literal,
+    literal_column,
+    select,
+    update,
+)
 from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.dialects.postgresql import UUID as PgUUID
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -23,6 +35,11 @@ from app.models.log_source_pause import LogSourcePause as Pause
 _EPOCH = datetime(1970, 1, 1, tzinfo=UTC)
 _TZ = DateTime(timezone=True)
 _NEVER = literal_column("'infinity'::timestamptz", _TZ)
+
+
+def _any_of(name: str) -> ColumnElement[bool]:
+    """One array bind for an id list: the statement text does not grow with the ids."""
+    return any_(bindparam(name, type_=ARRAY(PgUUID(as_uuid=True))))
 
 
 class PauseSpan(NamedTuple):
@@ -106,11 +123,15 @@ async def close_pause(
     end = _EPOCH + -((_EPOCH - _aware(observed_at)) // step) * step
     statement = (
         update(Pause)
-        .where(Pause.log_source_id.in_(ids), Pause.reason == reason, Pause.ends_at.is_(None))
+        .where(
+            Pause.log_source_id == _any_of("ids"),
+            Pause.reason == reason,
+            Pause.ends_at.is_(None),
+        )
         .values(ends_at=func.greatest(end, Pause.starts_at + timedelta(seconds=1)))
         .returning(Pause.log_source_id)
     )
-    return len((await session.execute(statement)).all())
+    return len((await session.execute(statement, {"ids": ids})).all())
 
 
 def bucket_overlaps_pause(
