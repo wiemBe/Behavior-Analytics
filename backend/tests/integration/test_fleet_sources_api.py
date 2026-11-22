@@ -7,6 +7,7 @@ import uuid
 from datetime import timedelta
 
 import pytest
+from sqlalchemy import event
 
 from app.models.enums import (
     AnomalyState,
@@ -284,9 +285,20 @@ def test_sql_is_constant_in_fleet_size(db_schema) -> None:
         ("filtered5", "?limit=5&class=OTHER&profile=WAF&eps=NO_BASELINE&flow=FLOWING&q=s-"),
         ("filtered500", "?limit=500&class=OTHER&profile=WAF&eps=NO_BASELINE&flow=FLOWING&q=s-"),
     ):
-        resp = c.get(f"{URL}{query}")
+        switch_reads = []
+
+        def record(conn, cursor, statement, *args, switch_reads=switch_reads):
+            if statement.startswith("SELECT ") and "\nFROM feature_switch" in statement:
+                switch_reads.append(statement)
+
+        event.listen(c.engine.sync_engine, "before_cursor_execute", record)
+        try:
+            resp = c.get(f"{URL}{query}")
+        finally:
+            event.remove(c.engine.sync_engine, "before_cursor_execute", record)
         assert resp.status_code == 200, resp.text
-        seen[label] = c.statements
+        assert len(switch_reads) == 1
+        seen[label] = c.statements - len(switch_reads)
     assert seen["5"] == seen["500"] and seen["filtered5"] == seen["filtered500"], seen
     assert seen["500"] <= 12, seen
 

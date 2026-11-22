@@ -17,7 +17,7 @@ from app.api.csv_export import (
     csv_export_response,
     csv_stamp,
 )
-from app.api.deps import EffectiveSettingsDep, SessionDep, SettingsDep
+from app.api.deps import EffectiveSettingsDep, SessionDep
 from app.api.routes.log_sources import PrincipalDep, _guard, _jsonable
 from app.collectors.log_source_collector import COLLECTOR_NAME, stored_run, sync_pass
 from app.fleet.review import review_classification
@@ -171,7 +171,7 @@ SortOrder = Literal["asc", "desc"]
 @router.get("/sources", response_model=FleetSourcePage)
 async def fleet_sources(
     session: SessionDep,
-    settings: SettingsDep,
+    settings: EffectiveSettingsDep,
     filters: FiltersDep,
     sort: FleetSourceSort = Query(default="name"),
     order: SortOrder = Query(default="asc"),
@@ -259,7 +259,7 @@ def _export_row(r: FleetSourceRow) -> list[object]:
 @router.get("/sources.csv")
 async def fleet_sources_csv(
     session: SessionDep,
-    settings: SettingsDep,
+    settings: EffectiveSettingsDep,
     filters: FiltersDep,
     sort: FleetSourceSort = Query(default="name"),
     order: SortOrder = Query(default="asc"),
@@ -289,7 +289,7 @@ async def fleet_sources_csv(
 async def bulk_classification(
     payload: FleetBulkClassificationIn,
     session: SessionDep,
-    settings: SettingsDep,
+    settings: EffectiveSettingsDep,
     principal: PrincipalDep,
 ) -> FleetBulkClassificationOut:
     """Set or clear (null) the class override of up to 500 sources in one transaction.
@@ -369,7 +369,7 @@ async def bulk_classification(
     return FleetBulkClassificationOut(updated=len(ids), items=items)
 
 
-async def _sync_status(session: SessionDep, settings: SettingsDep) -> FleetSyncStatus:
+async def _sync_status(session: SessionDep, settings: EffectiveSettingsDep) -> FleetSyncStatus:
     """The stored inventory-sync state per enabled console; sends nothing to QRadar.
 
     There is no run table for this collector. What exists: the collector's watermark row (last
@@ -431,7 +431,7 @@ async def _sync_status(session: SessionDep, settings: SettingsDep) -> FleetSyncS
 
 @router.get("/sources/sync", response_model=FleetSyncStatus)
 async def fleet_sources_sync_status(
-    session: SessionDep, settings: SettingsDep, principal: PrincipalDep
+    session: SessionDep, settings: EffectiveSettingsDep, principal: PrincipalDep
 ) -> FleetSyncStatus:
     """The last log-source inventory sync per console (`admin:*`)."""
     _guard(principal, PERM_ADMIN)
@@ -440,7 +440,7 @@ async def fleet_sources_sync_status(
 
 @router.post("/sources/sync", response_model=FleetSyncQueued, status_code=202)
 async def fleet_sources_sync(
-    session: SessionDep, settings: SettingsDep, principal: PrincipalDep
+    session: SessionDep, settings: EffectiveSettingsDep, principal: PrincipalDep
 ) -> FleetSyncQueued:
     """Queue the log-source inventory sync the beat runs, for every enabled console (`admin:*`).
 
