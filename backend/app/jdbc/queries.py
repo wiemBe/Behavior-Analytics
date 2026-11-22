@@ -23,10 +23,12 @@ from app.collectors.log_source_collector import COLLECTOR_NAME, INVENTORY_RUN_KE
 from app.history.origin import PHASE_A_HISTORY_SOURCES, is_live_clause
 from app.jdbc.flow import AttemptState, LastObservation, target_bucket
 from app.jdbc.parameters import UNVERIFIED
+from app.log_source_policy import not_absent
 from app.models.enums import BucketCompleteness
 from app.models.instance import QRadarInstance
 from app.models.jdbc import JdbcSourceConfig, JdbcSyncState
 from app.models.log_source import LogSource, LogSourceMetric
+from app.models.log_source_pause import REASON_ABSENT, LogSourcePause
 from app.models.monitoring import CollectionWatermark
 
 JDBC_PROTOCOL_ID = 8
@@ -71,8 +73,28 @@ class JdbcFilters:
     flow_state: str | None = None
 
 
-def _flow_columns(tm: Any, window: TargetWindow) -> dict[str, ColumnElement[Any]]:
-    """The §4 table as CASE expressions over the aliased target-row columns `tm`."""
+def absent_since_column() -> ColumnElement[datetime]:
+    """The open ABSENT span's start, correlated to the unaliased LogSource.
+
+    The partial unique index allows one open span per reason, so this is a scalar. It
+    accompanies `not_absent()` in the same statement; it never adds a query per source.
+    """
+    return select(LogSourcePause.starts_at).where(
+        LogSourcePause.log_source_id == LogSource.id,
+        LogSourcePause.reason == REASON_ABSENT,
+        LogSourcePause.ends_at.is_(None),
+    ).correlate(LogSource).scalar_subquery()
+
+
+def _flow_columns(
+    tm: Any, window: TargetWindow, *, absent_aware: bool = False,
+) -> dict[str, ColumnElement[Any]]:
+    """The §4 table as CASE expressions over the aliased target-row columns `tm`.
+
+    With `absent_aware`, the shared `not_absent()` predicate guards the legacy CASE: an
+    open ABSENT span yields its own state, NOT_COLLECTED and null figures whatever the
+    stored flag or the target row says. Off, the expressions are unchanged.
+    """
     enabled = LogSource.enabled.is_(True)
     present = tm.log_source_id.is_not(None)
     live = and_(present, is_live_clause(tm))
@@ -95,14 +117,26 @@ def _flow_columns(tm: Any, window: TargetWindow) -> dict[str, ColumnElement[Any]
         (exact, "NO_ATTRIBUTED_EVENTS"), else_="NOT_MEASURED",
     )
     # Only an exact bucket carries a count or a rate; anything else is null, never zero.
-    return {
+    columns: dict[str, ColumnElement[Any]] = {
         "flow_state": state, "measurement": measurement,
         "event_count": case((exact, tm.event_count)),
         "average_eps": case((exact, tm.average_eps)),
     }
+    if not absent_aware:
+        return columns
+    present_now = not_absent()
+    return {
+        "flow_state": case((present_now, state), else_="ABSENT_FROM_INVENTORY"),
+        "measurement": case((present_now, measurement), else_="NOT_COLLECTED"),
+        "event_count": case((present_now, columns["event_count"])),
+        "average_eps": case((present_now, columns["average_eps"])),
+    }
 
 
-def _conditions(filters: JdbcFilters, flow: dict[str, ColumnElement[Any]] | None) -> list[Any]:
+def _conditions(
+    filters: JdbcFilters, flow: dict[str, ColumnElement[Any]] | None, *,
+    omit_absent: bool = False,
+) -> list[Any]:
     conditions: list[Any] = [LogSource.protocol_type_id.in_(JDBC_LIKE_PROTOCOLS)]
     needle = (filters.q or "").strip()
     if needle:
@@ -116,6 +150,8 @@ def _conditions(filters: JdbcFilters, flow: dict[str, ColumnElement[Any]] | None
         conditions.append(LogSource.instance_id == filters.instance_id)
     if filters.flow_state is not None and flow is not None:
         conditions.append(flow["flow_state"] == filters.flow_state)
+    if omit_absent:
+        conditions.append(not_absent())
     return conditions
 
 
@@ -128,11 +164,12 @@ def _target_join(tm: Any, window: TargetWindow) -> ColumnElement[bool]:
 
 
 def page_query(
-    window: TargetWindow, filters: JdbcFilters, *, limit: int, offset: int
+    window: TargetWindow, filters: JdbcFilters, *, limit: int, offset: int,
+    absent_aware: bool = False, omit_absent: bool = False,
 ) -> Select[Any]:
     """Statement 2 of 4: one page, filtered before pagination, stable name/id order."""
     tm, cfg = aliased(LogSourceMetric), aliased(JdbcSourceConfig)
-    flow = _flow_columns(tm, window)
+    flow = _flow_columns(tm, window, absent_aware=absent_aware)
     columns = [
         LogSource.id, LogSource.instance_id, LogSource.qradar_id, LogSource.name,
         LogSource.protocol_type_id, LogSource.enabled, LogSource.qradar_status,
@@ -143,27 +180,32 @@ def page_query(
         tm.collected_at.label("target_collected_at"),
         *(expr.label(name) for name, expr in flow.items()),
     ]
+    if absent_aware:
+        columns.append(absent_since_column().label("absent_since"))
     return (
         select(*columns)
         .select_from(LogSource)
         .outerjoin(cfg, cfg.log_source_id == LogSource.id)
         .outerjoin(tm, _target_join(tm, window))
-        .where(*_conditions(filters, flow))
+        .where(*_conditions(filters, flow, omit_absent=omit_absent))
         .order_by(LogSource.name, LogSource.id)
         .limit(limit)
         .offset(offset)
     )
 
 
-def count_query(window: TargetWindow, filters: JdbcFilters) -> Select[Any]:
+def count_query(
+    window: TargetWindow, filters: JdbcFilters, *, absent_aware: bool = False,
+    omit_absent: bool = False,
+) -> Select[Any]:
     """Statement 1 of 4: the page's conditions; the target join only for a flow filter."""
     stmt = select(func.count()).select_from(LogSource)
     flow = None
     if filters.flow_state is not None:
         tm = aliased(LogSourceMetric)
-        flow = _flow_columns(tm, window)
+        flow = _flow_columns(tm, window, absent_aware=absent_aware)
         stmt = stmt.outerjoin(tm, _target_join(tm, window))
-    return stmt.where(*_conditions(filters, flow))
+    return stmt.where(*_conditions(filters, flow, omit_absent=omit_absent))
 
 
 def last_observation_since(

@@ -59,15 +59,18 @@ async def list_jdbc_sources(
     protocol: int | None = Query(default=None),
     enabled: bool | None = Query(default=None),
     flow_state: str | None = Query(default=None),
+    include_absent: bool = Query(default=False),
 ) -> JdbcSourcePage:
     """One page of JDBC-like sources with flow state; four data SELECTs however many exist."""
     repo = JdbcRepository(session, settings)
     try:
         repo.bounds(limit=limit, offset=offset, q=q, enabled=enabled, protocol=protocol,
-                    instance_id=instance_id, flow_state=flow_state)
+                    instance_id=instance_id, flow_state=flow_state,
+                    include_absent=include_absent)
         page = await repo.list(
             **await _timing(session, settings), limit=limit, offset=offset, q=q,
-            enabled=enabled, protocol=protocol, instance_id=instance_id, flow_state=flow_state)
+            enabled=enabled, protocol=protocol, instance_id=instance_id, flow_state=flow_state,
+            include_absent=include_absent)
     except JdbcQueryError as exc:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(exc)) from exc
     return JdbcSourcePage(
