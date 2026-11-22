@@ -900,8 +900,19 @@ def test_sources_q_matches_name_or_type_case_insensitively_and_sql_is_constant(d
     assert client.get("/api/v1/fleet/sources?q=box").json()["total"] == 2
     counts = []
     for query in ("?q=box", "?q=ftd", ""):
-        client.get(f"/api/v1/fleet/sources{query}")
-        counts.append(client.statements)
+        switch_reads = []
+
+        def record(conn, cursor, statement, *args, switch_reads=switch_reads):
+            if statement.startswith("SELECT ") and "\nFROM feature_switch" in statement:
+                switch_reads.append(statement)
+
+        event.listen(client.engine.sync_engine, "before_cursor_execute", record)
+        try:
+            client.get(f"/api/v1/fleet/sources{query}")
+        finally:
+            event.remove(client.engine.sync_engine, "before_cursor_execute", record)
+        assert len(switch_reads) == 1
+        counts.append(client.statements - len(switch_reads))
     assert len(set(counts)) == 1, counts
 
 

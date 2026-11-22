@@ -6,6 +6,7 @@ import os
 from datetime import timedelta
 
 import pytest
+from sqlalchemy import event
 
 from app.models.enums import Criticality
 from app.models.fleet import LogSourceGroup
@@ -176,7 +177,19 @@ def test_sql_is_constant_with_the_new_facets(db_schema) -> None:
         ("all", f"?{everything}"),
         ("all5", f"?limit=5&{everything}"),
     ):
-        assert c.get(f"{URL}{query}").status_code == 200
-        seen[label] = c.statements
+        switch_reads = []
+
+        def record(conn, cursor, statement, *args, switch_reads=switch_reads):
+            if statement.startswith("SELECT ") and "\nFROM feature_switch" in statement:
+                switch_reads.append(statement)
+
+        event.listen(c.engine.sync_engine, "before_cursor_execute", record)
+        try:
+            resp = c.get(f"{URL}{query}")
+        finally:
+            event.remove(c.engine.sync_engine, "before_cursor_execute", record)
+        assert resp.status_code == 200
+        assert len(switch_reads) == 1
+        seen[label] = c.statements - len(switch_reads)
     assert seen["all"] == seen["all5"] == seen["plain"], seen
     assert seen["plain"] <= 12, seen
