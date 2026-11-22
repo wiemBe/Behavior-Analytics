@@ -603,7 +603,7 @@ case "$*" in
     ;;
   *" app.cli.features show")
     for pair in catchall_collection_enabled=on geo_collection_enabled=on explanation_enabled=on \
-      waf_collection_enabled=on ips_collection_enabled=on rule_match_collection_enabled=off \
+      waf_collection_enabled=on ips_collection_enabled=on rule_match_collection_enabled=on \
       custom_rules_enabled=on pw_collection_enabled=on identity_collection_enabled=on \
       qradar_health_collection_enabled=on; do
       key=${pair%=*}; value=${pair#*=}
@@ -1787,7 +1787,7 @@ def test_install_summary_names_on_and_off_families_and_the_backup_timer(
     for key, value in (("waf_collection_enabled", "on"), ("ips_collection_enabled", "on"),
                        ("identity_collection_enabled", "on"),
                        ("qradar_health_collection_enabled", "on"),
-                       ("explanation_enabled", "on"), ("rule_match_collection_enabled", "off")):
+                       ("explanation_enabled", "on"), ("rule_match_collection_enabled", "on")):
         assert f"{key}={value}" in result.stdout
     env_text = (inst.root / ".env").read_text()
     for key in (

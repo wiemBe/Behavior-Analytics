@@ -268,3 +268,50 @@ async def test_the_statements_of_a_run_do_not_grow_with_the_fleet(rig: Rig) -> N
 
     assert counts[0] == counts[1]
     assert counts[0][0] == 1
+
+
+async def test_the_rule_match_entry_searches_each_due_window_by_default(
+    db_session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """D-105: the real task entry runs with the on default, one search per due window."""
+    from contextlib import asynccontextmanager
+
+    from app.collectors.rule_match_collector import RuleMatchCollector
+    from app.services.search_cadence import SearchCadenceService
+    from tests.integration.test_rule_match_collection import ScriptedProvider
+
+    assert Settings.model_fields["rule_match_collection_enabled"].default is True
+    await make_instance(db_session)
+    provider = ScriptedProvider({})
+    settings = Settings(_env_file=None, encryption_key="x" * 44)
+    collector_settings = settings.model_copy(update={
+        "rule_match_settle_lag_seconds": 0,
+        "rule_match_max_windows_per_run": 1,
+    })
+    now = datetime(2026, 10, 12, 12, 10, tzinfo=UTC)
+
+    @asynccontextmanager
+    async def _same():
+        yield db_session
+
+    class _Collector(RuleMatchCollector):
+        def __init__(self, session, provider) -> None:  # type: ignore[no-untyped-def]
+            super().__init__(session, provider, settings=collector_settings, clock=lambda: now)
+
+    async def _claim(self, family):  # type: ignore[no-untyped-def]
+        return object()
+
+    monkeypatch.setattr(tasks, "get_settings", lambda: settings)
+    monkeypatch.setattr(tasks, "get_sessionmaker", lambda: (lambda: _same()))
+    monkeypatch.setattr(tasks, "build_provider_for_instance", lambda *a, **k: provider)
+    monkeypatch.setattr(tasks, "RuleMatchCollector", _Collector)
+    monkeypatch.setattr(SearchCadenceService, "claim_slot", _claim)
+
+    result = await tasks.collect_rule_matches()
+
+    assert result["instances"] == 1
+    item = result["results"][0]
+    assert item["status"] == "ok", item
+    assert item["windows_attempted"] == 1
+    assert item["searches_sent"] == 1
+    assert provider.calls == [now.replace(hour=11, minute=0)]

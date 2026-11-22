@@ -200,8 +200,8 @@ celery_app.conf.beat_schedule = {
     "collect-rule-matches": {
         # Measured rule matches (Phase E.1a): one read-only keyed Ariel search
         # per cadence tick. Ticks every minute; the RULE_MATCH cadence gate
-        # decides whether a tick is due. A no-op while
-        # RULE_MATCH_COLLECTION_ENABLED is false.
+        # decides whether a tick is due. On by default (D-105); an explicit
+        # RULE_MATCH_COLLECTION_ENABLED=false makes each tick a no-op.
         "task": "collect_rule_matches",
         "schedule": 60.0,
     },

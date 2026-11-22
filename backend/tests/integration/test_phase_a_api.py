@@ -654,7 +654,7 @@ class TestMeasuredValuesOnly:
 
 class TestDetectorCapabilities:
     def test_every_named_detector_is_published_with_its_status(self, db_schema) -> None:
-        """Family defaults enable configured detectors; rule-match collection stays off."""
+        """Family defaults, including rule-match, enable configured detectors."""
         body = client_for(READER).get("/api/v1/behavior/detectors").json()
         status = {d["detector_type"]: d["status"] for d in body}
         assert len(body) == 37
@@ -678,10 +678,8 @@ class TestDetectorCapabilities:
             "WAF_CLIENT_CONCENTRATION_SPIKE",
         } | {t.value for t in IpsAnomalyType} | {t.value for t in PwAnomalyType} | {
             t.value for t in IdentityAnomalyType
-        }
-        assert {t for t, s in status.items() if s == "NOT_ENABLED"} == {
-            t.value for t in RuleAnomalyType
-        }
+        } | {t.value for t in RuleAnomalyType}
+        assert {t for t, s in status.items() if s == "NOT_ENABLED"} == set()
         assert status["WAF_CLIENT_ENDPOINT_FANOUT_SPIKE"] == "UNSUPPORTED"
         assert status["CARDINALITY_DROP"] == "UNSUPPORTED"
         assert status["TIMESTAMP_DELAY"] == "SYNTHETIC_ONLY"
@@ -693,6 +691,10 @@ class TestDetectorCapabilities:
         """Off: NOT_ENABLED naming collection, with alerting in the activation text.
         On: OPERATIONAL. The route invents no rule logic of its own."""
         client = client_for(READER)
+        # The family is on by default (D-105); pin the off path explicitly so it stays covered.
+        client.app.dependency_overrides[get_settings] = lambda: Settings(
+            _env_file=None, rule_match_collection_enabled=False
+        )
         off = {d["detector_type"]: d for d in client.get("/api/v1/behavior/detectors").json()}
         for t in RuleAnomalyType:
             block = off[t.value]

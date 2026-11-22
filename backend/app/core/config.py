@@ -706,15 +706,17 @@ class Settings(BaseSettings):
     rule_metric_lookback_days: int = Field(default=30, ge=1, le=365)
     rule_metric_max_offenses: int = Field(default=10_000, ge=1, le=1_000_000)
     # Measured rule matches (Phase E.1a): one Ariel `creEventList` search per
-    # window. Off by default -- the cost on a busy console is unmeasured.
-    rule_match_collection_enabled: bool = False
-    # Incidents are recorded either way. Alerts stay off until an operator turns
-    # the family on: collection itself is off because the Ariel cost on a busy
-    # console is unmeasured, and a false silence page is a trust failure while
-    # the first production series is still unseen. One switch covers silence and
-    # storm (design §5.5, D-60). Robust z uses anomaly_deviation_threshold;
-    # the MAD floor uses baseline_mad_floor_ratio.
-    rule_alerting_enabled: bool = False
+    # window. On by default (D-105). Cost scales with event volume, not rule
+    # count: the search scans every event in the window (qradar_rest.py ~l.1873),
+    # comparable to the Phase A volume search production already runs. An
+    # explicit RULE_MATCH_COLLECTION_ENABLED=false or a Features row turns it off.
+    rule_match_collection_enabled: bool = True
+    # Incidents are recorded either way. Alerting is on by default (D-105), so
+    # silence and storm can page once a series exists; set
+    # RULE_ALERTING_ENABLED=false or use the Features toggle to record without
+    # paging. One switch covers silence and storm (design §5.5, D-60). Robust z
+    # uses anomaly_deviation_threshold; the MAD floor uses baseline_mad_floor_ratio.
+    rule_alerting_enabled: bool = True
     # N consecutive proven-zero windows before a silence incident opens. This is
     # the lifecycle open threshold, not a second counter stacked on
     # anomaly_open_after_intervals (design §3.2).
@@ -1759,6 +1761,41 @@ class Settings(BaseSettings):
             raise ValueError(
                 "RULE_MATCH_RETENTION_DAYS must exceed RULE_HEALTH_WINDOW_DAYS "
                 f"({self.rule_match_retention_days} <= {self.rule_health_window_days})"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _default_repair_bounds_follow_their_partners(self) -> Settings:
+        """Derive unset repair bounds before the consistency check runs.
+
+        D-105 turned rule-match collection on by default. Until then the bounds
+        validator was inert, so a site could lower a live bound (for example
+        ``RULE_MATCH_MAX_WINDOWS_PER_RUN=3``) and boot with the default repair
+        bounds untouched. Now that the validator runs, those defaults would
+        refuse the same ``.env``. A repair bound that no source supplied is
+        derived from its live partner; an explicit contradictory value is left
+        untouched for the check to refuse. ``object.__setattr__` keeps a derived
+        value's code-default provenance in ``model_fields_set``.
+        """
+        if "rule_match_repair_max_windows_per_run" not in self.model_fields_set:
+            # Unset means the field default (6); lower it to the live cap.
+            object.__setattr__(
+                self,
+                "rule_match_repair_max_windows_per_run",
+                min(
+                    self.rule_match_repair_max_windows_per_run,
+                    self.rule_match_max_windows_per_run,
+                ),
+            )
+        if "rule_match_repair_max_age_seconds" not in self.model_fields_set:
+            # At least one window, strictly inside retention. Where the two
+            # partners cannot both be met the consistency check still refuses:
+            # that configuration is contradictory, not a default gap.
+            age = max(self.rule_match_repair_max_age_seconds, self.rule_match_window_seconds)
+            object.__setattr__(
+                self,
+                "rule_match_repair_max_age_seconds",
+                min(age, self.rule_match_retention_days * 86400 - 1),
             )
         return self
 

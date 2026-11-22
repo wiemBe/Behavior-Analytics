@@ -1142,7 +1142,11 @@ async def test_a_family_without_data_has_no_estimate_not_a_zero(db_session, db_s
     client = Client(
         db_schema,
         READER,
-        settings_update={"waf_collection_enabled": True, "ips_collection_enabled": True},
+        settings_update={
+            "waf_collection_enabled": True, "ips_collection_enabled": True,
+            # The family is on by default (D-105); pin the off path explicitly.
+            "rule_match_collection_enabled": False,
+        },
     )
     console = client.get(f"{BASE}/estimate").json()[0]
     estimates = {item["family"]: item for item in console["families"]}
