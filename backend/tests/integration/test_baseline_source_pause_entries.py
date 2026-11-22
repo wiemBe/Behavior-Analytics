@@ -287,7 +287,7 @@ async def test_deleted_id_is_skipped(rig):
     assert {cell.log_source_id for cell in await _cells(maker)} == {ids[1]}
 
 
-async def test_unreadable_switch_table_retains_legacy_behavior(rig, monkeypatch, caplog):
+async def test_unreadable_switch_table_refuses_training(rig, monkeypatch, caplog):
     engine, maker = rig
     [source_id] = await _seed(maker)
     async with maker() as session:
@@ -297,10 +297,12 @@ async def test_unreadable_switch_table_retains_legacy_behavior(rig, monkeypatch,
         await session.commit()
     monkeypatch.setattr(tasks, "get_settings", lambda: _settings(qradar_source_pause_enabled=True))
     with _record(engine) as operations, caplog.at_level("WARNING", logger="app.tasks"):
-        assert await tasks.rebuild_baselines() == {"sources": 1, "cells": 2}
+        assert await tasks.rebuild_baselines() == {
+            "status": "disabled", "reason": UNREADABLE_REASON,
+        }
     assert not _locks(operations)
-    assert sum(s == "COMMIT" for s, _ in operations) == 1
-    assert len(await _cells(maker)) == 2
+    assert sum(s == "COMMIT" for s, _ in operations) == 0
+    assert len(await _cells(maker)) == 0
     assert [r.reason for r in caplog.records if r.name == "app.tasks"] == [UNREADABLE_REASON]
 
 

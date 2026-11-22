@@ -277,7 +277,7 @@ async def collect_metrics(instance_name: str | None = None) -> dict:
 
     # Resolved once per run so the D-52 switch row reaches the collector. An unreadable
     # table turns the switch off (legacy targets); collection itself never stops for it.
-    settings, _reason = await _effective_settings("collect_metrics")
+    settings, reason = await _effective_settings("collect_metrics")
     family = SearchFamily.PHASE_A_VOLUME
     maker = get_sessionmaker()
     async with maker() as cadence_session:
@@ -291,7 +291,9 @@ async def collect_metrics(instance_name: str | None = None) -> dict:
         session: AsyncSession, instance: QRadarInstance, provider: QRadarProvider | None
     ) -> dict:
         assert provider is not None
-        report = await MetricCollector(session, provider, settings=settings).collect(instance)
+        collector = MetricCollector(session, provider, settings=settings)
+        collector.training_disabled_reason = reason
+        report = await collector.collect(instance)
         history = report.history
         return {
             "status": (
@@ -310,6 +312,7 @@ async def collect_metrics(instance_name: str | None = None) -> dict:
             # against Ariel, so the cadence record below counts them with the live ones.
             "history_searches": history.searches if history else 0,
             "history_state": history.state if history else None,
+            "history_rebuild_skipped_reason": history.rebuild_skipped_reason if history else None,
         }
 
     try:
@@ -1654,7 +1657,9 @@ async def collect_anomaly_explanations(instance_name: str | None = None) -> dict
 async def rebuild_baselines() -> dict:
     from app.log_source_policy import rebuild_baselines_locked, target_filters
 
-    settings, _reason = await _effective_settings("rebuild_baselines")
+    settings, reason = await _effective_settings("rebuild_baselines")
+    if reason is not None:
+        return _with_reason({"status": "disabled"}, reason)
     policy = source_pause_enabled(settings)
     maker = get_sessionmaker()
     async with maker() as session:

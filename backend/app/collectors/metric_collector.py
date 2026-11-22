@@ -154,6 +154,7 @@ class HistoryReport:
     buckets: int = 0
     rows: int = 0
     rebuilt: int = 0
+    rebuild_skipped_reason: str | None = None
     error: str | None = None
     #: The provider failure of this step's first failed history search, when there was
     #: one. The planner turns it into a failed span; the scope row's marker needs it
@@ -224,6 +225,8 @@ class MetricCollector:
         self.session = session
         self.provider = provider
         self.settings = settings or get_settings()
+        # The worker resolves once; switch-off alone is not permission to train.
+        self.training_disabled_reason: str | None = None
         self._clock = clock or (lambda: datetime.now(UTC))
 
     @property
@@ -1390,6 +1393,9 @@ class MetricCollector:
             return None
         pending = phase_a.pending_of(decoded.adapter)
         if not pending:
+            return None
+        if self.training_disabled_reason is not None:
+            report.rebuild_skipped_reason = self.training_disabled_reason
             return None
         batch, rest = phase_a.next_rebuild_batch(
             pending, self.settings.history_backfill_baseline_sources_per_tick
