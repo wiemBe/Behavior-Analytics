@@ -167,6 +167,8 @@ async def close_for_disabled_sources(
     *,
     observed_at: datetime,
     actor: str = INVENTORY_ACTOR,
+    reason: MessageRef = MESSAGE_SOURCE_DISABLED_INCIDENT,
+    alert_reason: MessageRef = MESSAGE_SOURCE_DISABLED_ALERT,
 ) -> DisabledClosureSummary:
     """Close, without a verdict, everything volume-related that the given sources still hold.
 
@@ -186,13 +188,16 @@ async def close_for_disabled_sources(
     total = DisabledClosureSummary()
     for start in range(0, len(unique), CHUNK):
         total = total.add(
-            await _close_chunk(session, unique[start : start + CHUNK], observed_at, actor)
+            await _close_chunk(
+                session, unique[start : start + CHUNK], observed_at, actor, reason, alert_reason
+            )
         )
     return total
 
 
 async def _close_chunk(
-    session: AsyncSession, ids: Sequence[uuid.UUID], observed_at: datetime, actor: str
+    session: AsyncSession, ids: Sequence[uuid.UUID], observed_at: datetime, actor: str,
+    reason: MessageRef, alert_reason: MessageRef,
 ) -> DisabledClosureSummary:
     source_values = list(ids)
     live = [state.value for state in ACTIVE_ANOMALY_STATES]
@@ -214,7 +219,6 @@ async def _close_chunk(
             {"source_ids": source_values},
         )
     ).all()
-    reason = MESSAGE_SOURCE_DISABLED_INCIDENT
     if rows:
         incident_values = [row.id for row in rows]
         await session.execute(
@@ -283,7 +287,7 @@ async def _close_chunk(
         AlertResolution(
             fingerprint=anomaly_fingerprint(source_id, kind.value),
             actor=actor,
-            reason_message=MESSAGE_SOURCE_DISABLED_ALERT,
+            reason_message=alert_reason,
         )
         for source_id, kind in sorted(
             {(row.log_source_id, AnomalyType(row.anomaly_type)) for row in rows},

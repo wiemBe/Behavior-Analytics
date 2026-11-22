@@ -220,8 +220,12 @@ class LogSourceCollector:
                 watermark.last_error = (
                     f"{report.status.lower()}: {report.error}"[:512] if report.status else None
                 )
+            metadata = dict(watermark.collection_metadata or {})
+            if (source_pause_enabled(self.settings) and service.absence is not None
+                    and service.absence.confirmed):
+                metadata.pop("absence_accept", None)
             watermark.collection_metadata = {
-                **(watermark.collection_metadata or {}),
+                **metadata,
                 **absence_metadata,
                 INVENTORY_RUN_KEY: {
                     "status": report.status,

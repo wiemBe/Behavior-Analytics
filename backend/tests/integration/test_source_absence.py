@@ -307,22 +307,42 @@ async def test_disabled_absent_overlaps_independent(db_session):
     instance = await make_instance(db_session)
     source = await make_log_source(db_session, instance, enabled=False, qradar_id=1)
     await _pause(db_session, source)
-    # Actual reconcile must not mistake ABSENT for an already-open disabled span.
+    # X3b: a sync that sees the source present closes ABSENT (state-based, whole-bucket end)
+    # and, independently, reconciles QRADAR_DISABLED; the mirrored enabled flag is untouched.
+    # The reconcile must not mistake the ABSENT span for an already-open disabled span.
     await _sync(db_session, instance.id, [(1, False)])
     spans = list(await db_session.scalars(select(LogSourcePause)))
+    assert {s.reason for s in spans if s.ends_at is None} == {REASON_QRADAR_DISABLED}
+    absent = [s for s in spans if s.reason == REASON_ABSENT]
+    assert len(absent) == 1 and absent[0].ends_at is not None
+    await db_session.refresh(source)
+    assert source.enabled is False
+    assert await db_session.scalar(select(LogSource.id).where(not_absent())) == source.id
+    assert await close_pause(db_session, [source.id], reason=REASON_ABSENT,
+                             observed_at=COLLECT_NOW, bucket_seconds=300) == 0
+
+    # Overlap independence of the readers, set up directly: a sync would now close ABSENT.
+    other = await make_log_source(db_session, instance, enabled=False, qradar_id=2)
+    await _pause(db_session, other)
+    await _pause(db_session, other, reason=REASON_QRADAR_DISABLED)
+    spans = list(await db_session.scalars(
+        select(LogSourcePause).where(LogSourcePause.log_source_id == other.id)))
     assert {s.reason for s in spans if s.ends_at is None} == {
         REASON_ABSENT, REASON_QRADAR_DISABLED,
     }
-    assert await close_pause(db_session, [source.id], reason=REASON_QRADAR_DISABLED,
+    assert await close_pause(db_session, [other.id], reason=REASON_QRADAR_DISABLED,
                              observed_at=COLLECT_NOW, bucket_seconds=300) == 1
-    assert await db_session.scalar(select(LogSource.id).where(not_absent())) is None
-    assert await close_pause(db_session, [source.id], reason=REASON_ABSENT,
+    assert await db_session.scalar(
+        select(LogSource.id).where(not_absent(), LogSource.id == other.id)) is None
+    assert await close_pause(db_session, [other.id], reason=REASON_ABSENT,
                              observed_at=COLLECT_NOW, bucket_seconds=300) == 1
     # Closed with a future end still means present immediately.
-    assert await db_session.scalar(select(LogSource.id).where(not_absent())) == source.id
-    await open_pause(db_session, [source.id], reason=REASON_QRADAR_DISABLED,
+    assert await db_session.scalar(
+        select(LogSource.id).where(not_absent(), LogSource.id == other.id)) == other.id
+    await open_pause(db_session, [other.id], reason=REASON_QRADAR_DISABLED,
                      starts_at=COLLECT_NOW+timedelta(hours=1), now=COLLECT_NOW+timedelta(hours=2))
-    assert await db_session.scalar(select(LogSource.id).where(not_absent())) == source.id
+    assert await db_session.scalar(
+        select(LogSource.id).where(not_absent(), LogSource.id == other.id)) == other.id
 
 
 @pytest.mark.asyncio
