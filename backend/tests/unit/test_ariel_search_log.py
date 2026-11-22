@@ -524,7 +524,9 @@ async def test_preview_records_preview_and_the_task_flushes_once() -> None:
         patch.setattr(tasks, "_effective_settings", effective)
         patch.setattr(tasks, "get_sessionmaker", lambda: lambda: session)
         patch.setattr(tasks, "get_preview_store", lambda _settings: store)
-        patch.setattr(tasks, "build_provider_for_instance", lambda _instance: mock)
+        patch.setattr(
+            tasks, "build_provider_for_instance", lambda _instance, *, settings=None: mock
+        )
         outcome = await tasks.run_property_watch_preview(preview_id, str(watch.id), "admin")
     assert outcome["status"] == "done", outcome
     assert len(conn.statements) == 1

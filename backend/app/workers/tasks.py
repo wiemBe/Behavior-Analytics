@@ -316,7 +316,7 @@ async def collect_metrics(instance_name: str | None = None) -> dict:
         }
 
     try:
-        result = await _for_each_instance(run, instance_name)
+        result = await _for_each_instance(run, instance_name, provider_settings=settings)
     except Exception:
         # The slot stays claimed (no retry inside a slot); the counts are unknown.
         async with maker() as cadence_session:
@@ -787,7 +787,7 @@ async def collect_rule_matches(instance_name: str | None = None) -> dict:
             outcome["engine_error_class"] = engine_error
         return outcome
 
-    result = await _for_each_instance(run, instance_name)
+    result = await _for_each_instance(run, instance_name, provider_settings=settings)
     results = result.get("results", [])
     outcome = result.get("status")
     if outcome is None:
@@ -863,7 +863,7 @@ async def collect_catchall_senders(instance_name: str | None = None) -> dict:
             "error": report.error,
         }
 
-    result = await _for_each_instance(run, instance_name)
+    result = await _for_each_instance(run, instance_name, provider_settings=settings)
     results = result.get("results", [])
     outcome = result.get("status")
     if outcome is None:
@@ -926,7 +926,7 @@ async def collect_geo_countries(instance_name: str | None = None) -> dict:
         report = await GeoCollector(session, provider, settings=settings).collect(instance)
         return report.as_dict()
 
-    result = await _for_each_instance(run, instance_name)
+    result = await _for_each_instance(run, instance_name, provider_settings=settings)
     results = result.get("results", [])
     outcome = result.get("status")
     if outcome is None:
@@ -984,7 +984,7 @@ async def collect_qradar_health(instance_name: str | None = None) -> dict:
         )
         return report.as_dict()
 
-    result = await _for_each_instance(run, instance_name)
+    result = await _for_each_instance(run, instance_name, provider_settings=settings)
     results = result.get("results", [])
     outcome = result.get("status")
     if outcome is None:
@@ -1632,7 +1632,7 @@ async def collect_anomaly_explanations(instance_name: str | None = None) -> dict
                 "by_status": statuses,
             }
 
-    result = await _for_each_instance(run, instance_name)
+    result = await _for_each_instance(run, instance_name, provider_settings=settings)
     outcome = result.get("status")
     if outcome is None:
         outcome = (
@@ -1929,7 +1929,7 @@ async def run_property_watch_preview(
             token = ariel_log.open_run_buffer()
             try:
                 scope_ids = await pw_svc.preview_scope_ids(session, watch, settings, now)
-                provider = build_provider_for_instance(instance)
+                provider = build_provider_for_instance(instance, settings=settings)
                 result = await pw_svc.run_preview(watch, scope_ids, settings, provider, now=now)
             except pw_svc.PreviewRefused as exc:
                 return failed(exc.ref)
@@ -2061,7 +2061,7 @@ async def collect_waf_source(profile_id: str) -> dict:
             session,
             uuid.UUID(profile_id),
             provider_factory=lambda instance: build_provider_for_instance(
-                instance, audit_session=session
+                instance, settings=settings, audit_session=session
             ),
             settings=settings,
             enqueuer=enqueuer,
@@ -2550,7 +2550,7 @@ async def dispatch_ips_collection(instance_name: str | None = None) -> dict:
         ).run(instance)
         return {**collection, "pipeline": pipeline.as_dict()}
 
-    result = await _for_each_instance(run, instance_name)
+    result = await _for_each_instance(run, instance_name, provider_settings=settings)
     failed = any(item.get("status") == "failed" for item in result.get("results", []))
     searches = None if failed else sum(
         int(item.get("searches_sent", 0)) for item in result.get("results", [])
@@ -2605,7 +2605,7 @@ async def dispatch_identity_collection(instance_name: str | None = None) -> dict
         report = await IdentityCollector(session, provider, settings=settings).collect(instance)
         return report.as_dict()
 
-    result = await _for_each_instance(run, instance_name)
+    result = await _for_each_instance(run, instance_name, provider_settings=settings)
     statuses = [item.get("status") for item in result.get("results", [])]
     failed = any(status == "failed" for status in statuses)
     searches = None if failed else sum(
@@ -2850,7 +2850,7 @@ async def dispatch_property_watch_collection(instance_name: str | None = None) -
         pipeline = await PwInstancePipeline(session, provider, settings=settings).run(instance)
         return pipeline.as_dict()
 
-    result = await _for_each_instance(run, instance_name)
+    result = await _for_each_instance(run, instance_name, provider_settings=settings)
     statuses = [item.get("status") for item in result.get("results", [])]
     failed = any(status == "failed" for status in statuses)
     searches = None if failed else sum(

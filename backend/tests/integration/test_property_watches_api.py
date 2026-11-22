@@ -107,7 +107,9 @@ class _Previews:
         self.mp.setattr(tasks, "get_sessionmaker", lambda: maker)
         self.mp.setattr(tasks, "get_settings", lambda: client.settings)  # type: ignore[attr-defined]
         self.mp.setattr(tasks, "get_preview_store", lambda _settings: client.store)  # type: ignore[attr-defined]
-        self.mp.setattr(tasks, "build_provider_for_instance", lambda _instance: provider)
+        self.mp.setattr(
+            tasks, "build_provider_for_instance", lambda _instance, *, settings=None: provider
+        )
         try:
             ran = [await tasks.run_property_watch_preview(*args) for args, _ in self.queued]
             self.queued.clear()

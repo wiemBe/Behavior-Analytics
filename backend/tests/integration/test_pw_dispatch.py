@@ -98,7 +98,7 @@ async def test_a_run_that_loses_the_instance_lock_sends_no_search(
     built: list[object] = []
     real_build = tasks.build_provider_for_instance
 
-    def capture(instance, audit_session=None):  # type: ignore[no-untyped-def]
+    def capture(instance, audit_session=None, *, settings=None):  # type: ignore[no-untyped-def]
         provider = real_build(instance, audit_session=audit_session)
         built.append(provider)
         return provider
