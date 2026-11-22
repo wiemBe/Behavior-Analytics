@@ -31,6 +31,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings, get_settings
+from app.log_source_policy import source_pause_enabled
 from app.models.instance import QRadarInstance
 from app.models.monitoring import CollectionWatermark
 from app.providers.base import ProviderError, QRadarProvider, failure_kind
@@ -67,6 +68,7 @@ class LogSourceSyncReport:
     pages_failed: int = 0
     failed_page: int | None = None
     failure_kind: str | None = None
+    absence: dict[str, str | int] | None = None
 
 
 def stored_run(mark: CollectionWatermark | None) -> dict | None:
@@ -146,15 +148,18 @@ class LogSourceCollector:
             watermark = await self._get_or_create_watermark(instance)
 
             try:
-                result = await InventorySyncService(
+                service = InventorySyncService(
                     self.session,
                     self.provider,
                     settings=self.settings,
                     clock=self._clock,
-                ).sync(
+                )
+                result = await service.sync(
                     instance,
                     bootstrap_hint=watermark.watermark_at is None,
                     previous_complete_watermark=watermark.watermark_at,
+                    previous_inventory_metadata=(watermark.collection_metadata or {})
+                    if source_pause_enabled(self.settings) else None,
                 )
             except ProviderError as exc:
                 report.status = RUN_FAILED
@@ -179,6 +184,24 @@ class LogSourceCollector:
                     report.status = RUN_FAILED
                     report.error = _describe(result.failure_kind or "truncated", result.failed_page)
 
+            absence_metadata: dict[str, object] = {}
+            if source_pause_enabled(self.settings):
+                evaluation = service.absence
+                if evaluation is None:
+                    # The provider failed before any source walk; preserve all candidates.
+                    previous = (watermark.collection_metadata or {}).get("absence_candidates", [])
+                    report.absence = {
+                        "state": "skipped", "reason": "failed_snapshot",
+                        "candidates": len(previous) if isinstance(previous, list) else 0,
+                        "confirmed": 0, "held_count": 0,
+                    }
+                else:
+                    report.absence = evaluation.summary()
+                    absence_metadata["absence_candidates"] = sorted(
+                        str(source_id) for source_id in evaluation.candidates
+                    )
+                if evaluation is not None and evaluation.state != "skipped":
+                    absence_metadata["absence_complete_rows"] = report.log_sources_seen
             finished = self._clock()
             report.duration_ms = int((finished - started).total_seconds() * 1000)
             watermark.last_run_at = started
@@ -199,6 +222,7 @@ class LogSourceCollector:
                 )
             watermark.collection_metadata = {
                 **(watermark.collection_metadata or {}),
+                **absence_metadata,
                 INVENTORY_RUN_KEY: {
                     "status": report.status,
                     "finished_at": finished.isoformat(),
@@ -210,6 +234,7 @@ class LogSourceCollector:
                     "pages_failed": report.pages_failed,
                     "failed_page": report.failed_page,
                     "failure_kind": report.failure_kind,
+                    **({"absence": report.absence} if report.absence is not None else {}),
                 },
             }
             await self.session.flush()
@@ -244,12 +269,14 @@ class LogSourceCollector:
         return report
 
     async def _get_or_create_watermark(self, instance: QRadarInstance) -> CollectionWatermark:
-        watermark = await self.session.scalar(
-            select(CollectionWatermark).where(
-                CollectionWatermark.instance_id == instance.id,
-                CollectionWatermark.collector == COLLECTOR_NAME,
-            )
+        statement = select(CollectionWatermark).where(
+            CollectionWatermark.instance_id == instance.id,
+            CollectionWatermark.collector == COLLECTOR_NAME,
         )
+        if source_pause_enabled(self.settings):
+            # The advisory lock ends before commit; the row lock protects candidate rotation.
+            statement = statement.with_for_update().execution_options(populate_existing=True)
+        watermark = await self.session.scalar(statement)
         if watermark is None:
             watermark = CollectionWatermark(
                 instance_id=instance.id, collector=COLLECTOR_NAME

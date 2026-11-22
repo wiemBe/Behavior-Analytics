@@ -139,11 +139,17 @@ class LogSourceWalk(ProviderDTO):
 
     `complete` is the only statement that the console listed nothing more: a walk that stopped
     on a failed page, the wall-clock cap or the page ceiling is incomplete, and what it did not
-    reach says nothing about absence. `failure_kind` is one of `app.providers.base.FAILURE_KINDS`
+    reach says nothing about absence. Validation is separate: absence also requires a validated
+    walk with no dropped rows or duplicate IDs.
+    `failure_kind` is one of `app.providers.base.FAILURE_KINDS`
     and names the first failure; `failed_page` is its 1-based page number.
     """
 
     sources: list[LogSourceDTO] = Field(default_factory=list)
+    #: Counts only: dropped or duplicate rows invalidate absence evidence.
+    validated: bool = False
+    rows_dropped: int = 0
+    duplicate_ids: int = 0
     complete: bool = True
     pages_done: int = 0
     pages_failed: int = 0
