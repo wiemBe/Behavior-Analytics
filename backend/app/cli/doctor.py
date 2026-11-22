@@ -29,6 +29,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.cli import doctor_aql
 from app.cli.doctor_qradar_health import disk_line, human_bytes, pipeline_line
+from app.collectors.log_source_collector import COLLECTOR_NAME, stored_run
 from app.collectors.offense_collector import WATERMARK_STALLED_KEY
 from app.core.config import (
     INVALID_SWITCH_VALUE,
@@ -41,6 +42,7 @@ from app.core.config import (
 )
 from app.core.database import dispose_engine, get_sessionmaker
 from app.history.origin import is_live_clause
+from app.log_source_policy import source_pause_enabled
 from app.models.entity import EntityMentionBackfill
 from app.models.enums import SearchFamily, default_search_cadence
 from app.models.instance import QRadarInstance
@@ -993,7 +995,15 @@ class Doctor:
             late: list[str] = []
             not_judged: list[str] = []
             judged = 0
+            absence_held = 0
             for row in rows:
+                if row.collector == COLLECTOR_NAME and source_pause_enabled(self.settings):
+                    run = stored_run(row) or {}
+                    absence = run.get("absence")
+                    if isinstance(absence, dict) and absence.get("state") == "held":
+                        count = absence.get("held_count")
+                        if type(count) is int and count > 0:
+                            absence_held += count
                 family = _watermark_family(row.collector)
                 if family is not None and not self._family_enabled(family.value):
                     # A switched-off family never runs its collector again, so a
@@ -1018,6 +1028,24 @@ class Doctor:
             off_clause = ""
             if not_judged:
                 off_clause = f"; not judged (family off): {_watermark_list(not_judged)}"
+            if absence_held:
+                line = (
+                    f"QRadar inventory: {absence_held} sources would be marked absent at once; "
+                    "none were. If the API token lost visibility, fix it; if the sources were "
+                    "removed from QRadar on purpose, see the runbook for accepting the held set."
+                )
+                if stalled or late:
+                    line = f"{line}; {_watermark_warn_message(stalled, late)}"
+                line = f"{line}{off_clause}"
+                if failed:
+                    return CheckResult(
+                        "watermarks", Status.FAIL,
+                        f"{len(failed)} watermark(s) failed: {_watermark_list(failed)}; {line}",
+                        "OPS-R30",
+                    )
+                return CheckResult(
+                    "watermarks", Status.WARN, line, "OPS-R66" if stalled else "OPS-R30"
+                )
             if failed:
                 # A failing row used to hide every other row. The failure stays
                 # the status. A stall on another collector is still named, or

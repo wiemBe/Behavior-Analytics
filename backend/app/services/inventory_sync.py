@@ -10,6 +10,7 @@ from __future__ import annotations
 import logging
 import uuid
 from collections.abc import Callable
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import cast
 
@@ -49,6 +50,72 @@ FAILURE_TYPES_UNAVAILABLE = "types_unavailable"
 QRADAR_DISABLED = "QRADAR_DISABLED"
 
 
+@dataclass(frozen=True)
+class AbsenceEvaluation:
+    candidates: frozenset[uuid.UUID]
+    confirmed: frozenset[uuid.UUID]
+    state: str
+    reason: str
+    held_count: int = 0
+
+    def summary(self) -> dict[str, str | int]:
+        return {
+            "state": self.state, "reason": self.reason,
+            "candidates": len(self.candidates), "confirmed": len(self.confirmed),
+            "held_count": self.held_count,
+        }
+
+
+def evaluate_absence(
+    stored: set[uuid.UUID], present: set[uuid.UUID], previous: set[uuid.UUID],
+    *, complete: bool, row_count: int, previous_row_count: int,
+    validated: bool, rows_dropped: int = 0, duplicate_ids: int = 0,
+) -> AbsenceEvaluation:
+    """Evaluate inventory evidence only; never write a span or infer physical deletion."""
+    retained = previous - present
+    reason = None
+    if not complete:
+        reason = "incomplete_snapshot"
+    elif not validated:
+        reason = "walk_not_validated"
+    elif rows_dropped:
+        reason = "rows_dropped"
+    elif duplicate_ids:
+        reason = "duplicate_ids"
+    elif row_count == 0:
+        reason = "empty_snapshot"
+    if reason is not None:
+        return AbsenceEvaluation(frozenset(retained), frozenset(), "skipped", reason)
+    missing = stored - present
+    confirmed = missing & retained
+    candidates = missing - confirmed
+    # Integer ceiling avoids float rounding at the 2% threshold.
+    threshold = max(20, (previous_row_count + 49) // 50)
+    if len(confirmed) > threshold:
+        return AbsenceEvaluation(
+            frozenset(missing), frozenset(), "held", "mass_absence_held", len(confirmed)
+        )
+    if len(candidates) > threshold:
+        return AbsenceEvaluation(
+            frozenset(), frozenset(), "held", "mass_absence_held", len(candidates)
+        )
+    return AbsenceEvaluation(frozenset(candidates), frozenset(confirmed), "evaluated", "complete")
+
+
+def absence_candidates(metadata: dict) -> set[uuid.UUID]:
+    """Decode internal watermark IDs, discarding invalid entries without logging values."""
+    raw = metadata.get("absence_candidates", [])
+    if not isinstance(raw, list):
+        return set()
+    result = set()
+    for value in raw:
+        try:
+            result.add(uuid.UUID(value))
+        except (ValueError, TypeError, AttributeError):
+            continue
+    return result
+
+
 class InventorySyncService:
     def __init__(
         self,
@@ -63,6 +130,7 @@ class InventorySyncService:
         self.repo = LogSourceRepository(session)
         self.settings = settings or get_settings()
         self._clock = clock or (lambda: datetime.now(UTC))
+        self.absence: AbsenceEvaluation | None = None
 
     async def sync(
         self,
@@ -70,9 +138,11 @@ class InventorySyncService:
         *,
         bootstrap_hint: bool = False,
         previous_complete_watermark: datetime | None = None,
+        previous_inventory_metadata: dict | None = None,
     ) -> SyncResult:
         # Read once, so the health stamp and every row written by this pass
         # carry the same observation time.
+        self.absence = None
         now = self._clock()
         try:
             info = await self.provider.get_instance_info()
@@ -383,6 +453,25 @@ class InventorySyncService:
             failure_kind_value = FAILURE_TYPES_UNAVAILABLE
         else:
             failure_kind_value = None
+        if pause_policy:
+            metadata = previous_inventory_metadata or {}
+            previous_count = metadata.get("absence_complete_rows")
+            if previous_count is None:
+                # Activation can reuse the old run record without writing any key while off.
+                previous_run = metadata.get("inventory_pass")
+                if isinstance(previous_run, dict) and previous_run.get("status") == "COMPLETE":
+                    previous_count = previous_run.get("seen")
+            if type(previous_count) is not int or previous_count < 0:
+                previous_count = 0
+            self.absence = evaluate_absence(
+                {source.id for source in existing_by_qradar_id.values()},
+                {existing_by_qradar_id[dto.qradar_id].id for dto in dtos},
+                absence_candidates(metadata),
+                complete=walk.complete and types_failed_kind is None,
+                row_count=len(dtos), previous_row_count=previous_count,
+                validated=walk.validated, rows_dropped=walk.rows_dropped,
+                duplicate_ids=walk.duplicate_ids,
+            )
         return SyncResult(
             provider=type(self.provider).__name__,
             log_sources_seen=len(dtos),

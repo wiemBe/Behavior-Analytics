@@ -35,6 +35,7 @@ from urllib.parse import quote
 
 import httpx
 from billiard.exceptions import SoftTimeLimitExceeded
+from pydantic import ValidationError
 
 from app.catchall.keyed_rows import parse_catchall_rows, validate_catchall_type_ids
 from app.collectors.bucketed_metrics import (
@@ -1181,6 +1182,8 @@ class QRadarRestProvider(QRadarProvider):
         loop = asyncio.get_running_loop()
         started = loop.time()
         sources: list[LogSourceDTO] = []
+        seen_ids: set[int] = set()
+        rows_dropped = duplicate_ids = 0
         pages_done = pages_failed = 0
         failed_page: int | None = None
         kind: str | None = None
@@ -1230,10 +1233,28 @@ class QRadarRestProvider(QRadarProvider):
                 continue
             consecutive = 0
             pages_done += 1
-            rows = [item for item in body if isinstance(item, dict)]
-            sources.extend(
-                dto for dto in (self._to_log_source(row) for row in rows) if dto is not None
-            )
+            for row in body:
+                if not isinstance(row, dict):
+                    rows_dropped += 1
+                    continue
+                valid_id = type(row.get("id")) is int
+                if valid_id:
+                    # Count repeats even when the earlier row failed mapping, across pages.
+                    if row["id"] in seen_ids:
+                        duplicate_ids += 1
+                    seen_ids.add(row["id"])
+                try:
+                    dto = self._to_log_source(row)
+                except (ValidationError, TypeError, ValueError):
+                    if not self._strict_source_enabled:
+                        # The disabled policy keeps the legacy mapper failure path too.
+                        raise
+                    dto = None
+                if dto is None or not valid_id:
+                    rows_dropped += 1
+                if dto is not None:
+                    # Validation must not change the legacy projection or completeness.
+                    sources.append(dto)
             if len(body) < size:
                 ended_short = True
                 break
@@ -1247,6 +1268,9 @@ class QRadarRestProvider(QRadarProvider):
         return LogSourceWalk(
             sources=sources,
             complete=ended_short and pages_failed == 0 and failed_page is None,
+            validated=True,
+            rows_dropped=rows_dropped,
+            duplicate_ids=duplicate_ids,
             pages_done=pages_done,
             pages_failed=pages_failed,
             failed_page=failed_page,
