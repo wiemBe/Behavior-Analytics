@@ -868,21 +868,30 @@ operational rollback procedure. See [`OPERATIONS.md`](OPERATIONS.md) for exact p
 
 ### Enable JDBC monitoring after an upgrade
 
-JDBC monitoring ships off: no new switch exists and no new command is needed to activate it. After
-the upgrade gates are green (`./qradar-dash doctor` has no `FAIL`) turn on the existing feature
-switch, either in the browser at Administration → Features (`/admin/features`; reading needs
-`read:features`, changing needs `admin:features`) — the "JDBC" family, toggle "Collect" — or
-offline:
+JDBC monitoring is on by default (D-104): after the upgrade gates are green
+(`./qradar-dash doctor` has no `FAIL`), the `collect_jdbc_configs` task runs with no new switch to
+turn on and no new command. It is off only if the site explicitly turned it off: `.env` sets
+`JDBC_COLLECTION_ENABLED=false`, or a feature-switch row turns it off. With
+`FEATURE_SWITCHES_DB=true`, which is the default, that row wins over `.env` and the code default
+until it is reset there; upgrade does not import an `.env` value into the switch table.
+
+To check the effective state, run:
 
 ```bash
-docker compose exec -T backend python -m app.cli.features set jdbc_collection_enabled on
+docker compose exec -T backend python -m app.cli.features show
 ```
 
-With `FEATURE_SWITCHES_DB=true`, which is the default, that row wins over the
-`JDBC_COLLECTION_ENABLED=false` code default. Setting `JDBC_COLLECTION_ENABLED=true` in `.env`
-only changes the default used when no row exists; upgrade does not import it into the switch
-table. To turn monitoring off again, use the "Reset to .env/default" control on the "JDBC" row
-under Features or run:
+The "JDBC" family's "Collect" switch is shown there; reading the feature overview also needs
+`read:features`. To turn monitoring off, set `JDBC_COLLECTION_ENABLED=false` in `.env`, toggle the
+"Collect" switch off in the browser at Administration → Features (`/admin/features`; reading needs
+`read:features`, changing needs `admin:features`), or run:
+
+```bash
+docker compose exec -T backend python -m app.cli.features set jdbc_collection_enabled off
+```
+
+To restore the default on, use the "Reset to .env/default" control on the "JDBC" row under
+Features or run:
 
 ```bash
 docker compose exec -T backend python -m app.cli.features reset jdbc_collection_enabled

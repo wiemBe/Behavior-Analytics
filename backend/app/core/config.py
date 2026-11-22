@@ -648,12 +648,13 @@ class Settings(BaseSettings):
     # New, non-internal inventory rows open a deduplicated review alert.
     inventory_new_source_alerts_enabled: bool = True
 
-    # --- JDBC-1 S0 activation switches (D-93, D-94, D-95) ------------------
-    # Both ship off. They are rollout gates, not analyst settings: a DB row in
-    # feature_switch, not this default, is what activates either track.
-    #: Run the JDBC metadata collector and its queued refresh. The GET view is
-    #: unaffected and still reads stored configurations while this is off.
-    jdbc_collection_enabled: bool = False
+    # --- JDBC-1 S0 activation switches (D-93, D-94, D-95, D-104) -----------
+    # JDBC collection ships on (D-104); the pause switch is still a rollout gate
+    # that ships off. Neither is an analyst setting: a feature_switch row or an
+    # explicit .env value overrides the code default.
+    #: Run the JDBC metadata collector and its queued refresh. On by default
+    # (D-104); the GET view is unaffected and still reads stored configurations.
+    jdbc_collection_enabled: bool = True
     #: JDBC walk cadence and page/walk budgets. Bounded like the log-source walk:
     #: one short page without failures proves a pass complete, and the wall cap
     #: stays below the cadence so one run cannot overlap the next.

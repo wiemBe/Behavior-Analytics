@@ -23,8 +23,9 @@ def test_walk_queue_limits_timeout_inventory() -> None:
     assert celery_app.conf.task_routes[NAME] == {"queue": QRADAR_WALKS_QUEUE}
     assert celery_app.amqp.router.route({}, NAME)["queue"].name == QRADAR_WALKS_QUEUE
 
-    # The family ships off; the Beat entry exists but the task returns disabled.
-    assert Settings.model_fields["jdbc_collection_enabled"].default is False
+    # JDBC collection ships on (D-104); the Beat entry is live. The task returns
+    # disabled only when the switch is explicitly off.
+    assert Settings.model_fields["jdbc_collection_enabled"].default is True
     assert Settings.model_fields["jdbc_walk_interval_seconds"].default == 900
     assert Settings.model_fields["jdbc_walk_max_seconds"].default == 600
 

@@ -176,8 +176,8 @@ reference heading for them.
 | `LOG_SOURCE_PAGE_ATTEMPTS` | `3` | Attempts per page before it is skipped |
 | `LOG_SOURCE_WALK_MAX_SECONDS` | `600` | Wall-clock cap for the whole walk. Keep it below the sync interval |
 | `INVENTORY_NEW_SOURCE_ALERTS_ENABLED` | `true` | Open a review alert for a new non-internal log source |
-| `JDBC_COLLECTION_ENABLED` | `false` | Rollout gate: run the JDBC metadata collector and its queued refresh. Ships off; nothing collects yet unless a feature-switch row enables it. The read view still shows stored configurations while off. A row set under **Administration → Features** overrides this default when `FEATURE_SWITCHES_DB` is true |
-| `JDBC_WALK_INTERVAL_SECONDS` | `900` | JDBC configuration walk interval on `qradar_walks`. Minimum `300`. The task returns `disabled` while `JDBC_COLLECTION_ENABLED` is off, so the entry is inert until activation |
+| `JDBC_COLLECTION_ENABLED` | `true` | On by default (D-104): run the JDBC metadata collector and its queued refresh. Explicitly turn it off with `JDBC_COLLECTION_ENABLED=false` in `.env`, or with a Features row set under **Administration → Features**, which also overrides `.env` when `FEATURE_SWITCHES_DB` is true. The read view still shows stored configurations while off |
+| `JDBC_WALK_INTERVAL_SECONDS` | `900` | JDBC configuration walk interval on `qradar_walks`. Minimum `300`. The task returns `disabled` only while `JDBC_COLLECTION_ENABLED` is explicitly off, so the entry is inert only then |
 | `JDBC_PAGE_TIMEOUT_SECONDS` | `30` | Time one page (100 protocol-8 sources) of the JDBC walk gets per attempt; range `5–300` seconds. A page that fails for good ends the pass as PARTIAL; pages that arrived are stored |
 | `JDBC_PAGE_ATTEMPTS` | `3` | Attempts per JDBC page before it is skipped; range `1–6` |
 | `JDBC_WALK_MAX_SECONDS` | `600` | Wall-clock cap for the whole JDBC walk, including retries and backoff; range `60–3600` seconds. The task's soft/hard limits are this value plus `60`/`120` |
@@ -250,14 +250,14 @@ trimmed to the dimensions its DSM populates; the rest are recorded unavailable.
 
 The four `JDBC_*` bounds above are ordinary `.env` settings with no feature-switch row; they set
 the cadence and the page/walk budgets of the `collect_jdbc_configs` task on the `qradar_walks`
-queue. The one runtime switch is `jdbc_collection_enabled`: it ships `false` in the code
-default (and in `.env` when set there), but the effective value is the `feature_switch` row of
-that name when one exists — shown in the feature overview as the "JDBC" family with the "Collect"
-toggle. With `FEATURE_SWITCHES_DB`
-true, which is the default, a row set under **Administration → Features** wins over both `.env`
-and the code default until it is reset there; the key can also be set or reset offline in the
-container with
-`docker compose exec -T backend python -m app.cli.features set jdbc_collection_enabled on` and
+queue. The one runtime switch is `jdbc_collection_enabled`: it ships `true` in the code default
+(D-104), so collection runs with no `.env` value and no feature-switch row. To turn it off, set
+`JDBC_COLLECTION_ENABLED=false` in `.env` or switch it off under **Administration → Features** —
+shown in the feature overview as the "JDBC" family with the "Collect" toggle. With
+`FEATURE_SWITCHES_DB` true, which is the default, a row set under **Administration → Features**
+wins over both `.env` and the code default until it is reset there; the key can also be set or
+reset offline in the container with
+`docker compose exec -T backend python -m app.cli.features set jdbc_collection_enabled off` and
 `docker compose exec -T backend python -m app.cli.features reset jdbc_collection_enabled`.
 `.env` supplies only the initial default and is not imported into the switch table on upgrade.
 The switch governs collection and queued refresh; `GET /log-sources/jdbc` still reads stored

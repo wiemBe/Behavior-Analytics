@@ -3254,10 +3254,11 @@ The check was "Language, round C": switching the language back to English and re
 
 This section checks the read-only JDBC view on a real console. It does not change QRadar: the
 page reads stored inventory and aggregates, and the refresh button queues a bounded read task.
-Enable the switch first as described in `docs/INSTALL.md`, "Enable JDBC monitoring after an
-upgrade", and let one `JDBC_WALK_INTERVAL_SECONDS` (default 900 s) pass so the first walk has
-stored configuration. Labels below are quoted from `frontend/messages/en/logSources.json`; the
-interface is English only. A raw message key or Turkish text is a Fail. No password, username,
+JDBC collection is on by default (D-104); see `docs/INSTALL.md`, "Enable JDBC monitoring after an
+upgrade", to check the effective state. If the switch was turned off, turn it back on. Let one
+`JDBC_WALK_INTERVAL_SECONDS` (default 900 s) pass so the first walk has stored configuration.
+Labels below are quoted from `frontend/messages/en/logSources.json`; the interface is English only.
+A raw message key or Turkish text is a Fail. No password, username,
 key path or connection string may appear in the page or in any API response. The `curl` calls use
 `--cookie "$SESSION"`, where `$SESSION` is the `qd_session=<value>` cookie of the signed-in window
 (as defined in MT-144's precondition); treat it as a secret and write it nowhere.
