@@ -149,6 +149,10 @@ async def test_an_off_family_has_no_next_dispatch_reason(db_session, db_schema) 
         db_schema,
         Principal(subject="viewer", permissions=frozenset({"read:*"})),
     )
+    # The family is on by default since D-105: this test is about an off one (FIX-105).
+    client.app.dependency_overrides[get_settings] = lambda: get_settings().model_copy(
+        update={"rule_match_collection_enabled": False}
+    )
     response = client.get("/api/v1/admin/search-cadence")
     assert response.status_code == 200, response.text
     row = {item["family"]: item for item in response.json()}[

@@ -165,7 +165,9 @@ async def _world(session):
 
 async def _reads(session, console, *, pause):
     """Every changed query family; listener removal survives failures."""
-    settings = collection_settings(pause=pause)
+    # The legacy pins below were captured with the rule-match family off; since D-105 it is
+    # on by default and its estimate adds one bulk analytics_rule count (FIX-105), so pin it.
+    settings = collection_settings(pause=pause, rule_match_collection_enabled=False)
     ls = LogSourceRepository(session)
     anomalies = AnomalyRepository(session)
     now = COLLECT_NOW

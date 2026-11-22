@@ -981,8 +981,10 @@ class TestStatementCount:
                 ).collect(instance)
             assert report.history_windows_written == 12
             counts[rules] = len(statements)
-            # HB-19 adds only SAVEPOINT / RELEASE SAVEPOINT to the old 14.
-            assert counts[rules] == 16, counts
+            # HB-19 adds SAVEPOINT / RELEASE SAVEPOINT to the old 14; FIX-105: the
+            # family is on by default (D-105), so the RM-2 repair pass adds its one
+            # bounded FAILED-window SELECT (LIMIT, not per rule or window).
+            assert counts[rules] == 17, counts
 
         # Large step of F1: 168 windows x 100 rules = 16,800 metric rows.
         instance_large = await make_instance(db_session)
@@ -1002,13 +1004,14 @@ class TestStatementCount:
                 ),
                 rule_match_max_rows=5000,
             ).collect(instance_large)
-        assert len(statements_large) == 14
+        # 14 + the repair SELECT of the on-by-default family (FIX-105).
+        assert len(statements_large) == 15
         counts["large_168_100"] = len(statements_large)
 
         with capsys.disabled():
             print("\nrule-match collection+history statements per tick:", counts)
-        assert counts[1] == counts[100] == 16
-        assert counts.get("large_168_100") == 14
+        assert counts[1] == counts[100] == 17
+        assert counts.get("large_168_100") == 15
 
     @pytest.mark.asyncio
     async def test_history_statements_are_constant_in_the_number_of_windows(
@@ -1053,11 +1056,13 @@ class TestStatementCount:
                 ).collect(instance)
             assert report.history_windows_written == span_buckets
             counts[(span_buckets, window_seconds)] = len(statements)
-            # HB-19 adds only SAVEPOINT / RELEASE SAVEPOINT to the old 14.
-            assert counts[(span_buckets, window_seconds)] == 16, counts
+            # HB-19 adds SAVEPOINT / RELEASE SAVEPOINT to the old 14; FIX-105: the
+            # family is on by default (D-105), so the RM-2 repair pass adds its one
+            # bounded FAILED-window SELECT (LIMIT, not per rule or window).
+            assert counts[(span_buckets, window_seconds)] == 17, counts
 
         with capsys.disabled():
             print("\nrule-match collection+history statements per tick:", counts)
         assert (
-            counts[(12, 3600)] == counts[(168, 3600)] == counts[(10_080, 60)] == 16
+            counts[(12, 3600)] == counts[(168, 3600)] == counts[(10_080, 60)] == 17
         )

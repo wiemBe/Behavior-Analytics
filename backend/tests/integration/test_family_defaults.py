@@ -21,7 +21,9 @@ async def test_empty_family_dispatches_send_no_search(db_schema, monkeypatch):
     for key in list(os.environ):
         if key.lower() in Settings.model_fields:
             monkeypatch.delenv(key)
-    settings = Settings(_env_file=None)
+    # Rule matches are on by default since D-105 and have no empty-scope guard, so the fresh
+    # install would send a search; this test is about the families that do have one. Pin it off.
+    settings = Settings(_env_file=None, rule_match_collection_enabled=False)
     engine = create_async_engine(db_schema)
     maker = async_sessionmaker(engine, expire_on_commit=False)
     provider = MockQRadarProvider(seed=1)
@@ -73,7 +75,7 @@ async def test_empty_family_dispatches_send_no_search(db_schema, monkeypatch):
             search.assert_not_called()
         custom = await tasks.evaluate_custom_rules()
         assert custom["status"] != "disabled"
-        # Rule matches deliberately retain their off default: no empty-scope guard exists.
+        # Rule matches have no empty-scope guard: they stay off in this fixture (FIX-105).
         assert await tasks.collect_rule_matches() == {"status": "disabled"}
         search.assert_not_called()
     finally:
