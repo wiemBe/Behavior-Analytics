@@ -1,4 +1,4 @@
-"""X3a exercises the collector and doctor entry without writing ABSENT spans."""
+"""X3a evaluator regressions through the collector and doctor, with the X3b writer."""
 
 import asyncio
 import importlib.util
@@ -71,20 +71,20 @@ async def rig(db_schema):
         await engine.dispose()
 
 
-async def run(session, instance, provider, on=True):
+async def run(session, instance, provider, on=True, *, expected_absent=()):
     report = await LogSourceCollector(session, provider, settings=settings(on),
                                       clock=lambda: NOW).sync(instance)
     mark = await session.scalar(select(CollectionWatermark).where(
         CollectionWatermark.instance_id == instance.id,
         CollectionWatermark.collector == COLLECTOR_NAME,
     ))
-    assert await session.scalar(select(func.count()).select_from(LogSourcePause).where(
+    assert set(await session.scalars(select(LogSourcePause.log_source_id).where(
         LogSourcePause.reason == "ABSENT",
-    )) == 0
+    ))) == set(expected_absent)
     return report, mark
 
 
-async def test_two_complete_misses_confirm_without_spans(db_session):
+async def test_two_complete_misses_confirm_with_spans(db_session):
     instance = await make_instance(db_session)
     provider = Inventory()
     await run(db_session, instance, provider)
@@ -94,7 +94,7 @@ async def test_two_complete_misses_confirm_without_spans(db_session):
     assert first.absence == {"state": "evaluated", "reason": "complete", "candidates": 1,
                              "confirmed": 0, "held_count": 0}
     assert mark.collection_metadata["absence_candidates"] == [str(missing_id)]
-    second, mark = await run(db_session, instance, provider)
+    second, mark = await run(db_session, instance, provider, expected_absent=[missing_id])
     assert second.absence["confirmed"] == 1 and second.absence["candidates"] == 0
     assert mark.collection_metadata["inventory_pass"]["absence"] == second.absence
     assert mark.collection_metadata["absence_candidates"] == []
@@ -153,7 +153,8 @@ async def test_breaker_edges_and_doctor_entry(rig, monkeypatch, capsys, confirm,
             )))
             mark.collection_metadata = {**mark.collection_metadata,
                                        "absence_candidates": sorted(map(str, missing_ids))}
-        report, mark = await run(session, instance, provider)
+        expected = missing_ids if confirm and missing == 20 else []
+        report, mark = await run(session, instance, provider, expected_absent=expected)
         assert report.absence["state"] == ("held" if missing == 21 else "evaluated")
         assert report.absence["confirmed"] == (20 if confirm and missing == 20 else 0)
         if missing == 21:
@@ -224,8 +225,11 @@ async def test_constant_statements_at_3_and_800_and_off_has_no_metadata(rig, mon
         print(f"policy={on}: 3 rows={len(shapes[on, 3])}; 800 rows={len(shapes[on, 800])}")
     for count in (3, 800):
         assert sum(sql.endswith(" FOR UPDATE") for sql in shapes[True, count]) == 1
-        assert shapes[False, count] == [sql.removesuffix(" FOR UPDATE")
-                                       for sql in shapes[True, count]]
+        # X3b widens only the existing pause reconcile read (Amendment c4).
+        def without_pause(rows):
+            return [sql for sql in rows if "FROM log_source_pause" not in sql]
+        assert without_pause(shapes[False, count]) == [sql.removesuffix(" FOR UPDATE")
+            for sql in without_pause(shapes[True, count])]
     # A disabled policy does not call the evaluator, even with retained on-policy metadata.
     monkeypatch.setattr(inventory_sync, "evaluate_absence", lambda *a, **kw: pytest.fail("off"))
     async with maker() as session:
@@ -441,7 +445,10 @@ async def test_candidate_watermark_waits_and_refreshes_after_commit(rig, reappea
         next_provider = Inventory()
         next_provider.ids = [1, 2]
         next_provider.walk_log_sources = AsyncMock(wraps=next_provider.walk_log_sources)
-        operation = asyncio.create_task(run(second, second_instance, next_provider))
+        expected = [] if reappeared else list(await first.scalars(
+            select(LogSource.id).where(LogSource.qradar_id == 3)))
+        operation = asyncio.create_task(run(
+            second, second_instance, next_provider, expected_absent=expected))
         try:
             async with maker() as observer:
                 async with asyncio.timeout(4):

@@ -10,14 +10,18 @@ from __future__ import annotations
 import logging
 import uuid
 from collections.abc import Callable
+from contextlib import nullcontext
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import cast
 
-from sqlalchemy import ARRAY, String, Table, any_, bindparam, delete, literal, select
+from sqlalchemy import ARRAY, String, Table, any_, bindparam, delete, literal, or_, select
 from sqlalchemy.dialects.postgresql import UUID as PgUUID
 from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.engine import ScalarResult
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import Bundle
+from sqlalchemy.sql import Select
 
 from app.alerts.fingerprint import inventory_fingerprint
 from app.alerts.service import AlertInput, AlertService
@@ -48,6 +52,7 @@ logger = logging.getLogger("app.services.inventory_sync")
 #: for a source-page failure alike, so the reason must name which one it was.
 FAILURE_TYPES_UNAVAILABLE = "types_unavailable"
 QRADAR_DISABLED = "QRADAR_DISABLED"
+ABSENT = "ABSENT"
 
 
 @dataclass(frozen=True)
@@ -70,6 +75,7 @@ def evaluate_absence(
     stored: set[uuid.UUID], present: set[uuid.UUID], previous: set[uuid.UUID],
     *, complete: bool, row_count: int, previous_row_count: int,
     validated: bool, rows_dropped: int = 0, duplicate_ids: int = 0,
+    accept_armed: bool = False,
 ) -> AbsenceEvaluation:
     """Evaluate inventory evidence only; never write a span or infer physical deletion."""
     retained = previous - present
@@ -91,11 +97,11 @@ def evaluate_absence(
     candidates = missing - confirmed
     # Integer ceiling avoids float rounding at the 2% threshold.
     threshold = max(20, (previous_row_count + 49) // 50)
-    if len(confirmed) > threshold:
+    if not accept_armed and len(confirmed) > threshold:
         return AbsenceEvaluation(
             frozenset(missing), frozenset(), "held", "mass_absence_held", len(confirmed)
         )
-    if len(candidates) > threshold:
+    if not accept_armed and len(candidates) > threshold:
         return AbsenceEvaluation(
             frozenset(), frozenset(), "held", "mass_absence_held", len(candidates)
         )
@@ -114,6 +120,18 @@ def absence_candidates(metadata: dict) -> set[uuid.UUID]:
         except (ValueError, TypeError, AttributeError):
             continue
     return result
+
+
+def absence_source_lock_statement(ids: set[uuid.UUID]) -> Select[uuid.UUID]:
+    """One array-bound, ordered parent lock for the whole D-107 mutation superset."""
+    return (
+        select(LogSource.id)
+        .where(LogSource.id == any_(bindparam(
+            "absence_lock_ids", value=sorted(ids), type_=ARRAY(PgUUID(as_uuid=True)),
+        )))
+        .order_by(LogSource.id)
+        .with_for_update(key_share=True)
+    )
 
 
 class InventorySyncService:
@@ -279,6 +297,8 @@ class InventorySyncService:
         existing_by_qradar_id = await self.repo.by_qradar_id(instance.id)
         pause_policy = source_pause_enabled(self.settings)
         open_ids: set[uuid.UUID] = set()
+        absent_ids: set[uuid.UUID] = set()
+        reappeared: set[uuid.UUID] = set()
         if pause_policy:
             stored_enabled = {qid: source.enabled for qid, source in existing_by_qradar_id.items()}
             final_enabled = {dto.qradar_id: dto.enabled for dto in dtos}
@@ -287,17 +307,54 @@ class InventorySyncService:
                 if (enabled is True or enabled is False)
                 and (source := existing_by_qradar_id.get(qid)) is not None
             }
-            if reconcile_ids:
-                open_ids = set(await self.session.scalars(
-                    select(LogSourcePause.log_source_id).where(
+            stored_ids = {source.id for source in existing_by_qradar_id.values()}
+            if stored_ids:
+                rows: ScalarResult[tuple[uuid.UUID, str]] = await self.session.scalars(
+                    select(Bundle(
+                        "open_pause", LogSourcePause.log_source_id, LogSourcePause.reason,
+                    )).where(
                         LogSourcePause.log_source_id == any_(bindparam(
-                            "reconcile_ids", value=sorted(reconcile_ids),
+                            "stored_ids", value=sorted(stored_ids),
                             type_=ARRAY(PgUUID(as_uuid=True)),
                         )),
-                        LogSourcePause.reason == QRADAR_DISABLED,
+                        or_(
+                            LogSourcePause.reason == ABSENT,
+                            (LogSourcePause.reason == QRADAR_DISABLED)
+                            & (LogSourcePause.log_source_id == any_(bindparam(
+                                "reconcile_ids", value=sorted(reconcile_ids),
+                                type_=ARRAY(PgUUID(as_uuid=True)),
+                            ))),
+                        ),
                         LogSourcePause.ends_at.is_(None),
                     )
-                ))
+                )
+                for source_id, reason in rows:
+                    if reason == ABSENT:
+                        absent_ids.add(source_id)
+                    else:
+                        open_ids.add(source_id)
+            metadata = previous_inventory_metadata or {}
+            previous_count = metadata.get("absence_complete_rows")
+            if previous_count is None:
+                previous_run = metadata.get("inventory_pass")
+                if isinstance(previous_run, dict) and previous_run.get("status") == "COMPLETE":
+                    previous_count = previous_run.get("seen")
+            if type(previous_count) is not int or previous_count < 0:
+                previous_count = 0
+            present_ids = {
+                source.id for dto in dtos
+                if (source := existing_by_qradar_id.get(dto.qradar_id)) is not None
+            }
+            self.absence = evaluate_absence(
+                stored_ids - absent_ids, present_ids,
+                absence_candidates(metadata) - absent_ids,
+                complete=walk.complete and types_failed_kind is None,
+                row_count=len(dtos), previous_row_count=previous_count,
+                validated=walk.validated, rows_dropped=walk.rows_dropped,
+                duplicate_ids=walk.duplicate_ids,
+                accept_armed=isinstance(metadata.get("absence_accept"), dict),
+            )
+            reappeared = present_ids & absent_ids
         disabled: list[LogSource] = []
         reenabled: list[LogSource] = []
         # `bootstrap_hint`: no complete pass has run yet, so a first partial pass must not
@@ -305,64 +362,77 @@ class InventorySyncService:
         bootstrap = not existing_by_qradar_id or bootstrap_hint
         created = updated = 0
         new_sources: list[LogSource] = []
-        for dto in dtos:
-            existing = existing_by_qradar_id.get(dto.qradar_id)
-            resolved_type = dto.type_name or type_names.get(dto.type_id or -1)
-            if existing is None:
-                existing = LogSource(
-                    instance_id=instance.id,
-                    qradar_id=dto.qradar_id,
-                    first_seen_at=now,
-                    enabled=False,
-                )
-                self.session.add(existing)
-                existing_by_qradar_id[dto.qradar_id] = existing
-                new_sources.append(existing)
-                created += 1
-            else:
-                updated += 1
+        absence_edge = bool(reappeared or (self.absence and self.absence.confirmed))
+        with self.session.no_autoflush if absence_edge else nullcontext():
+            for dto in dtos:
+                existing = existing_by_qradar_id.get(dto.qradar_id)
+                resolved_type = dto.type_name or type_names.get(dto.type_id or -1)
+                if existing is None:
+                    existing = LogSource(
+                        instance_id=instance.id,
+                        qradar_id=dto.qradar_id,
+                        first_seen_at=now,
+                        enabled=False,
+                    )
+                    self.session.add(existing)
+                    existing_by_qradar_id[dto.qradar_id] = existing
+                    new_sources.append(existing)
+                    created += 1
+                else:
+                    updated += 1
 
-            # QRadar-owned fields only. Classification overrides and review
-            # state live in their own table and are never assigned here.
-            existing.name = sanitize_text(dto.name) or dto.name
-            existing.description = sanitize_text(dto.description)
-            # Fail closed: a type name that cannot be resolved (types endpoint down, or
-            # no matching type row) keeps whatever was stored rather than being guessed.
-            if resolved_type is not None:
-                existing.type_id = dto.type_id
-                existing.type_name = sanitize_text(resolved_type)
-            existing.protocol_type_id = dto.protocol_type_id
-            if dto.enabled is not None:
-                existing.enabled = dto.enabled
-            elif not source_pause_enabled(self.settings):
-                existing.enabled = True
-            else:
-                existing.enabled = stored_enabled.get(dto.qradar_id, False)
-            existing.qradar_status = dto.status
-            existing.credibility = dto.credibility
-            existing.target_event_collector_id = dto.target_event_collector_id
-            existing.last_event_time = dto.last_event_time
-            existing.qradar_created_at = dto.qradar_created_at
-            existing.qradar_modified_at = dto.qradar_modified_at
-            existing.auto_discovered = dto.auto_discovered
-            existing.group_ids = dto.group_ids
-            existing.identifier = sanitize_text(dto.identifier)
-            existing.is_internal = dto.internal
+                # QRadar-owned fields only. Classification overrides and review
+                # state live in their own table and are never assigned here.
+                existing.name = sanitize_text(dto.name) or dto.name
+                existing.description = sanitize_text(dto.description)
+                # Fail closed: a type name that cannot be resolved (types endpoint down, or
+                # no matching type row) keeps whatever was stored rather than being guessed.
+                if resolved_type is not None:
+                    existing.type_id = dto.type_id
+                    existing.type_name = sanitize_text(resolved_type)
+                existing.protocol_type_id = dto.protocol_type_id
+                if dto.enabled is not None:
+                    existing.enabled = dto.enabled
+                elif not source_pause_enabled(self.settings):
+                    existing.enabled = True
+                else:
+                    existing.enabled = stored_enabled.get(dto.qradar_id, False)
+                existing.qradar_status = dto.status
+                existing.credibility = dto.credibility
+                existing.target_event_collector_id = dto.target_event_collector_id
+                existing.last_event_time = dto.last_event_time
+                existing.qradar_created_at = dto.qradar_created_at
+                existing.qradar_modified_at = dto.qradar_modified_at
+                existing.auto_discovered = dto.auto_discovered
+                existing.group_ids = dto.group_ids
+                existing.identifier = sanitize_text(dto.identifier)
+                existing.is_internal = dto.internal
 
-        if pause_policy:
-            # Reconcile the final DTO with stored flags and open spans; unknown stays unchanged.
-            for qid, enabled in final_enabled.items():
-                source = existing_by_qradar_id[qid]
-                if enabled is False and (stored_enabled.get(qid) or source.id not in open_ids):
-                    disabled.append(source)
-                elif enabled is True and (
-                    stored_enabled.get(qid) is False or source.id in open_ids
-                ):
-                    reenabled.append(source)
+            if pause_policy:
+                # Reconcile the final DTO with stored flags and open spans; unknown stays unchanged.
+                for qid, enabled in final_enabled.items():
+                    source = existing_by_qradar_id[qid]
+                    if enabled is False and (stored_enabled.get(qid) or source.id not in open_ids):
+                        disabled.append(source)
+                    elif enabled is True and (
+                        stored_enabled.get(qid) is False or source.id in open_ids
+                    ):
+                        reenabled.append(source)
 
+            if absence_edge:
+                # D-107: one globally ordered superset, before ANY parent UPDATE.
+                # Dirty present sources include disable/re-enable attribute changes too.
+                changed = {
+                    source.id for source in self.session.dirty
+                    if isinstance(source, LogSource)
+                    and self.session.is_modified(source, include_collections=False)
+                }
+                assert self.absence is not None
+                await self.session.execute(absence_source_lock_statement(
+                    changed | reappeared | set(self.absence.confirmed)
+                ))
         await self.session.flush()
-        # No query inside the row loop: this flush acquires all source UPDATE locks
-        # in identity (UUID) order, before any edge can lock incidents or baselines.
+        # Edge passes already own the complete ordered parent-lock superset.
         # Source attributes are never assigned after this point.
         if disabled:
             by_start: dict[datetime, list[uuid.UUID]] = {}
@@ -380,6 +450,21 @@ class InventorySyncService:
             await close_pause(
                 self.session, sorted(source.id for source in reenabled), reason=QRADAR_DISABLED,
                 observed_at=now, bucket_seconds=self.settings.collection_interval_seconds,
+            )
+        if self.absence is not None and self.absence.confirmed:
+            ids = sorted(self.absence.confirmed)
+            start = max(previous_complete_watermark or now - timedelta(hours=24),
+                        now - timedelta(hours=24))
+            await open_pause(self.session, ids, reason=ABSENT, starts_at=start, now=now)
+            absent_reason = MessageRef("anomaly.source_absent_without_verdict")
+            await close_for_disabled_sources(
+                self.session, ids, observed_at=now,
+                reason=absent_reason, alert_reason=absent_reason,
+            )
+        if reappeared:
+            await close_pause(
+                self.session, sorted(reappeared), reason=ABSENT, observed_at=now,
+                bucket_seconds=self.settings.collection_interval_seconds,
             )
         await self._record_mentions(
             instance,
@@ -453,25 +538,6 @@ class InventorySyncService:
             failure_kind_value = FAILURE_TYPES_UNAVAILABLE
         else:
             failure_kind_value = None
-        if pause_policy:
-            metadata = previous_inventory_metadata or {}
-            previous_count = metadata.get("absence_complete_rows")
-            if previous_count is None:
-                # Activation can reuse the old run record without writing any key while off.
-                previous_run = metadata.get("inventory_pass")
-                if isinstance(previous_run, dict) and previous_run.get("status") == "COMPLETE":
-                    previous_count = previous_run.get("seen")
-            if type(previous_count) is not int or previous_count < 0:
-                previous_count = 0
-            self.absence = evaluate_absence(
-                {source.id for source in existing_by_qradar_id.values()},
-                {existing_by_qradar_id[dto.qradar_id].id for dto in dtos},
-                absence_candidates(metadata),
-                complete=walk.complete and types_failed_kind is None,
-                row_count=len(dtos), previous_row_count=previous_count,
-                validated=walk.validated, rows_dropped=walk.rows_dropped,
-                duplicate_ids=walk.duplicate_ids,
-            )
         return SyncResult(
             provider=type(self.provider).__name__,
             log_sources_seen=len(dtos),

@@ -1634,6 +1634,13 @@
     "sample_english_params": {},
     "template": "condition recovered"
   },
+  "anomaly.source_absent_without_verdict": {
+    "params": {},
+    "sample": {},
+    "sample_english": "Closed without a verdict: source absent from the completed QRadar inventory.",
+    "sample_english_params": {},
+    "template": "Closed without a verdict: source absent from the completed QRadar inventory."
+  },
   "anomaly.source_disabled_without_verdict": {
     "params": {},
     "sample": {},

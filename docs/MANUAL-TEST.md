@@ -3647,3 +3647,68 @@ rollback.
 
 **Record:** The switch state from `features show`, the behaviour observed after rollback, the
 export file path and the `grep` result.
+
+
+#### PAUSE-MT-8 — Confirm absence without a verdict
+
+**Precondition:** Pause switch on, a disposable lab source with an open NO_EVENTS incident and a
+recorded last complete inventory time. Never perform source removal on a production console for
+this test. Record the source UUID, QRadar ID, mirrored enabled flag and dated JDBC configuration.
+
+**Action:** On the lab console only, a QRadar operator removes the disposable source through the
+QRadar UI. The product performs no QRadar write. Run log-source sync twice with
+`docker compose exec -T backend python -m app.cli.sync log-sources --instance <name>`, checking each
+pass is complete and validated through `absence show` and the recorded inventory pass.
+
+**Expected:** The first miss is a candidate; the second opens exactly one ABSENT span and closes
+the volume incident and alert without a verdict. Its reason is "Closed without a verdict: source
+absent from the completed QRadar inventory." The start is the later of the preceding complete
+inventory time and now minus 24 hours. The stored enabled flag and JDBC configuration do not
+change. JDBC's include-absent view shows `ABSENT_FROM_INVENTORY` and dated configuration, without a
+zero measurement. Further complete syncs neither reopen the span nor repeat the closure. A partial,
+failed, malformed, duplicate-ID or empty inventory pass and a missing JDBC parameter page do not
+confirm absence.
+
+**Record:** Both inventory pass summaries, span bounds in UTC, incident/alert reason, unchanged
+flag/configuration and JDBC view.
+
+#### PAUSE-MT-9 — Reappearance and independent disabled state
+
+**Precondition:** A lab source with an open ABSENT span can be made visible again with the same
+QRadar ID (for example, restore the test token's visibility). Recreating a removed source with a
+new QRadar ID is a new source and cannot close the old source's span.
+
+**Action:** A lab operator restores visibility, keeping that source disabled in QRadar, then runs
+inventory sync. Repeat with a deliberately partial inventory pass that includes this source.
+
+**Expected:** Presence closes ABSENT at the next whole bucket boundary even in a partial pass.
+The mirrored flag remains false and QRADAR_DISABLED remains open; evaluation does not resume.
+Enable the lab source and sync to close that independent pause before expecting new whole buckets
+to be evaluated. With the pause switch off, retained ABSENT spans are ignored and not closed.
+
+**Record:** Same QRadar ID, pass completeness, flag and both reason-specific span bounds in UTC.
+
+#### PAUSE-MT-10 — Inspect and accept intentional mass absence
+
+**Precondition:** Lab only, an intentional visibility reduction above the breaker threshold;
+confirm the API token is correct before accepting. Keep at least one source visible: an empty
+walk can never prove absence.
+
+**Action:** Run sync, then `docker compose exec -T backend python -m app.cli.doctor` and:
+
+```bash
+docker compose exec -T backend python -m app.cli.inventory absence show --instance <name>
+docker compose exec -T backend python -m app.cli.inventory absence accept --instance <name> --actor <operator>
+```
+
+Run a partial or unvalidated sync if the lab permits it, then two complete validated syncs.
+
+**Expected:** The held run writes no ABSENT spans; doctor WARN names the accept command. Accept
+records one audit row (`inventory.absence.accept`, actor, instance ID, held count, no source names)
+and reports acceptance armed. It refuses with pauses off or without a last held run. Incomplete
+or unvalidated evidence leaves the flag armed. Complete evidence first stores candidates, then
+confirms absence and clears the flag. Doctor reports the armed state separately, including after
+a skipped pass. Show writes no state; repeated accept while armed creates no duplicate audit.
+
+**Record:** Held and armed output, command exit codes, audit row, subsequent pass counts and the
+final cleared flag. Restore any lab-only token visibility through the operator's normal process.

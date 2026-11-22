@@ -997,6 +997,45 @@ does not set `QRADAR_SOURCE_PAUSE_ENABLED=true`. Where that variable might be se
 The write changes only the `feature_switch` row: pause rows are not deleted and remain stored,
 ignored while the switch is off, so a later rollback does not destroy pause history.
 
+#### Absent from completed inventory
+
+With the pause switch on, a stored source missing from two complete, validated, nonempty
+slim-inventory snapshots opens an `ABSENT` pause. This means the API token did not see the
+source; it does not certify physical deletion. A failed, partial, unvalidated, malformed,
+duplicate-ID or empty walk cannot confirm absence. A gap in the separate JDBC parameter walk
+cannot confirm it either. Stale inventory alone never opens a pause.
+
+The pause starts at the later of the previous complete inventory time and 24 hours before the
+confirming pass. Open source-volume incidents and alerts close atomically with the reason
+"Closed without a verdict: source absent from the completed QRadar inventory." The stored QRadar
+`enabled` flag and JDBC configuration are retained; JDBC details show dated configuration history.
+The source stops contributing to active collection/evaluation targets, and pause-overlapping
+buckets are excluded from evaluation and training. Seeing the source again closes ABSENT at the
+next whole bucket boundary, even in a partial pass. A reappearing disabled source keeps its
+independent QRADAR_DISABLED pause.
+
+The mass-absence breaker holds a pass when either its new candidates or confirmations exceed
+`max(20, ceil(2% of the previous validated complete inventory count))`. It marks none absent.
+`doctor` reports the last run's held count as WARN and names the accept command. Check the token's
+visibility first. If the sources were intentionally removed, an administrator with shell access
+can inspect and accept the hold:
+
+```bash
+docker compose exec -T backend python -m app.cli.inventory absence show --instance <name>
+docker compose exec -T backend python -m app.cli.inventory absence accept --instance <name> --actor <operator>
+```
+
+Accept refuses while pauses are off or the last inventory run is not held. It writes an audit
+entry with the actor, instance ID and held count, then arms a one-shot breaker lift for that
+instance. It does not certify the missing set or bypass snapshot validation. Subsequent complete
+validated passes still require two-pass evidence: the first stores candidates, the next confirms.
+An incomplete or unvalidated pass leaves acceptance armed; positive presence still removes its
+candidate. Acceptance clears after a pass confirms any absence. A repeated accept while armed
+makes no second audit entry. `absence show` is read-only and prints state, candidate/confirmation/
+held counts and whether acceptance is armed. `doctor` keeps a separate armed warning visible even
+if the latest run is skipped. These commands only write the application's database; the product
+never removes or changes a QRadar source.
+
 ## Release images
 
 A release is identified by a repository tag and the shared version in `VERSION`,

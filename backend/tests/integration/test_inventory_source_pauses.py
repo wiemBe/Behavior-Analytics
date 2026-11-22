@@ -344,6 +344,14 @@ async def test_stale_or_none_never_writes_span(rig, mode):
     edge_sql = _edge_statements(operations)
     if mode in {"stale", "repeat-true"}:
         assert len(edge_sql) == 1 and edge_sql[0].startswith("SELECT log_source_pause")
+    elif mode in {"none", "partial-empty"}:
+        assert edge_sql == [
+            "SELECT log_source_pause.log_source_id, log_source_pause.reason \n"
+            "FROM log_source_pause \nWHERE log_source_pause.log_source_id = ANY ($1::UUID[]) "
+            "AND (log_source_pause.reason = $2::VARCHAR OR log_source_pause.reason = $3::VARCHAR "
+            "AND log_source_pause.log_source_id = ANY ($4::UUID[])) "
+            "AND log_source_pause.ends_at IS NULL"
+        ]
     else:
         assert edge_sql == []
     async with maker() as session:
@@ -448,8 +456,9 @@ async def test_bulk_edge_statement_counts(rig, monkeypatch, count, groups):
         "SELECT log_source_pause.log_source_id"
     )]
     assert "= ANY (" in read_sql
-    assert len(params) == 2  # One UUID array and the reason, independent of fleet size.
+    assert len(params) == 4  # Stored/present UUID arrays and both reasons, independent of size.
     assert list(params[0]) == ids
+    assert params[1:3] == ("ABSENT", REASON) and list(params[3]) == ids
 
 
 async def test_reenable_helper_receives_sorted_ids(rig, monkeypatch):

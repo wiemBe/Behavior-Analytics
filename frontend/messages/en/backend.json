@@ -158,6 +158,7 @@
     "resolution": {
       "recovered": "condition recovered"
     },
+    "source_absent_without_verdict": "Closed without a verdict: source absent from the completed QRadar inventory.",
     "source_disabled_without_verdict": "Closed without a verdict: source disabled in QRadar.",
     "suppression": {
       "maintenance": "maintenance window"

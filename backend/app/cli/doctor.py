@@ -996,8 +996,16 @@ class Doctor:
             not_judged: list[str] = []
             judged = 0
             absence_held = 0
+            accept_armed = 0
+            accept_held = 0
             for row in rows:
                 if row.collector == COLLECTOR_NAME and source_pause_enabled(self.settings):
+                    accept = (row.collection_metadata or {}).get("absence_accept")
+                    if isinstance(accept, dict):
+                        accept_armed += 1
+                        count = accept.get("held_count")
+                        if type(count) is int and count > 0:
+                            accept_held += count
                     run = stored_run(row) or {}
                     absence = run.get("absence")
                     if isinstance(absence, dict) and absence.get("state") == "held":
@@ -1028,12 +1036,22 @@ class Doctor:
             off_clause = ""
             if not_judged:
                 off_clause = f"; not judged (family off): {_watermark_list(not_judged)}"
+            absence_clauses = []
+            if accept_armed:
+                absence_clauses.append(
+                    f"QRadar inventory: absence accept armed for {accept_armed} instance(s), "
+                    f"{accept_held} held sources; completeness, validation "
+                    "and two passes still apply."
+                )
             if absence_held:
-                line = (
+                absence_clauses.insert(0, (
                     f"QRadar inventory: {absence_held} sources would be marked absent at once; "
                     "none were. If the API token lost visibility, fix it; if the sources were "
-                    "removed from QRadar on purpose, see the runbook for accepting the held set."
-                )
+                    "removed from QRadar on purpose, see the runbook for accepting the held set. "
+                    "Command: python -m app.cli.inventory absence accept --instance <name>."
+                ))
+            if absence_clauses:
+                line = "; ".join(absence_clauses)
                 if stalled or late:
                     line = f"{line}; {_watermark_warn_message(stalled, late)}"
                 line = f"{line}{off_clause}"

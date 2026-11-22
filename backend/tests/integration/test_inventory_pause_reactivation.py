@@ -97,7 +97,13 @@ async def test_unknown_leaves_open_span_untouched(rig, stored):
         with _record(engine) as operations:
             await _sync(session, instance_id, [(1, None)])
             await session.commit()
-    assert _edge_statements(operations) == []
+    assert _edge_statements(operations) == [
+        "SELECT log_source_pause.log_source_id, log_source_pause.reason \n"
+        "FROM log_source_pause \nWHERE log_source_pause.log_source_id = ANY ($1::UUID[]) "
+        "AND (log_source_pause.reason = $2::VARCHAR OR log_source_pause.reason = $3::VARCHAR "
+        "AND log_source_pause.log_source_id = ANY ($4::UUID[])) "
+        "AND log_source_pause.ends_at IS NULL"
+    ]
     assert await _snapshot(maker) == before
 
 
@@ -118,8 +124,10 @@ async def test_mixed_batch_one_bulk_read_and_idempotent(rig):
     assert len(reads) == 1
     assert sum(sql.startswith("SELECT ") for sql, *_ in operations) == 6
     sql, params, _, _ = reads[0]
-    assert "= ANY (" in sql and len(params) == 2
+    assert "= ANY (" in sql and len(params) == 4
     assert list(params[0]) == ids
+    assert params[1:3] == ("ABSENT", REASON)
+    assert list(params[3]) == ids
     pause_updates = [op for op in operations if op[0].startswith("UPDATE log_source_pause")]
     assert len(pause_updates) == 1
     _, params, positions, _ = pause_updates[0]
@@ -164,6 +172,7 @@ async def test_final_unknown_and_closed_history_do_not_close(rig):
             await session.commit()
     [(sql, params, _, _)] = [op for op in operations
                             if op[0].startswith("SELECT log_source_pause")]
-    assert list(params[0]) == [ids[1]] and params[1] == REASON
+    assert len(params) == 4 and list(params[0]) == ids
+    assert params[1:3] == ("ABSENT", REASON) and list(params[3]) == [ids[1]]
     assert _edge_statements(operations) == [sql]
     assert await _snapshot(maker) == before
