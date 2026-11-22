@@ -45,6 +45,7 @@ function Cell({ row, say, t, locale }: {
 }) {
   const fields = row.config.safe_fields;
   const configMissing = jdbcStateLabel("config", row.config.state, say);
+  const absent = row.flow.state === "ABSENT_FROM_INVENTORY";
   const disabled = row.flow.state === "DISABLED_IN_QRADAR";
   const measure = jdbcMeasurementView(row.volume);
   const measurement = jdbcStateLabel("measurement", row.volume.measurement, say);
@@ -53,6 +54,10 @@ function Cell({ row, say, t, locale }: {
   const host = hostPort(fields?.database_host ?? null, fields?.database_port ?? null);
   const connection = jdbcStateLabel("connection", row.qradar.status, say);
   const tone = row.qradar.status === "WARNING" ? "warn" : row.qradar.status === "CONNECTION_ERROR" ? "crit" : "";
+  // An absent source's enabled flag and connection status are the last stored values, not current.
+  const stored = absent && (
+    <span className="cell-sub">{t("jdbcPage.lastStored")}<span className="sr-only">{t("jdbcPage.lastStoredNote")}</span></span>
+  );
   const flow =
     row.flow.state === "NO_ATTRIBUTED_EVENTS" && row.qradar.status === "CONNECTED" && exactZero
       ? t("jdbcPage.connectedZero")
@@ -73,12 +78,21 @@ function Cell({ row, say, t, locale }: {
         {row.qradar.inconsistency && (
           <span className="cell-sub">{jdbcStateLabel("inconsistency", row.qradar.inconsistency, say)}</span>
         )}
+        {stored}
       </td>
-      <td>{tone ? <span className={`pill ${tone}`}>{connection}</span> : connection}</td>
+      <td>{tone ? <span className={`pill ${tone}`}>{connection}</span> : connection}{stored}</td>
       <td>
         {flow}
+        {absent && (
+          <span className="cell-sub">
+            {t("jdbcPage.absentSince")}{" "}
+            {row.qradar.absent_since
+              ? <UtcTime value={row.qradar.absent_since} variant="compact" />
+              : <Missing label={configMissing} />}
+          </span>
+        )}
         {row.flow.state === "NOT_MEASURED" && <span className="cell-sub">{measurement}</span>}
-        {!disabled && row.volume.stale && <span className="cell-sub">{t("jdbcPage.volumeStale")}</span>}
+        {!disabled && !absent && row.volume.stale && <span className="cell-sub">{t("jdbcPage.volumeStale")}</span>}
       </td>
       <td className="num">
         {measure.eventCount === null ? <Missing label={measurement} /> : formatCount(measure.eventCount, locale)}
@@ -128,6 +142,10 @@ function Filters({ params, consoles, t, say }: {
           {any}
           {JDBC_FLOW_STATES.map((s) => <option key={s} value={s}>{jdbcStateLabel("flow", s, say)}</option>)}
         </select>
+      </label>
+      <label className="filter-field filter-check">
+        <input type="checkbox" name="include_absent" value="true" defaultChecked={params.include_absent === true} />
+        {t("jdbcPage.filters.includeAbsent")}
       </label>
       <label className="filter-field">
         {t("jdbcPage.filters.protocol")}
@@ -179,15 +197,20 @@ async function JdbcSourcesPage({ searchParams }: { searchParams: Promise<RawQuer
       limit: next.limit === JDBC_PAGE_SIZE ? undefined : next.limit,
       offset: next.offset ? next.offset : undefined,
     })}`;
-  const filtered = Boolean(params.q || params.instance_id || params.protocol || params.enabled !== undefined || params.flow_state);
+  const filtered = Boolean(params.q || params.instance_id || params.protocol || params.enabled !== undefined || params.flow_state || params.include_absent);
   const items = page?.items ?? [];
-  const live = items.filter((r) => r.flow.state !== "DISABLED_IN_QRADAR");
+  // Every count is "sources on this page". An absent source is stored history, so it is in no
+  // current-state count: not in the flow counts (nor disabled, which has no verdict either), not
+  // in the config or stale counts. Its own line counts it once.
+  const present = items.filter((r) => r.flow.state !== "ABSENT_FROM_INVENTORY");
+  const live = present.filter((r) => r.flow.state !== "DISABLED_IN_QRADAR");
   const notes: [string, number][] = [
-    [t("jdbcPage.partial"), (page?.snapshot.state === "PARTIAL" ? 1 : 0) + items.filter((r) => r.config.state === "PARTIAL").length],
+    [t("jdbcPage.partial"), (page?.snapshot.state === "PARTIAL" ? 1 : 0) + present.filter((r) => r.config.state === "PARTIAL").length],
     [t("jdbcPage.truncated"), live.filter((r) => r.volume.measurement === "TRUNCATED").length],
     [t("jdbcPage.insufficient"), live.filter((r) => r.volume.measurement === "PARTIAL").length],
     [t("jdbcPage.notMeasured"), live.filter((r) => r.volume.measurement === "NOT_COLLECTED").length],
-    [t("jdbcPage.staleBlocks"), items.filter((r) => r.config.stale || (r.flow.state !== "DISABLED_IN_QRADAR" && r.volume.stale)).length],
+    [t("jdbcPage.staleBlocks"), present.filter((r) => r.config.stale || (r.flow.state !== "DISABLED_IN_QRADAR" && r.volume.stale)).length],
+    [t("jdbcPage.absentRows"), items.length - present.length],
   ];
   const snapshot = page?.snapshot;
   const never = snapshot !== undefined && snapshot.last_complete_at === null;
@@ -235,7 +258,13 @@ async function JdbcSourcesPage({ searchParams }: { searchParams: Promise<RawQuer
                 : never
                   ? stateNotice(t("jdbcPage.neverCollected"))
                   : page.snapshot.complete
-                    ? stateNotice(t("jdbcPage.empty"))
+                    ? stateNotice(
+                      t("jdbcPage.empty"),
+                      <>
+                        <span>{t("jdbcPage.emptyAbsentHidden")}</span>{" "}
+                        <Link href={here({ ...params, include_absent: true, offset: 0 })}>{t("jdbcPage.includeAbsentLink")}</Link>
+                      </>,
+                    )
                     : stateNotice(t("jdbcPage.partial"))
             : page && (
               <>
@@ -269,6 +298,7 @@ async function JdbcSourcesPage({ searchParams }: { searchParams: Promise<RawQuer
                     protocol: params.protocol === undefined ? undefined : String(params.protocol),
                     enabled: params.enabled === undefined ? undefined : String(params.enabled),
                     flow_state: params.flow_state,
+                    include_absent: params.include_absent ? "true" : undefined,
                     limit: params.limit === JDBC_PAGE_SIZE ? undefined : String(params.limit),
                   }}
                 />

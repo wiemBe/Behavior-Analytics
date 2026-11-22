@@ -92,6 +92,16 @@ export function JdbcDetails(props: JdbcDetailsProps) {
     ? qradar.status : label("connection", qradar.status);
   const historical = volume.last_observation;
   const disabled = flow.state === "DISABLED_IN_QRADAR";
+  // Absent: the stored rows are dated history, so no current-flow wording or measurement is shown.
+  const absent = flow.state === "ABSENT_FROM_INVENTORY";
+  const history = historical && <>
+    {fact(t("jdbcDetail.lastObservation"), clock(historical.observed_at, label("completeness", historical.completeness)))}
+    {fact(t("jdbcDetail.windowStart"), clock(historical.start, label("completeness", historical.completeness)))}
+    {fact(t("jdbcDetail.windowEnd"), clock(historical.end, label("completeness", historical.completeness)))}
+    {fact(t("jdbcPage.table.events"), number(historical.event_count, label("completeness", historical.completeness)))}
+    {fact(t("jdbcDetail.completeness"), label("completeness", historical.completeness))}
+    {fact(t("jdbcDetail.origin"), label("origin", historical.origin))}
+  </>;
   return (
     <div className="jdbc-detail">
       <p className="jdbc-snapshot">
@@ -102,7 +112,7 @@ export function JdbcDetails(props: JdbcDetailsProps) {
       </p>
       <section aria-labelledby={`${id}-config`}>
         <h2 id={`${id}-config`}>{t("jdbcDetail.configuration")}</h2>
-        <p>{label("config", config.state)}{config.stale && <> · <span className="jdbc-stale">{t("jdbcPage.configStale")}</span></>}
+        <p>{label("config", config.state)}{absent && <> · {t("jdbcDetail.configHistory")} · {t("jdbcDetail.observed")}: {clock(config.observed_at, configReason)}</>}{config.stale && <> · <span className="jdbc-stale">{t("jdbcPage.configStale")}</span></>}
           {(config.stale || config.failure_code) && <> · {t("jdbcDetail.lastSuccess")}: {clock(config.last_success_at, configReason)}</>}
           {config.failure_code && <> · {t("jdbcDetail.failure")}: <span>{label("failure", config.failure_code)}</span></>}
         </p>
@@ -121,6 +131,7 @@ export function JdbcDetails(props: JdbcDetailsProps) {
       <section aria-labelledby={`${id}-connection`}>
         <h2 id={`${id}-connection`}>{t("jdbcPage.table.connection")}</h2>
         <p><span className={tone ? `pill ${tone}` : "pill"}>{label("connection", qradar.status)}</span></p>
+        {absent && <p>{t("jdbcDetail.connectionHistory")}</p>}
         <dl className="jdbc-facts">
           {fact(t("jdbcPage.table.enabled"), t(`jdbcPage.${qradar.enabled ? "enabledYes" : "enabledNo"}`))}
           {qradar.inconsistency && fact(t("jdbcDetail.inconsistency"), label("inconsistency", qradar.inconsistency))}
@@ -134,33 +145,32 @@ export function JdbcDetails(props: JdbcDetailsProps) {
       </section>
       <section aria-labelledby={`${id}-flow`}>
         <h2 id={`${id}-flow`}>{t("jdbcPage.table.flow")}</h2>
-        <p>{label("flow", flow.state)}{!disabled && volume.stale && <> · <span className="jdbc-stale">{t("jdbcPage.volumeStale")}</span></>}</p>
-        <p>{measurement}</p>
-        {volume.measurement === "TRUNCATED" && <p>{t("jdbcPage.truncated")}</p>}
-        {volume.measurement === "PARTIAL" && <p>{t("jdbcPage.insufficient")}</p>}
-        {volume.measurement === "NOT_COLLECTED" && <p>{t("jdbcPage.notMeasured")}</p>}
-        <dl className="jdbc-facts">
-          {fact(t("jdbcPage.table.events"), number(measure.eventCount, measurementReason))}
-          {fact(t("jdbcDetail.averageEps"), number(measure.averageEps, measurementReason, t("jdbcDetail.eps")))}
-          {fact(t("jdbcDetail.windowStart"), clock(volume.target_start, measurementReason))}
-          {fact(t("jdbcDetail.windowEnd"), clock(volume.target_end, measurementReason))}
-          {fact(t("jdbcDetail.bucket"), number(volume.bucket_seconds, unavailable, t("jdbcDetail.seconds")))}
-          {fact(t("jdbcDetail.observed"), clock(measure.collectedAt, measurementReason))}
-        </dl>
-        <Disclosure summary={t("jdbcDetail.flowDetails")}>
+        {absent ? <>
+          <p>{label("flow", flow.state)} {t("jdbcDetail.since")} {clock(qradar.absent_since ?? null, unavailable)}</p>
+          <p>{t("jdbcDetail.absentHistory")}</p>
+          {history ? <dl className="jdbc-facts">{history}</dl> : <p>{t("jdbcDetail.noHistory")}</p>}
+        </> : <>
+          <p>{label("flow", flow.state)}{!disabled && volume.stale && <> · <span className="jdbc-stale">{t("jdbcPage.volumeStale")}</span></>}</p>
+          <p>{measurement}</p>
+          {volume.measurement === "TRUNCATED" && <p>{t("jdbcPage.truncated")}</p>}
+          {volume.measurement === "PARTIAL" && <p>{t("jdbcPage.insufficient")}</p>}
+          {volume.measurement === "NOT_COLLECTED" && <p>{t("jdbcPage.notMeasured")}</p>}
           <dl className="jdbc-facts">
-            {flow.reason_code && fact(t("jdbcDetail.reason"), label("reason", flow.reason_code))}
-            {volume.reason_code && fact(t("jdbcDetail.measurementReason"), label("reason", volume.reason_code))}
-            {historical && <>
-              {fact(t("jdbcDetail.lastObservation"), clock(historical.observed_at, label("completeness", historical.completeness)))}
-              {fact(t("jdbcDetail.windowStart"), clock(historical.start, label("completeness", historical.completeness)))}
-              {fact(t("jdbcDetail.windowEnd"), clock(historical.end, label("completeness", historical.completeness)))}
-              {fact(t("jdbcPage.table.events"), number(historical.event_count, label("completeness", historical.completeness)))}
-              {fact(t("jdbcDetail.completeness"), label("completeness", historical.completeness))}
-              {fact(t("jdbcDetail.origin"), label("origin", historical.origin))}
-            </>}
+            {fact(t("jdbcPage.table.events"), number(measure.eventCount, measurementReason))}
+            {fact(t("jdbcDetail.averageEps"), number(measure.averageEps, measurementReason, t("jdbcDetail.eps")))}
+            {fact(t("jdbcDetail.windowStart"), clock(volume.target_start, measurementReason))}
+            {fact(t("jdbcDetail.windowEnd"), clock(volume.target_end, measurementReason))}
+            {fact(t("jdbcDetail.bucket"), number(volume.bucket_seconds, unavailable, t("jdbcDetail.seconds")))}
+            {fact(t("jdbcDetail.observed"), clock(measure.collectedAt, measurementReason))}
           </dl>
-        </Disclosure>
+          <Disclosure summary={t("jdbcDetail.flowDetails")}>
+            <dl className="jdbc-facts">
+              {flow.reason_code && fact(t("jdbcDetail.reason"), label("reason", flow.reason_code))}
+              {volume.reason_code && fact(t("jdbcDetail.measurementReason"), label("reason", volume.reason_code))}
+              {history}
+            </dl>
+          </Disclosure>
+        </>}
       </section>
     </div>
   );

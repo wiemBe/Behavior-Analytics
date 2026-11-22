@@ -3338,7 +3338,7 @@ export interface CustomRuleCatalog {
 // check in `states.ts`. No raw parameter bag or free-text status message is defined here.
 
 export const JDBC_FLOW_STATES = [
-  "DISABLED_IN_QRADAR", "RECEIVING", "NO_ATTRIBUTED_EVENTS", "NOT_MEASURED",
+  "DISABLED_IN_QRADAR", "RECEIVING", "NO_ATTRIBUTED_EVENTS", "NOT_MEASURED", "ABSENT_FROM_INVENTORY",
 ] as const;
 export type JdbcFlowState = (typeof JDBC_FLOW_STATES)[number];
 
@@ -3412,6 +3412,8 @@ export interface JdbcSourceListParams {
   protocol?: JdbcProtocolId;
   enabled?: boolean;
   flow_state?: JdbcFlowState;
+  /** `true` lists sources absent from the completed inventory too; the API omits them by default. */
+  include_absent?: boolean;
 }
 
 /** The 18 allow-listed safe configuration values; every member is nullable. */
@@ -3461,6 +3463,8 @@ export interface JdbcQradarOut {
   inventory_state: JdbcAttemptState;
   inventory_stale: boolean;
   reason_code: JdbcReasonCode | null;
+  /** UTC start of the open absence; null when present. Missing from a backend before X2a. */
+  absent_since?: string | null;
 }
 
 export interface JdbcObservationOut {
@@ -3581,6 +3585,7 @@ export const api = {
         protocol: params.protocol,
         enabled: params.enabled,
         flow_state: params.flow_state,
+        include_absent: params.include_absent,
       })}`,
       { signal },
     ),

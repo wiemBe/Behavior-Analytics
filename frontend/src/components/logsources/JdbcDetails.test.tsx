@@ -244,6 +244,61 @@ describe("JdbcDetails", () => {
     expect(within(flow).getByText("81")).not.toBeVisible();
   });
 
+  function absentSource(): JdbcSourceDetail {
+    const data = source();
+    data.qradar.absent_since = "2026-11-04T06:30:00Z";
+    data.flow = { state: "ABSENT_FROM_INVENTORY", reason_code: "not_collected" };
+    Object.assign(data.volume, {
+      measurement: "NOT_COLLECTED", event_count: null, average_eps: null, collected_at: null, stale: true,
+      reason_code: "not_collected",
+    });
+    data.volume.last_observation = {
+      start: AT, end: END, observed_at: END, event_count: 81, completeness: "COMPLETE", origin: "history",
+    };
+    return data;
+  }
+
+  it("Absent in completed inventory: the flow block says since which UTC time, with no drawn zero", () => {
+    render(<JdbcDetails data={absentSource()} />);
+    const flow = block("Flow");
+    expect(within(flow).getByText(/^Absent in completed inventory since/, { selector: "p" }))
+      .toHaveTextContent("Absent in completed inventory since 2026-11-04 06:30:00 UTC");
+    expect(within(flow).queryByText("0")).toBeNull();
+    expect(within(flow).queryByText("Receiving")).toBeNull();
+  });
+
+  it("dated_history_not_current_flow: the last observation and configuration stay visible with their own dates, labelled history", () => {
+    render(<JdbcDetails data={absentSource()} />);
+    const flow = block("Flow");
+    expect(within(flow).getByText("Last observation, shown as history; it is not current flow.")).toBeVisible();
+    const events = within(flow).getByText("81");
+    expect(events).toBeVisible();
+    expect(events.closest("dl")).toHaveTextContent("2026-11-05 19:00:00 UTC");
+    expect(events.closest("dl")).toHaveTextContent("Historical");
+    for (const current of [/Events were not measured/, /Volume stale/, /Average EPS/, /Bucket duration/]) {
+      expect(within(flow).queryByText(current)).toBeNull();
+    }
+    const config = block("Configuration");
+    expect(within(config).getByText(/Stored configuration, not the current inventory/))
+      .toHaveTextContent("Observed UTC: 2026-11-05 18:00:00 UTC");
+    expect(within(config).getByText("billing")).toBeVisible();
+    expect(within(block("Connection")).getByText("Last stored values, not current.")).toBeInTheDocument();
+  });
+
+  it("an absent source with no stored observation says so instead of drawing a count", () => {
+    const data = absentSource();
+    data.volume.last_observation = null;
+    render(<JdbcDetails data={data} />);
+    expect(within(block("Flow")).getByText("No earlier observation is stored for this source.")).toBeInTheDocument();
+    expect(within(block("Flow")).queryByRole("term")).toBeNull();
+  });
+
+  it("a present source shows no history wording", () => {
+    render(<JdbcDetails data={source()} />);
+    expect(screen.queryByText(/not current flow/)).toBeNull();
+    expect(screen.queryByText(/Stored configuration, not the current inventory/)).toBeNull();
+  });
+
   it("every block honesty state: connected + exact zero", () => {
     const data = source();
     Object.assign(data.volume, { event_count: 0, average_eps: 0 });

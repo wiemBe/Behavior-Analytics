@@ -86,4 +86,23 @@ describe("JDBC query address", () => {
     expect(buildJdbcQuery(cleared)).toBe("?limit=50");
     expect(parseJdbcQuery(rawOf(buildJdbcQuery(cleared)))).toEqual({ limit: 50, offset: 0 });
   });
+
+  it("include_absent toggle round-trips the URL: true only, garbage dropped", () => {
+    expect(parseJdbcQuery({ include_absent: "true" })).toEqual({ limit: 100, offset: 0, include_absent: true });
+    expect(parseJdbcQuery({ include_absent: " TRUE " }).include_absent).toBe(true);
+    for (const garbage of ["false", "1", "yes", "", "maybe"]) {
+      expect(parseJdbcQuery({ include_absent: garbage })).toEqual({ limit: 100, offset: 0 });
+    }
+    expect(parseJdbcQuery({ include_absent: ["false", "true"] }).include_absent).toBeUndefined();
+    const params = parseJdbcQuery({ q: "a", flow_state: "RECEIVING", include_absent: "true", limit: "50" });
+    const query = buildJdbcQuery(params);
+    expect(query).toBe("?q=a&flow_state=RECEIVING&include_absent=true&limit=50&offset=0");
+    expect(parseJdbcQuery(rawOf(query))).toEqual(params);
+    expect(buildJdbcQuery({ limit: 100, include_absent: false })).toBe("?limit=100");
+    // Filtering on the absent state implies the toggle: the API would answer an empty page otherwise.
+    expect(parseJdbcQuery({ flow_state: "ABSENT_FROM_INVENTORY" }))
+      .toEqual({ limit: 100, offset: 0, flow_state: "ABSENT_FROM_INVENTORY", include_absent: true });
+    // Clear filters drops the toggle with the other filters.
+    expect(clearJdbcFilters(params)).toEqual({ limit: 50 });
+  });
 });
