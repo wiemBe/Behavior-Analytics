@@ -1,4 +1,4 @@
-"""QRadar-disabled spans (design §5): one edge-written row per pause, not per bucket.
+"""Source pause spans (design §5): one edge-written row per pause, not per bucket.
 
 Half-open `[starts_at, ends_at)`, `ends_at` NULL while open; written only by
 `app.services.source_pause_spans` and retained with the source.
@@ -14,8 +14,9 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base
 
-# The D-94 follow-up adds 'ABSENT' by changing this one literal (model and migration).
-_REASONS = "'QRADAR_DISABLED'"
+REASON_QRADAR_DISABLED = "QRADAR_DISABLED"
+REASON_ABSENT = "ABSENT"
+_REASONS = f"'{REASON_QRADAR_DISABLED}', '{REASON_ABSENT}'"
 
 
 class LogSourcePause(Base):

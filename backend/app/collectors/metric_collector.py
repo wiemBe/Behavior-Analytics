@@ -84,7 +84,7 @@ from app.history.source_floors import SourceFloors
 from app.history.state import HistoryFamily, HistoryState, HistoryTrigger, next_state
 from app.history.topup import CHUNKS_KEY, CUTOFFS_KEY, TopupChunks
 from app.i18n.messages import MessageRef
-from app.log_source_policy import source_pause_enabled, target_filters
+from app.log_source_policy import not_absent, source_pause_enabled, target_filters
 from app.models.enums import BucketCompleteness, SearchFamily
 from app.models.instance import QRadarInstance
 from app.models.log_source import LogSource, LogSourceMetric
@@ -1435,18 +1435,17 @@ class MetricCollector:
     async def _log_source_inventory(
         self, instance_id: uuid.UUID
     ) -> tuple[dict[int, uuid.UUID], frozenset[uuid.UUID]]:
-        """The whole inventory's id map, and (switch on) the ids QRadar has disabled.
+        """The whole inventory's id map, and (switch on) disabled or ABSENT ids.
 
         One statement either way: the search and its row planning stay all-inventory.
         """
-        rows = await self.session.execute(
-            select(LogSource.qradar_id, LogSource.id, LogSource.enabled).where(
-                LogSource.instance_id == instance_id
-            )
-        )
-        found = rows.all()
+        statement = select(LogSource.qradar_id, LogSource.id, LogSource.enabled)
+        if source_pause_enabled(self.settings):
+            statement = statement.add_columns(not_absent())
+        rows = await self.session.execute(statement.where(LogSource.instance_id == instance_id))
+        found: list[tuple[Any, ...]] = [tuple(row) for row in rows]
         paused = (
-            frozenset(row[1] for row in found if row[2] is not True)
+            frozenset(row[1] for row in found if row[2] is not True or not row[3])
             if source_pause_enabled(self.settings)
             else frozenset()
         )

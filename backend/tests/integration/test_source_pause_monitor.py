@@ -282,7 +282,7 @@ async def test_no_monitored_sources_retains_reason_and_notification(rig: Rig, fl
 @pytest.mark.parametrize("stale", [True, False])
 @pytest.mark.parametrize("source_count", [1, 20])
 async def test_common_path_stays_one_probe(rig: Rig, stale: bool, source_count: int) -> None:
-    # Same SQL/statement budget downstream, with only the enabled term added to the probe.
+    # Same downstream SQL/budget; the probe adds only enabled and ABSENT terms.
     legacy = await rig.console([True] * source_count, stale=stale)
     enabled = await rig.console([False] * (source_count - 1) + [True], stale=stale)
     await rig.switch(False)
@@ -293,9 +293,16 @@ async def test_common_path_stays_one_probe(rig: Rig, stale: bool, source_count: 
     on = await rig.run(enabled)
     assert len(rig.probes()) == 1
     assert "log_source.enabled IS true" in rig.probes()[0]
-    assert [s.replace(" AND log_source.enabled IS true", "") for s in rig.statements] == (
-        off_statements
+    added = (
+        " AND log_source.enabled IS true AND NOT (EXISTS (SELECT 1 \n"
+        "FROM log_source_pause \nWHERE log_source_pause.log_source_id = log_source.id "
+        "AND log_source_pause.reason = $2::VARCHAR AND log_source_pause.ends_at IS NULL))"
     )
+    assert added in rig.probes()[0]
+    assert [
+        s.replace(added, "").replace("LIMIT $3::INTEGER", "LIMIT $2::INTEGER")
+        if added in s else s for s in rig.statements
+    ] == off_statements
     assert sum("FROM feature_switch" in s for s in rig.statements) == 1
     for key in ("status", "stale", "judged", "reason", "transition", "consecutive_failures"):
         assert on[key] == off[key]

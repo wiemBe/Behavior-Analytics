@@ -1221,7 +1221,9 @@ async def detect_stale_log_source_collection(instance_name: str | None = None) -
             )
             eligible_query = monitored_query
             if source_pause_enabled(policy_settings):
-                eligible_query = eligible_query.where(active_source(LogSource.enabled.expression))
+                eligible_query = eligible_query.where(
+                    active_source(LogSource.enabled.expression, exclude_absent=True)
+                )
             monitored_source_id = await session.scalar(eligible_query)
             if monitored_source_id is None:
                 reason = "no_monitored_sources"
@@ -1483,7 +1485,7 @@ async def evaluate_anomalies() -> dict:
                 select(LogSource.id)
                 .where(
                     LogSource.monitoring_enabled.is_(True),
-                    active_source(LogSource.enabled),  # type: ignore[arg-type]
+                    active_source(LogSource.enabled, exclude_absent=True),  # type: ignore[arg-type]
                 )
                 .order_by(LogSource.id)
             )).all())

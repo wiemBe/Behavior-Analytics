@@ -17,6 +17,7 @@ from sqlalchemy.orm import QueryableAttribute, Session
 
 from app.core.config import Settings
 from app.models.log_source import LogSource
+from app.models.log_source_pause import REASON_ABSENT, LogSourcePause
 
 if TYPE_CHECKING:
     from app.anomaly.baseline import BaselineBuilder
@@ -30,9 +31,28 @@ def source_pause_enabled(settings: Settings) -> bool:
     return settings.qradar_source_pause_enabled
 
 
-def active_source(enabled: ColumnElement[bool]) -> ColumnElement[bool]:
-    """The stored QRadar flag guard, placed beside a caller's monitoring filter."""
-    return enabled.is_(True)
+def not_absent() -> ColumnElement[bool]:
+    """Current presence, correlated to the plain source; closed spans are history.
+
+    QRADAR_DISABLED is represented by the stored enabled flag, independently.
+    Callers add this only with the resolved D-52 switch on.
+    """
+    return ~select(1).where(
+        LogSourcePause.log_source_id == LogSource.id,
+        LogSourcePause.reason == REASON_ABSENT,
+        LogSourcePause.ends_at.is_(None),
+    ).correlate(LogSource).exists()
+
+
+def active_source(
+    enabled: ColumnElement[bool], *, exclude_absent: bool = False,
+) -> ColumnElement[bool]:
+    """Stored QRadar flag, optionally excluding ABSENT for switch-on targets.
+
+    The default keeps inventory readers independent of the pause policy.
+    """
+    term = enabled.is_(True)
+    return term & not_absent() if exclude_absent else term
 
 
 def target_filters(
@@ -40,13 +60,13 @@ def target_filters(
     monitoring_enabled: QueryableAttribute[bool],
     enabled: QueryableAttribute[bool],
 ) -> list[ColumnElement[bool]]:
-    """The shared collection-target WHERE terms: monitored, and (switch on) not QRadar-disabled.
+    """Shared target WHERE terms: monitored, and (switch on) enabled and not ABSENT.
 
     Off (or no settings) is exactly the legacy single `monitoring_enabled` term.
     """
     terms: list[ColumnElement[bool]] = [monitoring_enabled.is_(True)]
     if settings is not None and source_pause_enabled(settings):
-        terms.append(active_source(enabled.expression))
+        terms.append(active_source(enabled.expression, exclude_absent=True))
     return terms
 
 

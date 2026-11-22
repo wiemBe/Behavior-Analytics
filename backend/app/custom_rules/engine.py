@@ -395,7 +395,8 @@ class CustomRuleEngine:
             )
         if kind == _FLEET_CLASS:
             return await load_fleet_classes(
-                self.session, keys, after=after, through=through
+                self.session, keys, after=after, through=through,
+                source_pause=self.settings.qradar_source_pause_enabled
             )
         if kind == _WAF_ENDPOINT:
             return await load_waf_endpoints(

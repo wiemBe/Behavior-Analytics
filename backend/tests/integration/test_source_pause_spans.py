@@ -427,7 +427,7 @@ def test_constraints_index_and_cascade(migrated_db: str) -> None:
             with pytest.raises(IntegrityError, match=name), engine.begin() as conn:
                 statement(conn)
 
-        refused(lambda c: _insert(c, source, "ABSENT", _at(20), None), "reason_known")
+        refused(lambda c: _insert(c, source, "UNKNOWN", _at(20), None), "reason_known")
         refused(lambda c: _insert(c, source, REASON, _at(20), _at(20)), "ends_after_start")
         refused(lambda c: _insert(c, source, REASON, _at(20), _at(19)), "ends_after_start")
         refused(lambda c: _insert(c, source, REASON, _at(0), None), "pk_log_source_pause")

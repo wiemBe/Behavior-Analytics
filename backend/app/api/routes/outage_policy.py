@@ -18,8 +18,9 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy import String, and_, cast, func, select
 
-from app.api.deps import SessionDep, SettingsDep
+from app.api.deps import EffectiveSettingsDep, SessionDep
 from app.fleet.outage_policy import resolve
+from app.log_source_policy import not_absent
 from app.models.enums import OutagePolicyMode, OutagePolicyScope, SourceClass
 from app.models.fleet import LogSourceClassification
 from app.models.instance import QRadarInstance
@@ -100,7 +101,7 @@ async def _upsert(
 
 @router.get("", response_model=list[OutagePolicyOut])
 async def list_policy(
-    session: SessionDep, settings: SettingsDep
+    session: SessionDep, settings: EffectiveSettingsDep
 ) -> list[OutagePolicyOut]:
     """Every policy row, with the monitored sources each class row governs.
 
@@ -141,7 +142,10 @@ async def list_policy(
         )
     ).all()
     rows = [row for row, _, _, _ in result]
-    counts = await _governed_counts(session, rows, settings.outage_alert_default)
+    counts = await _governed_counts(
+        session, rows, settings.outage_alert_default,
+        source_pause=settings.qradar_source_pause_enabled,
+    )
     out: list[OutagePolicyOut] = []
     for row, source_name, source_class, instance_name in result:
         item = OutagePolicyOut.model_validate(row)
@@ -157,7 +161,8 @@ async def list_policy(
 
 
 async def _governed_counts(
-    session: SessionDep, rows: list[OutageAlertPolicy], default: OutagePolicyMode
+    session: SessionDep, rows: list[OutageAlertPolicy], default: OutagePolicyMode,
+    *, source_pause: bool = False,
 ) -> dict[str, int]:
     sources = (
         await session.execute(
@@ -174,7 +179,8 @@ async def _governed_counts(
                 LogSourceClassification.log_source_id == LogSource.id,
             )
             .where(
-                LogSource.enabled.is_(True), LogSource.monitoring_enabled.is_(True)
+                LogSource.enabled.is_(True), LogSource.monitoring_enabled.is_(True),
+                *([not_absent()] if source_pause else []),
             )
         )
     ).all()
