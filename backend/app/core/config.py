@@ -12,6 +12,7 @@ import os
 import re
 from collections.abc import Mapping, Sequence
 from contextvars import ContextVar
+from dataclasses import dataclass
 from enum import StrEnum
 from functools import lru_cache
 from pathlib import Path
@@ -22,6 +23,7 @@ from pydantic import (
     AliasChoices,
     Field,
     SecretStr,
+    ValidationError,
     ValidationInfo,
     field_validator,
     model_validator,
@@ -32,10 +34,12 @@ from pydantic_settings import (
     NoDecode,
     PydanticBaseSettingsSource,
     SettingsConfigDict,
+    SettingsError,
 )
 
 from app.core.patterns import PROPERTY_NAME_PATTERN
 from app.models.enums import AlertPolicyMode, OutagePolicyMode
+from app.models.feature_switch import FEATURE_KEYS
 
 #: A mount point: an absolute path of letters, digits and `_ . / -`. Compared, never put in AQL.
 _MOUNT_PATTERN = re.compile(r"/[A-Za-z0-9_./-]{0,127}")
@@ -2055,9 +2059,139 @@ def switch_dependent_problems(settings: Settings) -> list[str]:
     return problems
 
 
+#: The two reason codes a degraded setting carries. Fixed and short: a raw value or
+#: pydantic's message is never recorded, because an error can echo a neighbouring secret.
+INVALID_SWITCH_VALUE = "invalid_switch_value"
+INVALID_LIST_VALUE = "invalid_list_value"
+
+#: Layer 2's explicit allow-list (design §3.1): the runtime switches and the four
+#: `NoDecode` list fields of layer 1. Every other failure stays critical.
+_NONCRITICAL_SWITCHES = frozenset(FEATURE_KEYS)
+_NONCRITICAL_LISTS = frozenset(
+    {
+        "explanation_dimensions",
+        "catchall_type_ids",
+        "geo_directions",
+        "qradar_health_disk_mounts",
+    }
+)
+
+
+@dataclass(frozen=True)
+class SettingsProblem:
+    """One non-critical value that failed validation and was replaced.
+
+    Names and a reason code only. The value is never kept: it may sit next to a secret,
+    and pydantic's message can echo it back.
+    """
+
+    field: str
+    env_name: str
+    reason_code: str
+
+    @property
+    def fallback(self) -> str:
+        """The fixed description of what the application uses instead of the value."""
+        if self.reason_code == INVALID_SWITCH_VALUE:
+            return "switch off"
+        return "the default"
+
+
+def _alias_to_field() -> dict[str, str]:
+    """Every loc name pydantic can report, lower-cased, mapped to its field name."""
+    mapping: dict[str, str] = {}
+    for name, field in Settings.model_fields.items():
+        mapping[name.lower()] = name
+        alias = field.validation_alias
+        if isinstance(alias, str):
+            mapping[alias.lower()] = name
+        elif isinstance(alias, AliasChoices):
+            for choice in alias.choices:
+                if isinstance(choice, str):
+                    mapping[choice.lower()] = name
+    return mapping
+
+
+_ALIAS_TO_FIELD = _alias_to_field()
+
+
+def _recover_noncritical(
+    exc: ValidationError,
+) -> tuple[dict[str, Any], tuple[SettingsProblem, ...]] | None:
+    """Overrides and problems when every error is on an allow-listed field.
+
+    ``None`` means re-raise the original exception unchanged: a model validator (no
+    field), an unknown name, or any critical field is never degraded.
+    """
+    overrides: dict[str, Any] = {}
+    codes: dict[str, str] = {}
+    for error in exc.errors():
+        loc = error.get("loc") or ()
+        if not loc or not isinstance(loc[0], str):
+            return None
+        field = _ALIAS_TO_FIELD.get(loc[0].lower())
+        if field in _NONCRITICAL_SWITCHES:
+            # The operator's intent is unknown, even on a default-on switch (design D12).
+            overrides[field] = False
+            codes[field] = INVALID_SWITCH_VALUE
+        elif field in _NONCRITICAL_LISTS:
+            overrides[field] = Settings.model_fields[field].get_default(
+                call_default_factory=True
+            )
+            codes[field] = INVALID_LIST_VALUE
+        else:
+            return None
+    problems = tuple(
+        SettingsProblem(field, field.upper(), codes[field]) for field in sorted(codes)
+    )
+    return overrides, problems
+
+
+#: The problems of the cached settings. `get_settings` is the one cached load, so
+#: reading it here keeps the two in step across a `cache_clear()` in a test or a reload.
+_SETTINGS_PROBLEMS: tuple[SettingsProblem, ...] = ()
+
+
+def load_settings() -> Settings:
+    """Build the process settings, degrading only allow-listed non-critical failures.
+
+    A bad switch or list value is replaced for this construction only — switches off,
+    lists at their code default — and recorded for the startup log and the doctor. Any
+    other failure, and a failure of the rebuild, re-raises the original exception.
+    """
+    global _SETTINGS_PROBLEMS
+    _SETTINGS_PROBLEMS = ()
+    try:
+        settings = Settings()
+    except SettingsError:
+        # A pydantic-settings source error (an unreadable env file, say) carries no
+        # field-level errors to classify, so it is always critical.
+        raise
+    except ValidationError as original:
+        recovered = _recover_noncritical(original)
+        if recovered is None:
+            raise
+        overrides, problems = recovered
+        try:
+            # Init kwargs outrank env and dotenv, so the bad value cannot re-enter.
+            settings = Settings(**overrides)
+        except (ValidationError, SettingsError):
+            raise original from None
+        _SETTINGS_PROBLEMS = problems
+        return settings
+    _SETTINGS_PROBLEMS = ()
+    return settings
+
+
 @lru_cache
 def get_settings() -> Settings:
-    return Settings()
+    return load_settings()
+
+
+def get_settings_problems() -> tuple[SettingsProblem, ...]:
+    """The problems recorded for the settings the process is currently using."""
+    get_settings()
+    return _SETTINGS_PROBLEMS
 
 
 @lru_cache(maxsize=1)
