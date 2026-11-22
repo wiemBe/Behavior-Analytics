@@ -1,4 +1,5 @@
-"""JDBC-1 S0: the two default-off activation switches and the shared predicates.
+"""JDBC-1 S0: the two activation switches (JDBC on by default, D-104; pause off)
+and the shared predicates.
 
 Pure resolver and policy checks: no database, no network, no provider. The
 operator route and the migration round trip are covered in the integration file.
@@ -53,10 +54,11 @@ class _Session:
         return _Result(self.rows)
 
 
-def test_defaults_are_off_and_both_keys_are_registered() -> None:
+def test_defaults_jdbc_on_pause_off_and_both_keys_are_registered() -> None:
     base = Settings(_env_file=None)
+    assert base.jdbc_collection_enabled is True
+    assert base.qradar_source_pause_enabled is False
     for key in NEW_KEYS:
-        assert getattr(base, key) is False
         assert key in FEATURE_KEYS
         assert key in FAMILY_LABELS
 

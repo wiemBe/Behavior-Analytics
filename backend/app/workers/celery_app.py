@@ -159,8 +159,8 @@ celery_app.conf.beat_schedule = {
         "schedule": float(settings.log_source_sync_interval_seconds),
     },
     "collect-jdbc-configs": {
-        # Inert while JDBC_COLLECTION_ENABLED is off: the task returns disabled
-        # before it builds a provider or touches jdbc_sync_state.
+        # Live by default (D-104); the task returns disabled only when the switch
+        # is explicitly off, before it builds a provider or touches jdbc_sync_state.
         "task": "collect_jdbc_configs",
         "schedule": float(settings.jdbc_walk_interval_seconds),
     },

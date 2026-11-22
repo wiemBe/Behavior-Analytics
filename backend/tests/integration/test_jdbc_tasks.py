@@ -22,6 +22,8 @@ from app.core.config import Settings
 from app.jdbc import jobs
 from app.jdbc.dto import JdbcConfigDTO, JdbcConfigWalk, JdbcWalkState
 from app.jdbc.parameters import project_jdbc_config
+from app.models.base import utcnow
+from app.models.feature_switch import FeatureSwitch
 from app.models.instance import QRadarInstance
 from app.models.jdbc import JdbcSyncState
 from app.models.log_source import LogSource
@@ -130,6 +132,45 @@ async def test_actual_task_off_sends_no_requests(rig: Rig) -> None:
     }
     assert rig.provider_builds == 0
     assert await rig.rows() == []
+
+
+async def test_effective_switch_defaults_on_and_both_off_paths_disable(
+    rig: Rig, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # No .env value and no feature_switch row: the code default turns collection on.
+    monkeypatch.delenv("JDBC_COLLECTION_ENABLED", raising=False)
+    rig.base()
+    instance_id = await rig.seed("default-on")
+    provider = make_walk(JdbcWalkState.COMPLETE)
+    rig.provider = provider
+    result = await tasks.collect_jdbc_configs()
+    assert result["results"][0]["status"] == "COMPLETE"
+    assert rig.provider_builds == 1
+    assert provider.calls == [WALK_KWARGS]
+    rows = {r["instance_id"]: r for r in await rig.rows()}
+    assert rows[instance_id]["state"] == "COMPLETE"
+
+    # An explicit .env false turns it off: no provider, no sync-state row touched.
+    monkeypatch.setenv("JDBC_COLLECTION_ENABLED", "false")
+    rig.base()
+    assert await tasks.collect_jdbc_configs() == {"status": "disabled"}
+    assert rig.provider_builds == 1
+
+    # A feature_switch row set off beats the on default.
+    monkeypatch.delenv("JDBC_COLLECTION_ENABLED", raising=False)
+    rig.base()
+    async with rig.maker() as session:
+        session.add(
+            FeatureSwitch(
+                key="jdbc_collection_enabled",
+                enabled=False,
+                updated_at=utcnow(),
+                updated_by="operator",
+            )
+        )
+        await session.commit()
+    assert await tasks.collect_jdbc_configs() == {"status": "disabled"}
+    assert rig.provider_builds == 1
 
 
 async def test_actual_task_lease_lock_timeout_paths(rig: Rig) -> None:
