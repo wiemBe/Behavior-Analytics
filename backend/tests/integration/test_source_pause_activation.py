@@ -28,6 +28,7 @@ from app.models.log_source import (
     LogSource,
     LogSourceAnomaly,
     LogSourceBaseline,
+    LogSourceDetectorState,
     LogSourceMetric,
 )
 from app.models.log_source_pause import LogSourcePause
@@ -391,6 +392,77 @@ def _instance_result(result):
     assert result.get("instances") == 1, result
     [run] = result["results"]
     return run
+
+
+async def test_rollback_reactivation_judges_next_whole_bucket(activation):
+    rig = activation
+    await rig.seed((True, True, True))
+    rig.raw = {1: True, 2: True, 3: True}
+    await rig.switch(True)
+    assert _instance_result(await rig.run(tasks.sync_log_sources))["status"] == "ok"
+    assert await rig.run(tasks.rebuild_baselines) == {"sources": 3, "cells": 12}
+
+    rig.at += STEP
+    rig.raw[1] = False
+    assert _instance_result(await rig.run(tasks.sync_log_sources))["status"] == "ok"
+    [opened] = await rig.rows(LogSourcePause)
+    assert opened.log_source_id == rig.sources[0].id and opened.ends_at is None
+    judged = await rig.run(tasks.evaluate_anomalies)
+    assert judged["sources"] == 2 and judged["failed"] == 0
+
+    await rig.switch(False)
+    rig.at += STEP
+    rig.raw[1] = True
+    assert _instance_result(await rig.run(tasks.sync_log_sources))["status"] == "ok"
+    assert all(s.enabled is True for s in await rig.rows(LogSource))
+    [retained] = await rig.rows(LogSourcePause)
+    assert (retained.starts_at, retained.ends_at) == (opened.starts_at, None)
+
+    await rig.switch(True)
+    rig.at += STEP  # 12:18 UTC: close at 12:20, not within the observed bucket.
+    assert _instance_result(await rig.run(tasks.sync_log_sources))["status"] == "ok"
+    [closed] = await rig.rows(LogSourcePause)
+    resume = NOW + 4 * STEP
+    assert closed.starts_at == opened.starts_at and closed.ends_at == resume
+    assert all(s.enabled is True for s in await rig.rows(LogSource))
+    assert (await rig.run(tasks.rebuild_baselines))["sources"] == 3
+
+    # Evaluate each retained complete measurement in turn: cold-start evaluation
+    # uses only the latest bucket, so a single call would not exercise both sides.
+    source_id = rig.sources[0].id
+    async with rig.maker() as session:
+        session.add(LogSourceMetric(
+            log_source_id=source_id, bucket_start=resume - STEP, bucket_seconds=300,
+            event_count=0, average_eps=0.0, collection_source="ariel_aggregate",
+        ))
+        await session.commit()
+    rig.at = resume
+    judged = await rig.run(tasks.evaluate_anomalies)
+    assert judged["sources"] == 3 and judged["failed"] == 0
+    assert not [s for s in await rig.rows(LogSourceDetectorState) if s.log_source_id == source_id]
+    assert not [a for a in await rig.rows(LogSourceAnomaly) if a.log_source_id == source_id]
+    [mark] = [w for w in await rig.rows(AnomalyEvaluationWatermark)
+              if w.log_source_id == source_id]
+    assert mark.evaluated_through == resume - STEP
+
+    async with rig.maker() as session:
+        session.add(LogSourceMetric(
+            log_source_id=source_id, bucket_start=resume, bucket_seconds=300,
+            event_count=0, average_eps=0.0, collection_source="ariel_aggregate",
+        ))
+        await session.commit()
+    rig.at = resume + STEP
+    judged = await rig.run(tasks.evaluate_anomalies)
+    assert judged["sources"] == 3 and judged["failed"] == 0
+    states = [s for s in await rig.rows(LogSourceDetectorState) if s.log_source_id == source_id]
+    assert states and all(s.last_interval_start == resume for s in states)
+    [mark] = [w for w in await rig.rows(AnomalyEvaluationWatermark)
+              if w.log_source_id == source_id]
+    assert mark.evaluated_through == resume
+    incidents = {a.id for a in await rig.rows(LogSourceAnomaly) if a.log_source_id == source_id}
+    transitions = [t for t in await rig.rows(AnomalyStateTransition)
+                   if t.anomaly_id in incidents and t.bucket_start is not None]
+    assert transitions and all(t.bucket_start == resume for t in transitions)
 
 
 async def test_off_to_on_actual_tasks_and_sync(activation):
