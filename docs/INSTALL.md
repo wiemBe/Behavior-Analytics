@@ -1071,10 +1071,16 @@ Accept refuses while pauses are off or the last inventory run is not held. It wr
 entry with the actor, instance ID and held count, then arms a one-shot breaker lift for that
 instance. It does not certify the missing set or bypass snapshot validation. Subsequent complete
 validated passes still require two-pass evidence: the first stores candidates, the next confirms.
-An incomplete or unvalidated pass leaves acceptance armed; positive presence still removes its
-candidate. Acceptance clears after a pass confirms any absence. A repeated accept while armed
-makes no second audit entry. `absence show` is read-only and prints state, candidate/confirmation/
-held counts and whether acceptance is armed. `doctor` keeps a separate armed warning visible even
+Acceptance expires 24 hours after arming. An expired accept or one with a missing, malformed or
+timezone-naive arm time no longer lifts the breaker on that pass. A complete validated nonempty
+pass, whether evaluated or held, clears it with reason `expired` or `unreadable_arm_time`.
+Before expiry, acceptance clears when a pass confirms any absence or finds zero newly missing
+sources (sources already ABSENT are excluded). Incomplete, unvalidated, zero-row or failed passes,
+and passes with dropped rows or duplicate IDs, never clear acceptance, even after expiry;
+positive presence still removes its candidate. With pauses off, acceptance is untouched.
+A repeated accept while armed makes no second audit entry. `absence show` is read-only and prints
+state, candidate/confirmation/held counts, whether acceptance is armed, its age and its UTC expiry
+time. `doctor` explains the expiry and keeps a separate armed warning visible even
 if the latest run is skipped. These commands only write the application's database; the product
 never removes or changes a QRadar source.
 

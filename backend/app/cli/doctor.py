@@ -1041,7 +1041,8 @@ class Doctor:
                 absence_clauses.append(
                     f"QRadar inventory: absence accept armed for {accept_armed} instance(s), "
                     f"{accept_held} held sources; completeness, validation "
-                    "and two passes still apply."
+                    "and two passes still apply. Acceptance expires 24 hours after arming; "
+                    "the next complete validated nonempty inventory pass after that clears it."
                 )
             if absence_held:
                 absence_clauses.insert(0, (
