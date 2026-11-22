@@ -1,4 +1,4 @@
-"""The rule-match job is registered, scheduled, and off by default."""
+"""The rule-match job is registered, scheduled, and on by default."""
 
 import asyncio
 
@@ -18,8 +18,8 @@ def test_the_task_is_registered_and_scheduled() -> None:
     assert schedule["collect-rule-matches"]["schedule"] == 60.0
 
 
-def test_collection_is_disabled_by_default() -> None:
-    assert Settings.model_fields["rule_match_collection_enabled"].default is False
+def test_collection_is_enabled_by_default() -> None:
+    assert Settings.model_fields["rule_match_collection_enabled"].default is True
     assert Settings.model_fields["rule_match_window_seconds"].default == 3600
 
 

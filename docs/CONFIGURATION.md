@@ -28,8 +28,11 @@ WAF (including outcome and client breakdowns), IPS, identity, property watches a
 threshold rules default to collection/evaluation and alerting on. Each still requires its
 enabled, valid profile, enabled watch or configured rule. Baseline-dependent detectors
 remain `INSUFFICIENT_DATA` without a usable baseline; fixed threshold rules do not need one.
-Rule-match collection and alerting remain off because collection can search Ariel without
-configured rules or existing match data.
+Rule-match collection and alerting are on by default (D-105). A window is collected even
+with no configured rules, and each search scans every event in it, so the cost scales with
+event volume, not rule count. Set `RULE_MATCH_COLLECTION_ENABLED=false` or use the Features
+toggle to opt out of collection, and `RULE_ALERTING_ENABLED=false` to record incidents
+without opening alerts.
 
 Set a collection/evaluation switch to `false` to keep that family off. Unset alerting follows
 a disabled prerequisite; explicitly supplied values keep their existing meaning. A stored
@@ -133,7 +136,7 @@ data.
 |---|---:|---|---|
 | `PHASE_A_VOLUME` | 5 minutes | yes | none; the source-volume collector always runs |
 | `ANOMALY_EXPLANATION` | 5 minutes | yes | `EXPLANATION_ENABLED` |
-| `RULE_MATCH` | 5 minutes | no | `RULE_MATCH_COLLECTION_ENABLED` |
+| `RULE_MATCH` | 5 minutes | yes | `RULE_MATCH_COLLECTION_ENABLED` |
 | `PROPERTY_WATCH` | 5 minutes | yes | `PW_COLLECTION_ENABLED` |
 | `CATCHALL_SENDERS` | 5 minutes | yes | `CATCHALL_COLLECTION_ENABLED` |
 | `GEO_COLLECTION` | 5 minutes | yes | `GEO_COLLECTION_ENABLED` |
@@ -203,8 +206,8 @@ reference heading for them.
 | `RULE_METRIC_COLLECTION_INTERVAL_SECONDS` | `3600` | Rule-metric collection interval |
 | `RULE_METRIC_LOOKBACK_DAYS` | `30` | How far rule-metric collection looks back |
 | `RULE_METRIC_MAX_OFFENSES` | `10000` | Offense rows considered for rule metrics |
-| `RULE_MATCH_COLLECTION_ENABLED` | `false` | Measured rule-match collection switch |
-| `RULE_ALERTING_ENABLED` | `false` | Record rule silence and storm incidents, but open no alert until an operator turns the family on. One switch covers both detectors. Robust z uses `ANOMALY_DEVIATION_THRESHOLD`; the MAD floor uses `BASELINE_MAD_FLOOR_RATIO` |
+| `RULE_MATCH_COLLECTION_ENABLED` | `true` | Measured rule-match collection switch. On by default (D-105); each window scans every event in it, so cost scales with event volume, not rule count. Set to `false` or use the Features toggle to opt out |
+| `RULE_ALERTING_ENABLED` | `true` | Open rule silence and storm alerts by default (D-105); set to `false` or use the Features toggle to record incidents without paging. One switch covers both detectors. Robust z uses `ANOMALY_DEVIATION_THRESHOLD`; the MAD floor uses `BASELINE_MAD_FLOOR_RATIO` |
 | `RULE_SILENCE_WINDOWS` | `3` | Consecutive proven-zero windows before a silence incident opens. This is the open threshold |
 | `RULE_SILENCE_MIN_MEDIAN` | `1` | Minimum median matched events per window in the 7-day silence baseline |
 | `RULE_SILENCE_MIN_PRESENCE` | `0.8` | Minimum fraction of those windows that matched |

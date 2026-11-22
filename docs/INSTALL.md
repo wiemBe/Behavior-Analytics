@@ -260,7 +260,7 @@ Questions 15 and 16 then choose the behaviour families and alerting policy:
 ```
 
 `FAMILIES=defaults` and `ALERTING=defaults` preserve the defaults and write no switch rows.
-WAF, IPS, identity, property watches and custom rules default on; rule-match defaults off.
+WAF, IPS, identity, property watches, custom rules and rule-match all default on.
 The installer prepares the backend image, then prints its code-default list from Python
 before asking these two questions.
 Use an explicit comma- or space-separated list to collect only those families, or `none`

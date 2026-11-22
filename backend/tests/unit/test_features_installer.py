@@ -59,6 +59,8 @@ async def test_default_answers_never_open_database_or_audit(context):
 async def test_defaults_shadow_changes_only_collecting_families(context):
     _, _, state, change = context
     # A disabled family may retain an inert alerting-on value; defaults must leave it alone.
+    # Switch the newly on-by-default family off explicitly so this off path stays covered.
+    state.values["rule_match_collection_enabled"] = ResolvedSwitch(False, "env")
     state.values["rule_alerting_enabled"] = ResolvedSwitch(True, "db")
     namespace = args()
     namespace.alerting = "shadow"

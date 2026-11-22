@@ -906,7 +906,11 @@ async def test_rule_rows_are_dropped_unless_the_family_switch_is_on(db_session) 
     listed = await _rule_digest_incident(db_session, paging, "paging-rule")
 
     off = await DigestService(
-        db_session, settings=_settings(), clock=lambda: NOW, deliver=lambda *_: None
+        db_session,
+        # Alerting is on by default (D-105); pin the off path explicitly.
+        settings=_settings(rule_alerting_enabled=False),
+        clock=lambda: NOW,
+        deliver=lambda *_: None,
     ).run_for_instance(quiet)
     assert off is not None and off.item_count == 0
     assert all(item.family is not AnomalyFamily.RULE for item in off.items)

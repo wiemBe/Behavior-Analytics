@@ -1463,8 +1463,9 @@ async def test_rule_match_coverage_check_covers_every_state(settings: Settings) 
     """Off, healthy, warned and unreadable: the check's four outcomes."""
     now = datetime(2026, 10, 25, 12, 0, tzinfo=UTC)
     on = settings.model_copy(update={"rule_match_collection_enabled": True})
+    off_settings = settings.model_copy(update={"rule_match_collection_enabled": False})
 
-    off = await make_doctor(settings, now=lambda: now).check_rule_match_coverage()
+    off = await make_doctor(off_settings, now=lambda: now).check_rule_match_coverage()
     assert off.status is Status.INFO
     assert off.message == (
         "off: Rule-match collection. Turn it on under Administration → Features "
@@ -1728,4 +1729,4 @@ async def test_fresh_family_summary_uses_code_defaults(monkeypatch) -> None:
         "PW_COLLECTION_ENABLED", "CUSTOM_RULES_ENABLED",
     ):
         assert f"{key}=on" in result.message
-    assert "RULE_MATCH_COLLECTION_ENABLED=off" in result.message
+    assert "RULE_MATCH_COLLECTION_ENABLED=on" in result.message

@@ -21,7 +21,12 @@ from app.models.base import utcnow
 from app.models.feature_switch import FEATURE_KEYS, FeatureSwitch
 from app.security.auth import get_principal
 from app.security.rbac import Principal
-from app.services.feature_switches import EFFECTIVE_CACHE_SECONDS, effective_cache
+from app.services.feature_switches import (
+    EFFECTIVE_CACHE_SECONDS,
+    effective_cache,
+    effective_settings,
+    resolve,
+)
 
 pytestmark = [pytest.mark.integration, pytest.mark.asyncio]
 
@@ -119,6 +124,82 @@ def _rig_factory(env: dict[str, bool]):  # type: ignore[no-untyped-def]
 
 rig_off = _rig_factory(dict.fromkeys(FEATURE_KEYS, False))
 rig_on = _rig_factory(dict.fromkeys(FEATURE_KEYS, True))
+
+
+#: D-105: the two rule switches inherit the code default unless a source overrides them.
+_RULE_SWITCHES = ("rule_match_collection_enabled", "rule_alerting_enabled")
+
+
+async def test_no_env_and_no_row_give_both_rule_switches_the_on_default(
+    db_schema, monkeypatch
+) -> None:
+    """An empty feature_switch table must leave both D-105 defaults on."""
+    for key in FEATURE_KEYS:
+        monkeypatch.delenv(key.upper(), raising=False)
+    engine = create_async_engine(db_schema)
+    maker = async_sessionmaker(engine, expire_on_commit=False)
+    try:
+        async with maker() as session:
+            base = Settings(_env_file=None, feature_switches_db=True)
+            for key in _RULE_SWITCHES:
+                assert getattr(base, key) is True
+                assert key not in base.model_fields_set
+            resolved = await resolve(session, base)
+            assert resolved.reason is None
+            for key in _RULE_SWITCHES:
+                switch = resolved.values[key]
+                assert switch.enabled is True
+                assert switch.source == "default"
+            effective = effective_settings(base, resolved)
+            assert effective.rule_match_collection_enabled is True
+            assert effective.rule_alerting_enabled is True
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.parametrize("key", _RULE_SWITCHES)
+async def test_env_false_disables_the_rule_default_without_a_row(
+    db_schema, monkeypatch, key
+) -> None:
+    """An explicit .env false wins over the on code default when no row exists."""
+    for name in FEATURE_KEYS:
+        monkeypatch.delenv(name.upper(), raising=False)
+    monkeypatch.setenv(key.upper(), "false")
+    engine = create_async_engine(db_schema)
+    maker = async_sessionmaker(engine, expire_on_commit=False)
+    try:
+        async with maker() as session:
+            base = Settings(_env_file=None, feature_switches_db=True)
+            resolved = await resolve(session, base)
+            switch = resolved.values[key]
+            assert switch.enabled is False
+            assert switch.source == "env"
+            assert getattr(effective_settings(base, resolved), key) is False
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.parametrize("key", _RULE_SWITCHES)
+async def test_a_feature_row_off_disables_the_rule_default(db_schema, monkeypatch, key) -> None:
+    """An off Features row wins over both the on code default and the env."""
+    for name in FEATURE_KEYS:
+        monkeypatch.delenv(name.upper(), raising=False)
+    engine = create_async_engine(db_schema)
+    maker = async_sessionmaker(engine, expire_on_commit=False)
+    try:
+        async with maker() as session:
+            base = Settings(_env_file=None, feature_switches_db=True)
+            session.add(FeatureSwitch(
+                key=key, enabled=False, updated_at=utcnow(), updated_by="tester"
+            ))
+            await session.commit()
+            resolved = await resolve(session, base)
+            switch = resolved.values[key]
+            assert switch.enabled is False
+            assert switch.source == "db"
+            assert getattr(effective_settings(base, resolved), key) is False
+    finally:
+        await engine.dispose()
 
 
 @pytest.mark.parametrize(("family", "key"), FAMILIES.items())
