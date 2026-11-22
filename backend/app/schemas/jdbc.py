@@ -87,6 +87,7 @@ class JdbcQradarOut(JdbcResponse):
     inventory_state: flow.AttemptState
     inventory_stale: bool
     reason_code: flow.ReasonCode | None = None
+    absent_since: UtcDatetime | None = None
 
 
 class JdbcObservationOut(JdbcResponse):

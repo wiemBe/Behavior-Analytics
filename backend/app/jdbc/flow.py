@@ -7,7 +7,10 @@ from typing import Literal
 from app.models.enums import BucketCompleteness
 from app.services.search_cadence import slot_start
 
-FlowState = Literal["DISABLED_IN_QRADAR", "RECEIVING", "NO_ATTRIBUTED_EVENTS", "NOT_MEASURED"]
+FlowState = Literal[
+    "DISABLED_IN_QRADAR", "RECEIVING", "NO_ATTRIBUTED_EVENTS", "NOT_MEASURED",
+    "ABSENT_FROM_INVENTORY",
+]
 Measurement = Literal["EXACT", "PARTIAL", "TRUNCATED", "NOT_COLLECTED"]
 ConnectionCode = Literal["CONNECTED", "WARNING", "CONNECTION_ERROR", "DISABLED_STATUS"]
 Inconsistency = Literal["enabled_with_disabled_status"]
@@ -71,12 +74,20 @@ def flow_state(
     row_present: bool = False, completeness: BucketCompleteness | None = None,
     origin: str | None = None, count: int | None = None, fleet_empty: bool = False,
     truncated_attempt: bool = False, last_observation: LastObservation | None = None,
+    absent: bool = False,
 ) -> FlowResult:
-    """Only a complete live target row can assert attributed arrival or an exact zero."""
+    """Only a complete live target row can assert attributed arrival or an exact zero.
+
+    Absence is decided from a completed inventory, not from a missing bucket; it takes
+    precedence over the stored flag and any current flow judgment, while the separately
+    dated last observation stays on the result.
+    """
     state: FlowState = "NOT_MEASURED"
     measurement: Measurement = "NOT_COLLECTED"
     exact_count: int | None = None
-    if not enabled:
+    if absent:
+        state = "ABSENT_FROM_INVENTORY"
+    elif not enabled:
         state = "DISABLED_IN_QRADAR"
     elif row_present and origin == "live" and (
         completeness == BucketCompleteness.PARTIAL or fleet_empty

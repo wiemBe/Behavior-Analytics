@@ -20,6 +20,7 @@ from app.jdbc.dto import ConfigState, FieldStateReason
 from app.jdbc.flow import AttemptState
 from app.jdbc.parameters import FIELDS, UNVERIFIED, Bad
 from app.jdbc.queries import JDBC_LIKE_PROTOCOLS, JdbcFilters
+from app.log_source_policy import source_pause_enabled
 from app.models.log_source import LogSource
 from app.schemas import jdbc as out
 
@@ -67,6 +68,7 @@ class JdbcRepository:
         self, *, limit: int | None = None, offset: int = 0, q: str | None = None,
         enabled: bool | None = None, protocol: int | None = None,
         instance_id: uuid.UUID | None = None, flow_state: str | None = None,
+        include_absent: bool = False,
     ) -> tuple[int, int, JdbcFilters]:
         """Validate and normalise list parameters before any SQL is sent (route reuses it)."""
         if type(offset) is not int or offset < 0:
@@ -82,6 +84,8 @@ class JdbcRepository:
             raise JdbcQueryError("instance_invalid")
         if flow_state is not None and flow_state not in _FLOW_STATES:
             raise JdbcQueryError("flow_state_unknown")
+        if type(include_absent) is not bool:
+            raise JdbcQueryError("include_absent_invalid")
         bounded = max(1, min(DEFAULT_LIMIT if limit is None else limit,
                              self.settings.api_max_page_size))
         return bounded, offset, JdbcFilters(
@@ -93,17 +97,24 @@ class JdbcRepository:
         limit: int | None = None, offset: int = 0, q: str | None = None,
         enabled: bool | None = None, protocol: int | None = None,
         instance_id: uuid.UUID | None = None, flow_state: str | None = None,
+        include_absent: bool = False,
     ) -> JdbcPage:
         """Exactly four data SELECTs; three when the page is empty (nothing to look up)."""
         bounded, start, filters = self.bounds(
             limit=limit, offset=offset, q=q, enabled=enabled, protocol=protocol,
-            instance_id=instance_id, flow_state=flow_state)
+            instance_id=instance_id, flow_state=flow_state, include_absent=include_absent)
         window = queries.target_window(
             now, cadence_seconds=cadence_seconds, width_seconds=width_seconds, anchor=anchor,
             truncated_attempt=truncated_attempt)
-        total = int(await self.session.scalar(queries.count_query(window, filters)) or 0)
+        # With the switch off the ABSENT term and column are never added: legacy SQL.
+        absent_aware = source_pause_enabled(self.settings)
+        omit_absent = absent_aware and not include_absent
+        total = int(await self.session.scalar(
+            queries.count_query(window, filters, absent_aware=absent_aware,
+                                omit_absent=omit_absent)) or 0)
         rows = builtins.list((await self.session.execute(
-            queries.page_query(window, filters, limit=bounded, offset=start))).all())
+            queries.page_query(window, filters, limit=bounded, offset=start,
+                               absent_aware=absent_aware, omit_absent=omit_absent))).all())
         runs = await self._read(rows, window, now, cadence_seconds, instance_id)
         items = [self._row(r, window, now, cadence_seconds, inventory_cadence_seconds, runs)
                  for r in rows]
@@ -119,9 +130,11 @@ class JdbcRepository:
         window = queries.target_window(
             now, cadence_seconds=cadence_seconds, width_seconds=width_seconds, anchor=anchor,
             truncated_attempt=truncated_attempt)
+        # Absent sources still have a detail row; the default omission is list-only.
         # Select.where composes after limit(), so the page projection serves one id as is.
-        stmt = queries.page_query(window, JdbcFilters(), limit=1, offset=0).where(
-            LogSource.id == log_source_id)
+        stmt = queries.page_query(
+            window, JdbcFilters(), limit=1, offset=0,
+            absent_aware=source_pause_enabled(self.settings)).where(LogSource.id == log_source_id)
         rows = builtins.list((await self.session.execute(stmt)).all())
         if not rows:
             return None
@@ -239,7 +252,8 @@ class JdbcRepository:
                 inventory_last_complete_at=complete_at,
                 inventory_last_attempt_at=getattr(run, "inventory_last_attempt_at", None),
                 inventory_state=fresh.last_attempt_state, inventory_stale=fresh.stale,
-                reason_code=fresh.reason_code),
+                reason_code=fresh.reason_code,
+                absent_since=getattr(row, "absent_since", None)),
             config=self._config(row),
             volume=out.JdbcVolumeOut(
                 measurement=row.measurement, target_start=window.start, target_end=window.end,
