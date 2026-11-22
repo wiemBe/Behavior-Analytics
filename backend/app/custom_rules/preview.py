@@ -208,6 +208,7 @@ async def replay(
     name: str = "preview",
     pw_value_id: uuid.UUID | None = None,
     pw_coverage_floor: float | None = None,
+    source_pause: bool = False,
 ) -> PreviewResult:
     """One bulk read of the window, then ``preview_from_readings``.
 
@@ -232,6 +233,7 @@ async def replay(
         after=after,
         through=through,
         pw_coverage_floor=pw_coverage_floor,
+        source_pause=source_pause,
     )
     source = await _maintenance_source(
         session,
@@ -376,6 +378,7 @@ async def _load(
     after: datetime,
     through: datetime,
     pw_coverage_floor: float | None = None,
+    source_pause: bool = False,
 ) -> dict[str, dict[datetime, BucketFacts]]:
     """The one metric statement for this preview. An empty key issues none.
 
@@ -389,7 +392,8 @@ async def _load(
         )
     if kind is _FLEET:
         return await load_fleet_classes(
-            session, [key], after=after, through=through, include_history=True
+            session, [key], after=after, through=through, include_history=True,
+            source_pause=source_pause
         )
     if kind is _WAF:
         return await load_waf_endpoints(

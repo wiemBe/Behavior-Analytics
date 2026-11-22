@@ -24,6 +24,7 @@ from sqlalchemy.sql.elements import ColumnElement
 from app.custom_rules.evaluate import BucketFacts
 from app.fleet.summary import topup_bucket_published
 from app.history.origin import is_live_clause
+from app.log_source_policy import not_absent
 from app.models.enums import (
     BucketCompleteness,
     CustomRuleSubjectKind,
@@ -121,6 +122,7 @@ async def load_fleet_classes(
     after: datetime,
     through: datetime,
     include_history: bool = False,
+    source_pause: bool = False,
 ) -> dict[str, dict[datetime, BucketFacts]]:
     """One ``GROUP BY class, bucket`` over enabled, monitored sources.
 
@@ -135,6 +137,8 @@ async def load_fleet_classes(
         return {}
     source_class = _class_of()
     monitored = and_(LogSource.enabled.is_(True), LogSource.monitoring_enabled.is_(True))
+    if source_pause:
+        monitored = and_(monitored, not_absent())
     complete = LogSourceMetric.completeness == BucketCompleteness.COMPLETE.value
     expected = (
         select(

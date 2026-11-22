@@ -70,6 +70,7 @@ async def build_fleet_eps_series(
     group_by: FleetSeriesGroup,
     now: datetime,
     bucket_seconds: int,
+    source_pause: bool = False,
 ) -> FleetEpsSeries:
     """`now` is the last closed bucket; the window ends at `now` floored to the step.
 
@@ -83,7 +84,7 @@ async def build_fleet_eps_series(
     steps = window_seconds // step_seconds
     per_step_buckets = step_seconds // bucket_seconds
     source_class = _class_of()
-    in_scope = in_monitored_grid(source_class)
+    in_scope = in_monitored_grid(source_class, source_pause=source_pause)
 
     # 1. Monitored, non-internal sources and their class.
     source_rows = (
@@ -140,6 +141,7 @@ async def build_fleet_eps_series(
                     bucket_seconds=bucket_seconds,
                     window_start=window_start,
                     window_end=now,
+                    source_pause=source_pause,
                 )
             )
             .group_by(source_class, step_index)

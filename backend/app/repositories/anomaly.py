@@ -634,7 +634,7 @@ class AnomalyRepository:
         if phase_a:
             conditions = common(LogSourceAnomaly)
             if source_pause and active_only:
-                conditions.append(active_source(LogSource.enabled.expression))
+                conditions.append(active_source(LogSource.enabled.expression, exclude_absent=True))
             if log_source_id is not None:
                 conditions.append(LogSourceAnomaly.log_source_id == log_source_id)
             if instance_id is not None:
@@ -922,7 +922,7 @@ class AnomalyRepository:
             stmt = stmt.join(LogSource, LogSource.id == LogSourceAnomaly.log_source_id).where(
                 or_(
                     LogSourceAnomaly.state.not_in([s.value for s in ACTIVE_ANOMALY_STATES]),
-                    active_source(LogSource.enabled.expression),
+                    active_source(LogSource.enabled.expression, exclude_absent=True),
                 )
             )
         rows = await self.session.execute(stmt)
@@ -960,7 +960,7 @@ class AnomalyRepository:
                 conditions.append(model.detected_at >= since)
             if source_pause and family == "log_source":
                 stmt = stmt.join(LogSource, LogSource.id == model.log_source_id)
-                conditions.append(active_source(LogSource.enabled.expression))
+                conditions.append(active_source(LogSource.enabled.expression, exclude_absent=True))
             return stmt.where(*conditions).group_by(model.state)
 
         union = union_all(
@@ -1021,7 +1021,7 @@ class AnomalyRepository:
         )
         if source_pause:
             stmt = stmt.join(LogSource, LogSource.id == LogSourceAnomaly.log_source_id).where(
-                active_source(LogSource.enabled.expression)
+                active_source(LogSource.enabled.expression, exclude_absent=True)
             )
         return list((await self.session.scalars(stmt)).all())
 

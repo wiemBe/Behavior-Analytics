@@ -757,6 +757,7 @@ async def preview_draft(
         name="preview",
         pw_value_id=body.pw_value_id,
         pw_coverage_floor=settings.pw_min_coverage,
+        source_pause=settings.qradar_source_pause_enabled,
     )
     return _preview_out(result)
 
@@ -913,6 +914,7 @@ async def preview_rule(
         name=rule.name,
         pw_value_id=rule.pw_value_id,
         pw_coverage_floor=settings.pw_min_coverage,
+        source_pause=settings.qradar_source_pause_enabled,
     )
     return _preview_out(result)
 

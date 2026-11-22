@@ -6,6 +6,7 @@ import os
 from datetime import datetime, timedelta
 
 import pytest
+from sqlalchemy import event
 
 from app.api.routes import fleet as fleet_routes
 from app.models.enums import BucketCompleteness
@@ -366,9 +367,20 @@ def test_sql_is_constant_in_fleet_size(db_schema, window, group_by) -> None:
 
         run(setup)
         client = Client(VIEWER)
-        resp = client.get(f"{URL}?window={window}&group_by={group_by}")
+        switch_reads = []
+
+        def record(conn, cursor, statement, *args, switch_reads=switch_reads):
+            if statement.startswith("SELECT ") and "\nFROM feature_switch" in statement:
+                switch_reads.append(statement)
+
+        event.listen(client.engine.sync_engine, "before_cursor_execute", record)
+        try:
+            resp = client.get(f"{URL}?window={window}&group_by={group_by}")
+        finally:
+            event.remove(client.engine.sync_engine, "before_cursor_execute", record)
+        assert len(switch_reads) == 1
         assert resp.status_code == 200
         assert len(resp.json()["series"]) == (1 if group_by == "none" else min(size, 4))
-        counts.append(client.statements)
+        counts.append(client.statements - len(switch_reads))
     assert counts[0] == counts[1], counts
     assert counts[0] <= 3

@@ -117,7 +117,7 @@ class LogSourceRepository:
             stmt = stmt.where(LogSourceAnomaly.log_source_id.in_(list(log_source_ids)))
         if source_pause:
             stmt = stmt.join(LogSource, LogSource.id == LogSourceAnomaly.log_source_id).where(
-                active_source(LogSource.enabled.expression)
+                active_source(LogSource.enabled.expression, exclude_absent=True)
             )
         rows = await self.session.execute(stmt)
         return {row[0]: row[1] for row in rows}
@@ -135,7 +135,7 @@ class LogSourceRepository:
         )
         if source_pause:
             stmt = stmt.join(LogSource, LogSource.id == LogSourceAnomaly.log_source_id).where(
-                active_source(LogSource.enabled.expression)
+                active_source(LogSource.enabled.expression, exclude_absent=True)
             )
         return list((await self.session.scalars(stmt)).all())
 
@@ -171,6 +171,6 @@ class LogSourceRepository:
         )
         if source_pause:
             stmt = stmt.join(LogSource, LogSource.id == LogSourceAnomaly.log_source_id).where(
-                active_source(LogSource.enabled.expression)
+                active_source(LogSource.enabled.expression, exclude_absent=True)
             )
         return await self.session.scalar(stmt) or 0

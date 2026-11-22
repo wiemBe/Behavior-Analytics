@@ -22,6 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.fleet.outage_policy import resolve
 from app.history.origin import is_history_clause
+from app.log_source_policy import not_absent
 from app.models.enums import (
     ACTIVE_ANOMALY_STATES,
     BucketCompleteness,
@@ -61,18 +62,21 @@ def _class_of() -> ColumnElement[str]:
     return func.coalesce(LogSourceClassification.source_class, literal(_UNCLASSIFIED))
 
 
-def monitored_source() -> ColumnElement[bool]:
+def monitored_source(*, source_pause: bool = False) -> ColumnElement[bool]:
     """Enabled and selected for monitoring."""
-    return LogSource.enabled.is_(True) & LogSource.monitoring_enabled.is_(True)
+    term = LogSource.enabled.is_(True) & LogSource.monitoring_enabled.is_(True)
+    return term & not_absent() if source_pause else term
 
 
-def in_monitored_grid(source_class: ColumnElement[str]) -> ColumnElement[bool]:
+def in_monitored_grid(
+    source_class: ColumnElement[str], *, source_pause: bool = False,
+) -> ColumnElement[bool]:
     """The population the EPS series sums: monitored, and not an internal source.
 
     The summary's source census still counts everyone. Only the metric grid uses
     this, so an internal source can be tallied without contributing EPS.
     """
-    return monitored_source() & (source_class != _INTERNAL)
+    return monitored_source(source_pause=source_pause) & (source_class != _INTERNAL)
 
 
 def topup_bucket_published() -> ColumnElement[bool]:
@@ -96,6 +100,7 @@ def metric_grid_predicates(
     bucket_seconds: int,
     window_start: datetime,
     window_end: datetime,
+    source_pause: bool = False,
 ) -> tuple[ColumnElement[bool], ...]:
     """Metric rows that are cells of the monitored grid.
 
@@ -107,7 +112,7 @@ def metric_grid_predicates(
     # may feed a fleet/class measurement. The cutoff survives later top-ups.
     return (
         topup_bucket_published(),
-        in_monitored_grid(source_class),
+        in_monitored_grid(source_class, source_pause=source_pause),
         LogSourceMetric.bucket_seconds == bucket_seconds,
         LogSourceMetric.bucket_start >= window_start,
         LogSourceMetric.bucket_start < window_end,
@@ -122,6 +127,7 @@ async def build_fleet_summary(
     bucket_seconds: int,
     outage_default: OutagePolicyMode = OutagePolicyMode.ALERT,
     default_silence_grace_buckets: int | None = None,
+    source_pause: bool = False,
 ) -> FleetSummary:
     window_seconds = WINDOW_SECONDS[window]
     window_start = now - timedelta(seconds=window_seconds)
@@ -130,7 +136,7 @@ async def build_fleet_summary(
 
     # 1. Sources by class: counts, monitored-enabled count for expectations, and
     #    the NEW / conflict tallies, all in one pass.
-    monitored = monitored_source()
+    monitored = monitored_source(source_pause=source_pause)
     source_rows = (
         await session.execute(
             select(
@@ -194,6 +200,7 @@ async def build_fleet_summary(
                     bucket_seconds=bucket_seconds,
                     window_start=window_start,
                     window_end=now,
+                    source_pause=source_pause,
                 )
             )
             .group_by(LogSource.id, LogSource.name, source_class)

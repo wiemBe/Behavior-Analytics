@@ -17,7 +17,7 @@ from app.api.csv_export import (
     csv_export_response,
     csv_stamp,
 )
-from app.api.deps import SessionDep, SettingsDep
+from app.api.deps import EffectiveSettingsDep, SessionDep, SettingsDep
 from app.api.routes.log_sources import PrincipalDep, _guard, _jsonable
 from app.collectors.log_source_collector import COLLECTOR_NAME, stored_run, sync_pass
 from app.fleet.review import review_classification
@@ -68,7 +68,7 @@ def _utcnow() -> datetime:
 @router.get("/summary", response_model=FleetSummary)
 async def fleet_summary(
     session: SessionDep,
-    settings: SettingsDep,
+    settings: EffectiveSettingsDep,
     window: FleetWindow = Query(default="24h"),
 ) -> FleetSummary:
     """One screen of fleet health by class.
@@ -85,6 +85,7 @@ async def fleet_summary(
         window=window,
         now=closed,
         bucket_seconds=bucket_seconds,
+        source_pause=settings.qradar_source_pause_enabled,
         outage_default=settings.outage_alert_default,
         default_silence_grace_buckets=settings.anomaly_silence_grace_buckets,
     )
@@ -93,7 +94,7 @@ async def fleet_summary(
 @router.get("/eps-series", response_model=FleetEpsSeries)
 async def fleet_eps_series(
     session: SessionDep,
-    settings: SettingsDep,
+    settings: EffectiveSettingsDep,
     window: FleetWindow = Query(default="24h"),
     group_by: FleetSeriesGroup = Query(default="none"),
 ) -> FleetEpsSeries:
@@ -113,6 +114,7 @@ async def fleet_eps_series(
         group_by=group_by,
         now=closed,
         bucket_seconds=bucket_seconds,
+        source_pause=settings.qradar_source_pause_enabled,
     )
 
 

@@ -18,6 +18,7 @@ import uuid
 from datetime import UTC, datetime, timedelta
 
 import pytest
+from sqlalchemy import event
 
 from app.api.routes import fleet as fleet_routes
 from app.models.catchall import CatchallBucket
@@ -460,11 +461,22 @@ def test_the_fleet_series_statement_count_is_unchanged(
     """The marker rides the aggregate it already read: no statement is added."""
     run(_seed_fleet)
     client = Client(READER)
-    resp = client.get("/api/v1/fleet/eps-series?window=1h")
+    switch_reads = []
+
+    def record(conn, cursor, statement, *args):
+        if statement.startswith("SELECT ") and "\nFROM feature_switch" in statement:
+            switch_reads.append(statement)
+
+    event.listen(client.engine.sync_engine, "before_cursor_execute", record)
+    try:
+        resp = client.get("/api/v1/fleet/eps-series?window=1h")
+    finally:
+        event.remove(client.engine.sync_engine, "before_cursor_execute", record)
+    assert len(switch_reads) == 1
     assert resp.status_code == 200
     # Measured on the base before this change: 3 statements (the sources, the
     # metric cells, the baselines).
-    assert client.statements == 3
+    assert client.statements - len(switch_reads) == 3
 
 
 # -------------------------------------------------------------- fleet summary
@@ -528,10 +540,21 @@ def test_a_live_only_fleet_summary_reports_zero_history_buckets(
 def test_the_fleet_summary_statement_count_is_unchanged(db_schema, _fleet_clock) -> None:
     run(lambda s: _seed_fleet_summary(s, include_history=True))
     client = Client(READER)
-    resp = client.get("/api/v1/fleet/summary?window=1h")
+    switch_reads = []
+
+    def record(conn, cursor, statement, *args):
+        if statement.startswith("SELECT ") and "\nFROM feature_switch" in statement:
+            switch_reads.append(statement)
+
+    event.listen(client.engine.sync_engine, "before_cursor_execute", record)
+    try:
+        resp = client.get("/api/v1/fleet/summary?window=1h")
+    finally:
+        event.remove(client.engine.sync_engine, "before_cursor_execute", record)
+    assert len(switch_reads) == 1
     assert resp.status_code == 200
     # Measured before HB-21: sources, metrics, baselines, incidents and outage policy.
-    assert client.statements == 5
+    assert client.statements - len(switch_reads) == 5
 
 
 # ------------------------------------------------------------ rule statistics
