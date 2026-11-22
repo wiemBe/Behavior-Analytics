@@ -7,7 +7,12 @@ from datetime import UTC, datetime
 
 from sqlalchemy import select
 
-from app.collectors.log_source_collector import COLLECTOR_NAME, stored_run
+from app.collectors.log_source_collector import (
+    ABSENCE_ACCEPT_TTL,
+    COLLECTOR_NAME,
+    absence_accept_armed_at,
+    stored_run,
+)
 from app.core.config import get_settings
 from app.core.database import get_sessionmaker
 from app.log_source_policy import source_pause_enabled
@@ -70,7 +75,8 @@ async def run(args: argparse.Namespace) -> int:
             )
             await session.commit()
             print(f"Absence accept armed for {count} held sources. The breaker is lifted until "
-                  "one complete validated pass confirms absence; two-pass evidence is required.")
+                  "a complete validated pass confirms absence or finds nothing missing, or until "
+                  "the accept expires 24 hours after arming; two-pass evidence is required.")
         else:
             def count(key: str) -> int:
                 value = absence.get(key)
@@ -82,6 +88,15 @@ async def run(args: argparse.Namespace) -> int:
             print(f"Absence state: {state}; candidates: {count('candidates')}; "
                   f"confirmed: {count('confirmed')}; held: {count('held_count')}; "
                   f"accept armed: {'yes' if armed else 'no'}; pauses: {'on' if enabled else 'off'}")
+            if armed:
+                armed_at = absence_accept_armed_at(metadata["absence_accept"])
+                if armed_at is None:
+                    print("Accept age: unavailable; expires at: unavailable (arm time invalid).")
+                else:
+                    age = max(0, int((datetime.now(UTC) - armed_at).total_seconds()))
+                    expires = armed_at + ABSENCE_ACCEPT_TTL
+                    print(f"Accept age: {age} seconds; expires at: {expires.isoformat()}; "
+                          "cleared on the next complete validated nonempty pass.")
     return 0
 
 

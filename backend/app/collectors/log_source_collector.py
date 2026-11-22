@@ -25,7 +25,7 @@ import logging
 import uuid
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -49,6 +49,19 @@ RUN_COMPLETE = "COMPLETE"
 RUN_PARTIAL = "PARTIAL"
 RUN_FAILED = "FAILED"
 INVENTORY_RUN_KEY = "inventory_pass"
+ABSENCE_ACCEPT_TTL = timedelta(hours=24)
+
+
+def absence_accept_armed_at(accept: dict) -> datetime | None:
+    """Read a timezone-aware arm time without guessing from malformed metadata."""
+    value = accept.get("armed_at")
+    try:
+        armed_at = datetime.fromisoformat(value) if isinstance(value, str) else None
+    except ValueError:
+        return None
+    if armed_at is None or armed_at.tzinfo is None:
+        return None
+    return armed_at.astimezone(UTC)
 
 
 @dataclass
@@ -147,6 +160,22 @@ class LogSourceCollector:
 
             watermark = await self._get_or_create_watermark(instance)
 
+            previous_metadata = None
+            stale_accept_reason = None
+            if source_pause_enabled(self.settings):
+                previous_metadata = dict(watermark.collection_metadata or {})
+                accept = previous_metadata.get("absence_accept")
+                if isinstance(accept, dict):
+                    armed_at = absence_accept_armed_at(accept)
+                    if armed_at is None:
+                        stale_accept_reason = "unreadable_arm_time"
+                    elif started - armed_at >= ABSENCE_ACCEPT_TTL:
+                        stale_accept_reason = "expired"
+                    if stale_accept_reason is not None:
+                        # Keep the stored flag until a complete validated pass can clear it,
+                        # but do not let a stale accept lift this pass's breaker.
+                        previous_metadata.pop("absence_accept", None)
+
             try:
                 service = InventorySyncService(
                     self.session,
@@ -158,8 +187,7 @@ class LogSourceCollector:
                     instance,
                     bootstrap_hint=watermark.watermark_at is None,
                     previous_complete_watermark=watermark.watermark_at,
-                    previous_inventory_metadata=(watermark.collection_metadata or {})
-                    if source_pause_enabled(self.settings) else None,
+                    previous_inventory_metadata=previous_metadata,
                 )
             except ProviderError as exc:
                 report.status = RUN_FAILED
@@ -222,8 +250,18 @@ class LogSourceCollector:
                 )
             metadata = dict(watermark.collection_metadata or {})
             if (source_pause_enabled(self.settings) and service.absence is not None
-                    and service.absence.confirmed):
-                metadata.pop("absence_accept", None)
+                    and service.absence.state in ("evaluated", "held")
+                    and report.absence is not None
+                    and isinstance(metadata.get("absence_accept"), dict)):
+                cleared = stale_accept_reason
+                if cleared is None and service.absence.state == "evaluated":
+                    if service.absence.confirmed:
+                        cleared = "confirmed"
+                    elif not service.absence.candidates:
+                        cleared = "nothing_missing"
+                if cleared is not None:
+                    metadata.pop("absence_accept", None)
+                    report.absence["accept_cleared"] = cleared
             watermark.collection_metadata = {
                 **metadata,
                 **absence_metadata,
