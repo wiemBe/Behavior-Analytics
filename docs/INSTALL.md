@@ -71,7 +71,12 @@ Run the installer from the checkout:
 The wizard performs host checks, writes generated secrets to a mode-`0600` `.env`, loads QRadar
 and TLS files into Docker volumes, runs migrations, creates the break-glass administrator, registers
 the console, starts the services behind the bundled TLS proxy, and prints a summary. The initial
-administrator password is printed once. A repeat run preserves generated keys and does not modify
+administrator password is printed once; if you redirect the installer output to a file, that file
+holds the only copy until the password is changed, so treat it as a secret. The first administrator
+must change that password at the first sign-in: until then every API request except
+`GET /api/v1/me`, `POST /api/v1/auth/password` and `POST /api/v1/auth/logout` is answered 403 with
+`auth.session.must_change_password` ("A password change is required before any other request.").
+A repeat run preserves generated keys and does not modify
 that account. More precisely, it keeps `SECRET_KEY`, `POSTGRES_PASSWORD`, `ENCRYPTION_KEY`,
 `ENCRYPTION_KEYS_JSON` and `ENCRYPTION_KEY_VERSION`; keeps existing operator defaults such as
 `LOG_LEVEL`, `AUTH_PROVIDER`, `RETENTION_*`, `COMPRESSION_AFTER_DAYS`, `LLM_ENABLED` and
@@ -80,13 +85,17 @@ values are rewritten from the saved answers. Production invariants such as
 `QRADAR_VERIFY_SSL=true`, `QRADAR_PROVIDER=rest` and `DEBUG=false` are enforced, with one warning
 per changed key. The installer prints names of retained keys, never their values.
 
+The first install reads its answers from the terminal. Without a terminal, and without a saved
+answers file, it stops at `no terminal and no --non-interactive FILE; nothing was written.` (exit 2);
+an unattended install must pass `--non-interactive FILE` with a mode-0600 answers file.
+
 The install summary includes QRadar connection and API-readiness results. Its exit codes are:
 
 | Exit code | Meaning |
 |---:|---|
 | `0` | The stack answered both readiness and version checks, and the QRadar registration check passed |
 | `1` | A host/runtime check failed, QRadar registration failed, or readiness/version did not answer 200; when the summary was reached, the install state file was still written |
-| `2` | An option or non-interactive answers file was invalid; installation did not start |
+| `2` | No terminal and no `--non-interactive FILE`, or an invalid option or answers file; installation did not start |
 | `3` | External-proxy mode had no safe `FORWARDED_ALLOW_IPS`; the backend was not started |
 
 The default release images are under `ghcr.io/wiembe/behavior-analytics/`. The installer supports:
@@ -225,6 +234,23 @@ tar -xf /path/to/qradar-dash-<version>-bundle.tar --exclude=images.tar
 ./qradar-dash upgrade <version> --offline /path/to/qradar-dash-<version>-bundle.tar
 ```
 
+A refused upgrade leaves the extracted files in place. The `min_from` guard reads the checkout's
+release notes before any bundle is loaded, so a site that is too old is refused with
+`upgrade refused: <version> requires at least <min>; nothing was changed`. That message covers the
+running stack, `.env`, `state.json`, `.secrets/` and the images. It does not cover the installation
+directory: it now holds the newer `qradar-dash`, `VERSION`, compose files and documents while the
+site still runs the installed version. If you go straight on to the release the guard asks for,
+extract that release's bundle and run its upgrade; its files replace these. If the site stays on
+the installed version for now, extract the installed version's bundle over the directory again:
+
+```bash
+tar -xf /path/to/qradar-dash-<installed-version>-bundle.tar --exclude=images.tar
+```
+
+Extracting never deletes files, so files that only the newer bundle carries (for example
+`docs/releases/<newer-version>.md`) stay; the script does not read them. A site installed from a git
+checkout uses `git checkout v<installed-version>` instead.
+
 `install --offline` refuses, before it loads anything, a bundle whose `VERSION` differs from the
 checkout's, whose image prefix differs from the site's, or whose `SHA256SUMS` does not match. After
 `docker load` it checks that every `MANIFEST` image reference resolves with `docker image inspect`,
@@ -234,7 +260,9 @@ When the stores differ it prints that the IDs were not compared and goes on; int
 the `SHA256SUMS` check of `images.tar`. `docker save` does not record the name of the redis image
 that is pinned by digest, so after the load it exists by ID only, and Docker refuses to tag a digest
 reference. The script therefore sets the plain tag (`redis:7.4-alpine`, which moves an existing tag
-of that name on the host) and checks that the pinned reference then resolves. If it still does not,
+of that name on the host) and checks that the pinned reference then resolves. The retag line is
+printed only when the reference does not resolve after the load; on an upgrade where the plain tags
+already exist it is not printed. If the reference still does not resolve,
 the install stops before starting anything and tells you to make the bundle again on a host with the
 same image store; there is no `docker tag` command to run by hand. Without a
 bundle, `upgrade <version> --offline` requires the images to be loaded already. The Turkish runbook,
@@ -270,7 +298,8 @@ and alerting turned off. WAF includes outcome and client breakdown collection.
 These questions are asked once, skipped with saved answers, and asked again by `--reconfigure`.
 Answers files accept `FAMILIES` and `ALERTING` too. Only differences from the effective state
 are stored. A failure warns and installation continues; the final summary reads the effective
-switches. Review or change them under **Administration → Features** (`/admin/features`).
+switches. Review or change them under **Administration → Features** (`/admin/features`; the API
+behind the page is `GET /api/v1/admin/features`).
 Upgrade never asks or writes switches; existing `.env` values remain the initial defaults.
 
 In an answers file the key is `HISTORY_BACKFILL`:
@@ -479,7 +508,10 @@ For monitoring the whole application, poll `GET /healthz`. It answers `200` with
 the migration head, Redis (`PING`), Celery workers (at least one `ping()` reply), the walker (a
 worker consuming the walk queue) and beat (a fresh heartbeat key in Redis). Each component is
 `ok`, `fail` or `unknown` (the check timed out). With the installer's proxy use
-`https://<host>/healthz`; without it use `http://<host>:8000/api/v1/healthz`. The endpoint is
+`https://<host>/healthz`; without it use `http://<host>:8000/api/v1/healthz`. When the proxy's
+certificate is signed by a private CA, poll with `curl --cacert <ca.pem> https://<host>/healthz`;
+`curl -k https://<host>/healthz` is enough for a quick look. A plain
+`curl -fsS https://<host>/healthz` fails the certificate check and returns nothing. The endpoint is
 unauthenticated and reveals only those three words per component — no versions, hostnames, error
 text, counts or worker names. The whole result is cached in the backend for 10 s and concurrent
 callers share a single check run, so a monitor polling every few seconds does not fan out Celery
@@ -881,9 +913,19 @@ operational rollback procedure. See [`OPERATIONS.md`](OPERATIONS.md) for exact p
 
 ### Enable JDBC monitoring after an upgrade
 
-JDBC monitoring is on by default (D-104): after the upgrade gates are green
-(`./qradar-dash doctor` has no `FAIL`), the `collect_jdbc_configs` task runs with no new switch to
-turn on and no new command. It is off only if the site explicitly turned it off: `.env` sets
+JDBC monitoring is on by default (D-104): the `collect_jdbc_configs` task runs with no new switch to
+turn on and no new command. Do not wait for an all-green `./qradar-dash doctor`. The checks that
+read QRadar depend on the console: `qradar_tls` and `qradar_auth` report `FAIL` while the console is
+unreachable or rejects the token, and `watermarks` and `errors_recent` report `FAIL` while
+collectors keep failing (`errors_recent` is `WARN` for one or two failing collectors). Until a
+console answers, `cadence`, `rule_match_coverage`, `qradar_disk`, `qradar_pipeline` and
+`qradar_access` report `WARN` and `qradar_health` reports `SKIP`. `doctor` therefore exits 2 after
+an install whose console is not reachable with valid credentials. The application checks
+(`db_connect`, `migration_head`, `redis`, `celery_workers`, `celery_walker`, `celery_beat`,
+`encryption`, `secrets_files`, `version_match`, `settings_problems`, `unknown_settings`) must not
+`FAIL`; `celery_beat` can report a missing heartbeat for the first minutes after the stack starts.
+The pre-upgrade doctor gate of `upgrade` requires only `db_connect` and `migration_head` to be
+`PASS`. JDBC monitoring is off only if the site explicitly turned it off: `.env` sets
 `JDBC_COLLECTION_ENABLED=false`, or a feature-switch row turns it off. With
 `FEATURE_SWITCHES_DB=true`, which is the default, that row wins over `.env` and the code default
 until it is reset there; upgrade does not import an `.env` value into the switch table.
