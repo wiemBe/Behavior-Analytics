@@ -473,6 +473,19 @@ curl --fail http://127.0.0.1:8000/api/v1/providers/capabilities
 curl --fail http://127.0.0.1:3000/
 ```
 
+For monitoring the whole application, poll `GET /healthz`. It answers `200` with
+`{"status": "ok", "components": {...}}` when every component is up and `503` with
+`{"status": "degraded", ...}` otherwise. It checks the API itself, the database (`SELECT 1`),
+the migration head, Redis (`PING`), Celery workers (at least one `ping()` reply), the walker (a
+worker consuming the walk queue) and beat (a fresh heartbeat key in Redis). Each component is
+`ok`, `fail` or `unknown` (the check timed out). With the installer's proxy use
+`https://<host>/healthz`; without it use `http://<host>:8000/api/v1/healthz`. The endpoint is
+unauthenticated and reveals only those three words per component — no versions, hostnames, error
+text, counts or worker names. The whole result is cached in the backend for 10 s and concurrent
+callers share a single check run, so a monitor polling every few seconds does not fan out Celery
+broadcasts. `GET /api/v1/health/live` stays the
+container liveness probe: it checks the process only, so a slow database cannot restart-loop it.
+
 The long-running services are `postgres`, `redis`, `backend`, `celery-worker`, `celery-walker`, `celery-beat` and
 `frontend`; each should be healthy. `migrate` is a one-shot and should exit 0. `backend`,
 `celery-worker`, `celery-walker` and `celery-beat` wait for that exit (`depends_on` condition

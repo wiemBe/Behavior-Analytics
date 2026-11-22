@@ -52,6 +52,28 @@ A rate-limited request answers `429` with `{"detail": "rate limit exceeded", "li
 where `<rate>` is the limit as text (for example `2 per 1 minute`), plus the `Retry-After` and
 `X-RateLimit-*` headers.
 
+## Public health endpoints
+
+`GET /api/v1/health/live` is the container liveness probe: it confirms the process is up and
+checks no dependency. `GET /api/v1/health/ready` confirms the database is reachable and at the
+image's migration head. Both are unauthenticated and rate-limit exempt.
+
+`GET /api/v1/healthz` is the whole-app health answer for monitoring (also `GET /healthz` through
+the installer's proxy). It is unauthenticated and rate-limit exempt. Its body is exactly:
+
+```json
+{"status": "ok", "components": {"api": "ok", "database": "ok", "migrations": "ok", "redis": "ok", "workers": "ok", "walker": "ok", "beat": "ok"}}
+```
+
+`status` is `ok` on HTTP 200 and `degraded` on HTTP 503 when any component is not `ok`. A
+component is only `ok`, `fail` or `unknown` (the check timed out); the body never carries a
+version, revision, hostname, error text, count or worker name. The seven checks — API process,
+database, migration head, Redis, Celery workers, the walk queue consumer and beat's heartbeat —
+run concurrently, each with a 2 s bound and a 3 s total bound. The whole result is cached for
+10 s and concurrent callers share one check run, so regular polling does not fan out Celery
+broadcasts. `/health/live` remains the liveness probe so a slow dependency cannot restart-loop
+the container.
+
 ## Frontend routes
 
 | Route | Question answered |
