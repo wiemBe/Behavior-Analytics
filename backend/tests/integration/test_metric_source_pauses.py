@@ -111,7 +111,7 @@ async def test_actual_collector_disabled_reported_and_absent_not_written(
             seen.append(settings)
             super().__init__(session, provider, settings=settings, clock=lambda: NOW)
 
-    async def one_instance(run, instance_name=None):
+    async def one_instance(run, instance_name=None, *, provider_settings=None):
         async with session_maker() as session:
             instance = await session.get(type(console.instance), console.instance.id)
             result = await run(session, instance, provider)
