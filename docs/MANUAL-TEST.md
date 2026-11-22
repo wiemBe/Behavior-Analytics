@@ -3439,3 +3439,210 @@ the configuration held on the QRadar console.
 
 **Record:** The search terms used, where each was found or that none was found, and the export
 check result.
+
+## QRadar source pauses (D-52)
+
+This section checks the switch described in `docs/INSTALL.md`, "Enable QRadar source pauses
+after an upgrade". The product never writes to QRadar: where a step needs a source disabled or
+re-enabled, it is marked **lab console only** and a QRadar administrator makes that change in the
+QRadar UI. Labels below are quoted from `frontend/messages/en/features.json`,
+`frontend/messages/en/backend.json` and `frontend/messages/en/logSources.json`; the interface is
+English only. A raw message key or Turkish text is a Fail. The `curl` calls use
+`--cookie "$SESSION"`, where `$SESSION` is the `qd_session=<value>` cookie of the signed-in
+window (as defined in MT-144's precondition); treat it as a secret and write it nowhere.
+
+#### PAUSE-MT-1 — Switch off: a disabled source still raises NO_EVENTS
+
+**Precondition:** The new release is installed and `qradar_source_pause_enabled` is off (the
+"Pause" toggle on the "QRadar source pauses" row under Administration → Features reads off).
+**Lab console only:** a monitored log source that can be disabled in QRadar and then left with a
+complete empty bucket.
+
+**Action:** While the switch is off, have the QRadar administrator disable the source in the
+QRadar UI, run an inventory sync so the product stores `enabled = false`, and wait for one
+evaluation interval.
+
+```bash
+curl -s --cookie "$SESSION" -X POST https://<host>/api/v1/fleet/sources/sync
+curl -s --cookie "$SESSION" 'https://<host>/api/v1/anomalies?log_source_id=<id>&anomaly_type=NO_EVENTS'
+```
+
+**Expected:**
+
+- The source still raises NO_EVENTS exactly as before the upgrade: the off state writes no pause
+  row and applies no disabled-source guard, so the anomaly list is unchanged by the disable.
+- No "Closed without a verdict: source disabled in QRadar." reason appears, and no pause data
+  appears in a config export (the integration test
+  `tests/integration/test_source_pause_config_export_exclusion.py` pins both export paths).
+
+**Record:** The switch state, the source id, the sync result and the NO_EVENTS rows seen.
+
+#### PAUSE-MT-2 — Switch on and sync: the open incident closes without a verdict
+
+**Precondition:** PAUSE-MT-1 is done and the source is still disabled in QRadar with an open
+NO_EVENTS incident.
+
+**Action:** Turn the switch on under Administration → Features ("QRadar source pauses", toggle
+"Pause"), or use the CLI, then run one inventory sync and wait past the API switch cache
+interval (5 seconds):
+
+```bash
+docker compose exec -T backend python -m app.cli.features set qradar_source_pause_enabled on
+curl -s --cookie "$SESSION" -X POST https://<host>/api/v1/fleet/sources/sync
+curl -s --cookie "$SESSION" 'https://<host>/api/v1/anomalies?log_source_id=<id>&anomaly_type=NO_EVENTS'
+```
+
+**Expected:**
+
+- The source's open NO_EVENTS incident is closed with no verdict. The recorded reason is the
+  English catalog text "Closed without a verdict: source disabled in QRadar.", not a raw message
+  key.
+- The analyst sees the incident state change to RESOLVED with one recorded transition carrying
+  that same reason, and the alert resolved with the same text; the detector's state row is reset
+  and the close records no verdict. This closure covers the source's NO_EVENTS, VOLUME_DROP and
+  VOLUME_SPIKE incidents, not only NO_EVENTS.
+
+**Record:** The switch state, the closed incident id, its state and its exact reason text.
+
+#### PAUSE-MT-3 — No new NO_EVENTS while disabled; the counts agree
+
+**Precondition:** PAUSE-MT-2 is done and the source remains disabled in QRadar.
+
+**Action:** Wait for two or more collection and evaluation intervals, then read the counts from
+the Log Sources page, the Dashboard overview and the Anomalies page:
+
+```bash
+curl -s --cookie "$SESSION" 'https://<host>/api/v1/log-sources'
+curl -s --cookie "$SESSION" 'https://<host>/api/v1/overview'
+curl -s --cookie "$SESSION" 'https://<host>/api/v1/anomalies?active_only=true'
+curl -s --cookie "$SESSION" 'https://<host>/api/v1/anomalies/summary'
+```
+
+**Expected:**
+
+- No new NO_EVENTS incident opens for the disabled source. Buckets overlapping the pause are
+  not judged, and paused samples are absent from training.
+- After the 5-second API switch cache interval, the active counts on Log Sources, the Dashboard
+  overview and Anomalies agree: all of them exclude the QRadar-disabled source. A disagreement
+  immediately after the switch write is expected only from the cache and clears on its own.
+
+**Record:** The interval waited, the four responses' relevant counts and whether they agree.
+
+#### PAUSE-MT-4 — Re-enable: evaluation resumes only from the next whole bucket
+
+**Precondition:** PAUSE-MT-3 is done. **Lab console only:** the QRadar administrator re-enables
+the source in the QRadar UI.
+
+**Action:** Re-enable the source in QRadar, run an inventory sync, and watch evaluation across
+the re-enable boundary.
+
+```bash
+curl -s --cookie "$SESSION" -X POST https://<host>/api/v1/fleet/sources/sync
+curl -s --cookie "$SESSION" 'https://<host>/api/v1/anomalies?log_source_id=<id>'
+```
+
+**Expected:**
+
+- The pause is closed at the re-enable observation, rounded up to a bucket boundary.
+- Buckets that overlap the pause are not judged: their marks advance but no verdict, incident or
+  confirmation streak crosses them. Evaluation resumes only on the next complete, non-overlapping
+  bucket after re-enable; the length of the pause does not count toward grace or confirmation.
+- The incident closed in PAUSE-MT-2 stays closed.
+
+**Record:** The re-enable time, the pause boundary, the first judged bucket and the incidents seen.
+
+#### PAUSE-MT-5 — Stale inventory: collection and evaluation continue, staleness is labelled
+
+**Precondition:** The switch is on, at least one source is enabled in QRadar, and the sync can be
+suspended for the test.
+
+**Action:** Stop or suspend the scheduled sync (so no successful inventory pass is recorded),
+wait past the inventory cadence, and read the collection state and counts.
+
+```bash
+curl -s --cookie "$SESSION" 'https://<host>/api/v1/fleet/sources/sync'
+curl -s --cookie "$SESSION" 'https://<host>/api/v1/overview'
+```
+
+**Expected:**
+
+- Collection and evaluation continue using the last known stored enabled flags; a stale
+  inventory never stops them and never produces a healthy verdict or a zero where a measurement
+  is missing.
+- The last pass and its age are shown separately, never as a healthy verdict. On the overview,
+  `inventory_state` (`NOT_COLLECTED`, `COMPLETE`, `FAILED`) says only whether the last inventory
+  pass is missing or failed, not how old it is: a complete pass from before the sync was suspended
+  still reads `COMPLETE`, so do not expect `inventory_state` to change just because the sync was
+  stopped. Age is shown by the "Last complete inventory" time and the "Inventory stale" label in
+  the JDBC view, and by the last-pass line in the Fleet sources "Sync now" area. There is no fixed
+  inventory-age threshold that suspends evaluation.
+
+**Record:** The last successful sync time, the `inventory_state` value, the "Last complete
+inventory" time, the "Inventory stale" label and the counts still being collected.
+
+#### PAUSE-MT-6 — A user without admin:features cannot change the switch
+
+**Precondition:** An account with `read:features` but without `admin:features` (and without
+`admin:*`) is available, so it can open the page but cannot write. Do not create one here; use the
+site's own procedure. An account that also lacks `read:features` cannot open the page at all; see
+the last bullet below.
+
+**Action:** Sign in with that account, open Administration → Features and attempt the switch
+write:
+
+```bash
+curl -s --cookie "$SESSION_LOW" -o /dev/null -w '%{http_code}\n' \
+  -X PUT -H 'Content-Type: application/json' -d '{"enabled": true}' \
+  https://<host>/api/v1/admin/features/qradar_source_pause_enabled
+```
+
+**Expected:**
+
+- The Features page first shows the read-only notice "This account can read the switches.
+  Changing one needs admin:features." (`frontend/messages/en/features.json`, `page.readOnly`) and
+  every switch toggle is disabled. The analyst can read the states but cannot change one from the
+  page; no write is attempted there.
+- The direct API write in the Action returns 403 with `detail` "missing required permission:
+  admin:features", `detail_code` `auth.permission.missing` and `detail_params` naming
+  `admin:features`. No switch row is changed and no audit row is written.
+- Only after that refused write does the page show "Not changed. It needs the admin:features
+  permission." (`write.forbidden`): that text is the result of a refused write, not the initial
+  page state.
+- An account without `read:features` instead sees "Features cannot be shown to this account."
+  and no switch list at all.
+
+**Record:** The HTTP status, the full refusal body and the read-only notice seen before the write.
+
+#### PAUSE-MT-7 — Rollback: switch off restores old behaviour and keeps history
+
+**Precondition:** PAUSE-MT-2 and PAUSE-MT-3 are done and at least one pause row exists.
+
+**Action:** Set the switch off with the "Pause" toggle on the "QRadar source pauses" row under
+Features, or with the CLI, then repeat PAUSE-MT-1 and check a config export:
+
+```bash
+docker compose exec -T backend python -m app.cli.features set qradar_source_pause_enabled off
+docker compose exec -T backend python -m app.cli.features show
+umask 077
+docker compose exec -T backend python -m app.cli.config export --label preprod [--instance <console name>] [--actor ACTOR] > qradar-dash-config.json
+grep -iE 'pause|qradar_source_pause_enabled' qradar-dash-config.json
+```
+
+The export form and flags are the ones in `docs/INSTALL.md`; `umask 077` keeps the redirected file
+private (INSTALL.md gives `chmod 600` as the alternative). "Reset to .env/default"
+(`docker compose exec -T backend python -m app.cli.features reset qradar_source_pause_enabled`)
+deletes the row and leaves the switch off only if `.env` does not set
+`QRADAR_SOURCE_PAUSE_ENABLED=true`, so use the explicit `set … off` above for a deterministic
+rollback.
+
+**Expected:**
+
+- `features show` reports `qradar_source_pause_enabled=off`, and the old behaviour returns: a
+  QRadar-disabled source is evaluated again, no new pause rows are written and no incident is
+  closed for a disable. This is a rollback to the pre-switch behaviour.
+- The `grep` finds nothing: the pause rows remain stored and are only ignored while the switch is
+  off, and the export carries no pause section, no pause id and no feature-switch row (pinned by
+  `tests/integration/test_source_pause_config_export_exclusion.py`).
+
+**Record:** The switch state from `features show`, the behaviour observed after rollback, the
+export file path and the `grep` result.

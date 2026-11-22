@@ -900,6 +900,81 @@ JDBC" button appears only for administrators (`admin:*`); a read-only analyst ge
 The view stays useful with the switch off: it still shows stored configuration and labels a
 source disabled in QRadar.
 
+### Enable QRadar source pauses after an upgrade
+
+QRadar source pauses are gated by a single switch, `qradar_source_pause_enabled`, shown in the
+feature overview as the "QRadar source pauses" family with the "Pause" toggle. With the switch
+off nothing changes: no pause rows are written, no incident is closed for a disable, and
+all counts keep their old meaning. With the switch on, a log source whose stored QRadar `enabled`
+flag is false is no longer evaluated for NO_EVENTS; its open incidents are closed without a
+verdict, with the fixed reason "Closed without a verdict: source disabled in QRadar."; buckets
+that overlap a pause are marked not judged rather than given a verdict, and are dropped from
+training; and active-source counts exclude QRadar-disabled sources. The counts change on the Log
+Sources list and detail and their anomaly list, on the Anomalies list and summary, and on the
+Dashboard overview. Those are the reads that must agree after activation.
+
+Apply the switch in this order. The release ships with the switch off; upgrade every worker and
+API to the new release first. Then wait until runs that started with the old, off snapshot have
+finished: the product does not expose a per-run switch snapshot or a list of in-flight worker
+runs (the Queue page is an analyst triage queue, not a worker run list), so wait one evaluation
+interval — the `evaluate-anomalies` beat task runs every `ANOMALY_EVALUATION_CADENCE_SECONDS`
+(60 seconds). Next set the switch, either in the browser at Administration → Features
+(`/admin/features`; reading needs `read:features`, changing needs `admin:features`) — the
+"QRadar source pauses" family, toggle "Pause" — or offline:
+
+```bash
+docker compose exec -T backend python -m app.cli.features set qradar_source_pause_enabled on
+```
+
+With `FEATURE_SWITCHES_DB=true`, which is the default, that row wins over the
+`QRADAR_SOURCE_PAUSE_ENABLED=false` code default. Setting the variable in `.env` only changes
+the default used when no row exists; upgrade does not import it into the switch table. Then run
+one log-source inventory reconciliation so the stored enabled flags are refreshed from QRadar,
+either with the CLI:
+
+```bash
+docker compose exec -T backend python -m app.cli.sync log-sources --instance <name>
+```
+
+or with the "Sync now" control on the Fleet sources page (`POST /fleet/sources/sync`); the
+`POST /log-sources/sync` route queues the same worker task. Finally wait the API switch cache
+interval, `EFFECTIVE_CACHE_SECONDS` (5 seconds), before comparing the counts on Log Sources,
+Anomalies and the Dashboard overview. A write invalidates the cache on its own replica; another
+replica sees the change within that interval.
+
+Stale inventory does not stop collection or evaluation. With the switch on the product keeps
+using the last known stored enabled flag, and a successful sync is what reports a new disable
+and closes the incident; an unobserved disable during an outage may raise NO_EVENTS until that
+sync. The last pass and its age are shown separately, never as a healthy verdict. On the
+Dashboard overview, `inventory_state` (`NOT_COLLECTED`, `COMPLETE`, `FAILED`) says only whether
+the last inventory pass is missing or failed — a three-day-old complete pass still reads
+`COMPLETE` — not how old that pass is. Age is shown by the "Last complete inventory" time and the
+"Inventory stale" label in the JDBC view, and by the last-pass line in the Fleet sources "Sync
+now" area. There is no fixed inventory-age threshold that suspends evaluation.
+
+A fresh 0.1.17 install has no pre-policy baselines and relearns normally; there is no baseline
+cutover step. An existing lab or demo database that holds old, disabled zeros cannot be
+certified by a normal rebuild: it must be reset and reseeded by a separate authorized operator
+task before acceptance. The product has no command that does this, and no migration deletes demo
+data.
+
+The release ships with the switch off; turning it off again restores the previous behaviour and
+is a rollback. Set it off explicitly, either with the "Pause" toggle on the "QRadar source pauses"
+row under Features or with the CLI:
+
+```bash
+docker compose exec -T backend python -m app.cli.features set qradar_source_pause_enabled off
+```
+
+Confirm the result with `docker compose exec -T backend python -m app.cli.features show`. "Reset to
+.env/default" (or `python -m app.cli.features reset qradar_source_pause_enabled`) deletes the
+switch row and falls back to the `.env`/default value: it leaves the switch off only if `.env`
+does not set `QRADAR_SOURCE_PAUSE_ENABLED=true`. Where that variable might be set, use the explicit
+`set … off` above so the rollback is deterministic.
+
+The write changes only the `feature_switch` row: pause rows are not deleted and remain stored,
+ignored while the switch is off, so a later rollback does not destroy pause history.
+
 ## Release images
 
 A release is identified by a repository tag and the shared version in `VERSION`,
