@@ -345,7 +345,8 @@ four with rows to look up, three when the page is empty (`backend/app/repositori
 | `instance_id` | A registered console's UUID. |
 | `protocol` | One of the eight JDBC-like protocol ids `8, 20, 21, 37, 42, 49, 55, 67`. Id `8` is the verified JDBC protocol; the other seven are included with unverified configuration support. |
 | `enabled` | Tri-state on the stored QRadar flag: `true`, `false` or absent. |
-| `flow_state` | One of `DISABLED_IN_QRADAR`, `RECEIVING`, `NO_ATTRIBUTED_EVENTS`, `NOT_MEASURED`. |
+| `flow_state` | One of `DISABLED_IN_QRADAR`, `RECEIVING`, `NO_ATTRIBUTED_EVENTS`, `NOT_MEASURED`, `ABSENT_FROM_INVENTORY`. With the source-pause switch on (`qradar_source_pause_enabled`), `ABSENT_FROM_INVENTORY` matches only together with `include_absent=true`; without it the page and `total` are empty. With the switch off the value is accepted and matches no row. |
+| `include_absent` | Boolean, default `false`. With the source-pause switch on, a source with an open `ABSENT` pause span (missing from the completed QRadar inventory) is omitted from the page and from `total` unless this is `true`. With the switch off the parameter is accepted and ignored. A value that is not a boolean is a 422. |
 
 Out-of-range bounds and unknown filter values are refused in the repository with a fixed reason
 code and no echoed value (`backend/app/repositories/jdbc.py:66-88`;
@@ -358,15 +359,23 @@ a finished pass, so `total` is not a promise about QRadar's current count.
 
 Each item carries `id`, `qradar_id`, `name`, `protocol_type_id`, `protocol_name`; `qradar`
 (`enabled`, `status`, `inconsistency`, `inventory_last_complete_at`,
-`inventory_last_attempt_at`, `inventory_state`, `inventory_stale`, `reason_code`); `config`
+`inventory_last_attempt_at`, `inventory_state`, `inventory_stale`, `reason_code`, `absent_since`); `config`
 (`support`, `state`, `failure_code`, `observed_at`, `last_success_at`, `stale`, `safe_fields`,
 `field_states`); `volume` (`measurement`, `target_start`, `target_end`, `bucket_seconds`,
 `event_count`, `average_eps`, `collected_at`, `stale`, `reason_code`, `last_observation`);
 `flow` (`state`, `reason_code`); and `monitoring` (`enabled`, the SOC monitoring switch,
 independent of the QRadar flag). `status` is `CONNECTED`, `WARNING`, `CONNECTION_ERROR`,
-`DISABLED_STATUS` or null; `inventory_state` is `IDLE`, `QUEUED`, `RUNNING`, `COMPLETE`,
+`DISABLED_STATUS` or null; `absent_since` is the UTC start of the open absence span and is null
+for a source that is present, whose span has closed, or while the switch is off; `inventory_state` is `IDLE`, `QUEUED`, `RUNNING`, `COMPLETE`,
 `PARTIAL`, `FAILED`, `NOT_COLLECTED` or `UNSUPPORTED`. No QRadar status message, credential,
 username, key path or connection string is returned.
+
+A source with an open absence span reports `flow.state = ABSENT_FROM_INVENTORY`, which outranks
+`DISABLED_IN_QRADAR` and every measurement-based state. Its `volume.measurement` is
+`NOT_COLLECTED` with null `event_count` and `average_eps`, and `flow.reason_code` is
+`not_collected` (or `unmonitored` when SOC monitoring is off), so a client keys on `flow.state`,
+not on the reason. `volume.last_observation` and the stored `config` keep their own dates and are
+history, not current flow. `GET /log-sources/{id}/jdbc` still answers 200 for such a source.
 
 Honesty is explicit and per block. `safe_fields` is `null` for an unverified protocol, not an
 empty object. A field whose stored value fails the allow-list grammar shows field state

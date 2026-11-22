@@ -63,7 +63,8 @@
       "DISABLED_IN_QRADAR": "Disabled in QRadar",
       "RECEIVING": "Receiving",
       "NO_ATTRIBUTED_EVENTS": "No attributed events",
-      "NOT_MEASURED": "Not measured"
+      "NOT_MEASURED": "Not measured",
+      "ABSENT_FROM_INVENTORY": "Absent in completed inventory"
     },
     "measurement": {
       "EXACT": "Exact",
@@ -175,6 +176,11 @@
     "windowEnd": "Window end",
     "bucket": "Bucket duration",
     "lastObservation": "Last observation",
+    "since": "since",
+    "absentHistory": "Last observation, shown as history; it is not current flow.",
+    "noHistory": "No earlier observation is stored for this source.",
+    "configHistory": "Stored configuration, not the current inventory",
+    "connectionHistory": "Last stored values, not current.",
     "completeness": "Completeness",
     "origin": "Origin",
     "fields": {
@@ -223,6 +229,12 @@
     "insufficient": "Flow cannot be judged for this interval.",
     "notMeasured": "Events were not measured for this interval.",
     "staleBlocks": "Some configuration or volume is stale; old counts cannot prove current arrival.",
+    "absentRows": "Some sources are absent from the completed inventory; their stored values are history, not current flow, and are left out of the other counts.",
+    "absentSince": "Since",
+    "lastStored": "Last stored",
+    "lastStoredNote": ", not the current value",
+    "emptyAbsentHidden": "Sources absent from it are hidden by default.",
+    "includeAbsentLink": "Include absent sources",
     "details": "Details",
     "affected": "Affected on this page: {count}",
     "table": {
@@ -251,6 +263,7 @@
       "protocol": "Protocol",
       "protocolOption": "Protocol {id}",
       "instance": "Console ID",
+      "includeAbsent": "Include sources absent from inventory",
       "apply": "Apply filters"
     },
     "refresh": {

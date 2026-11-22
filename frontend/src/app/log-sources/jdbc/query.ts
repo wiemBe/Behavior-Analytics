@@ -40,6 +40,7 @@ export function parseJdbcQuery(raw: RawQuery): JdbcSourceListParams {
   const protocol = integer(first(raw.protocol));
   const enabled = first(raw.enabled).trim().toLowerCase();
   const flowState = first(raw.flow_state).trim();
+  const includeAbsent = first(raw.include_absent).trim().toLowerCase() === "true";
   const params: JdbcSourceListParams = {
     // The backend does `max(1, min(limit, api_max_page_size))`, so a negative integer clamps to 1.
     limit: Math.max(1, Math.min(limit ?? JDBC_PAGE_SIZE, JDBC_MAX_LIMIT)),
@@ -54,6 +55,9 @@ export function parseJdbcQuery(raw: RawQuery): JdbcSourceListParams {
   if ((JDBC_FLOW_STATES as readonly string[]).includes(flowState)) {
     params.flow_state = flowState as JdbcSourceListParams["flow_state"];
   }
+  // Only `true` is sent. Filtering on the absent state is meaningless while absent sources are
+  // omitted (the API answers an empty page), so that filter implies the toggle.
+  if (includeAbsent || params.flow_state === "ABSENT_FROM_INVENTORY") params.include_absent = true;
   return params;
 }
 
@@ -68,6 +72,7 @@ export function buildJdbcQuery(params: JdbcSourceListParams): string {
   add("protocol", params.protocol);
   add("enabled", params.enabled);
   add("flow_state", params.flow_state);
+  add("include_absent", params.include_absent ? true : undefined);
   add("limit", params.limit);
   add("offset", params.offset);
   return parts.length ? `?${parts.join("&")}` : "";

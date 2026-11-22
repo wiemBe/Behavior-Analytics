@@ -326,3 +326,88 @@ describe("JDBC list filters, paging and refresh", () => {
     }
   });
 });
+
+const ABSENT = row({
+  id: "s-9", name: "Ledger RO",
+  qradar: { ...row().qradar, absent_since: "2026-11-04T06:30:00Z" },
+  flow: { state: "ABSENT_FROM_INVENTORY", reason_code: "not_collected" },
+  volume: {
+    ...row().volume, measurement: "NOT_COLLECTED", event_count: null, average_eps: null, collected_at: null, stale: true,
+    reason_code: "not_collected",
+  },
+});
+
+describe("JDBC list absent sources", () => {
+  it("Absent in completed inventory: the flow cell names the state and the UTC absent_since, count and time stay dashes", async () => {
+    mockPage(pageOf([ABSENT]));
+    await renderAt({ include_absent: "true" });
+    const r = within(body());
+    expect(r.getByText("Absent in completed inventory")).toBeInTheDocument();
+    expect(r.getByText("Since", { exact: false })).toHaveTextContent("Since 11-04 06:30 UTC");
+    expect(r.queryByText("Receiving")).toBeNull();
+    expect(r.queryByText("Volume stale")).toBeNull();
+    expect(r.queryByText("0")).toBeNull();
+    expect(r.getAllByText("Not collected").length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("absent row marks stored enabled/connection as last stored", async () => {
+    mockPage(pageOf([ABSENT, row()]));
+    await renderAt({ include_absent: "true" });
+    const [absentRow, presentRow] = Array.from(body().querySelectorAll("tr")).map((tr) => within(tr as HTMLElement));
+    expect(absentRow.getByText("Enabled")).toBeInTheDocument();
+    expect(absentRow.getByText("Connected")).toBeInTheDocument();
+    const marks = absentRow.getAllByText("Last stored");
+    expect(marks).toHaveLength(2);
+    expect(marks.every((m) => m.classList.contains("cell-sub"))).toBe(true);
+    expect(marks.map((m) => m.closest("td"))).toEqual(
+      [absentRow.getByText("Enabled").closest("td"), absentRow.getByText("Connected").closest("td")],
+    );
+    expect(absentRow.getAllByText(", not the current value")).toHaveLength(2);
+    expect(presentRow.queryByText("Last stored")).toBeNull();
+  });
+
+  it("summary counts exclude absent: one line counts the absent source and no flow or stale count includes it", async () => {
+    const stale = { ...ABSENT, config: { ...ABSENT.config, state: "PARTIAL" as const, stale: true } };
+    mockPage(pageOf([stale]));
+    await renderAt({ include_absent: "true" });
+    const notes = screen.getByRole("list");
+    expect(within(notes).getAllByRole("listitem")).toHaveLength(1);
+    expect(notes).toHaveTextContent("Some sources are absent from the completed inventory");
+    expect(notes).toHaveTextContent("Affected on this page: 1");
+    expect(notes).not.toHaveTextContent("Events were not measured");
+    expect(notes).not.toHaveTextContent("stale");
+    expect(notes).not.toHaveTextContent("partial");
+  });
+
+  it("the toggle is a checkbox that sends include_absent=true only when checked, and keeps paging", async () => {
+    mockPage(pageOf([row()], {}, 250));
+    await renderAt();
+    const box = screen.getByRole("checkbox", { name: "Include sources absent from inventory" });
+    expect(box).not.toBeChecked();
+    expect(box).toHaveAttribute("name", "include_absent");
+    expect(box).toHaveAttribute("value", "true");
+    vi.restoreAllMocks();
+    const read = mockPage(pageOf([ABSENT, row()], {}, 250));
+    await renderAt({ include_absent: "true" });
+    expect(read).toHaveBeenCalledWith({ limit: 100, offset: 0, include_absent: true });
+    expect(screen.getAllByRole("checkbox", { name: "Include sources absent from inventory" }).at(-1)).toBeChecked();
+    const nav = screen.getAllByRole("navigation", { name: "Pagination" }).at(-1) as HTMLElement;
+    expect(within(nav).getByRole("link", { name: "Next" })).toHaveAttribute("href", "/log-sources/jdbc?include_absent=true&offset=100");
+  });
+
+  it("empty with the toggle off says absent sources are hidden and links to the toggle, without a count", async () => {
+    mockPage(pageOf([], {}, 0));
+    await renderAt();
+    expect(screen.getByText("No JDBC sources were found in the completed inventory.")).toBeInTheDocument();
+    expect(screen.getByText("Sources absent from it are hidden by default.")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Include absent sources" })).toHaveAttribute("href", "/log-sources/jdbc?include_absent=true");
+    expect(screen.queryByText(/\d+ (are )?absent/)).toBeNull();
+  });
+
+  it("unknown state still falls back to the fixed Unavailable label", async () => {
+    mockPage(pageOf([row({ flow: { state: "SOMETHING_NEW", reason_code: null } })]));
+    await renderAt();
+    expect(within(body()).getByText("Unavailable")).toBeInTheDocument();
+    expect(within(body()).queryByText("SOMETHING_NEW")).toBeNull();
+  });
+});
