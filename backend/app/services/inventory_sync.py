@@ -214,9 +214,8 @@ class InventorySyncService:
             final_enabled = {dto.qradar_id: dto.enabled for dto in dtos}
             reconcile_ids = {
                 source.id for qid, enabled in final_enabled.items()
-                if enabled is False
+                if (enabled is True or enabled is False)
                 and (source := existing_by_qradar_id.get(qid)) is not None
-                and source.enabled is False
             }
             if reconcile_ids:
                 open_ids = set(await self.session.scalars(
@@ -281,12 +280,14 @@ class InventorySyncService:
             existing.is_internal = dto.internal
 
         if pause_policy:
-            # Decide once from the stored flag and final DTO; unknown keeps the stored value.
+            # Reconcile the final DTO with stored flags and open spans; unknown stays unchanged.
             for qid, enabled in final_enabled.items():
                 source = existing_by_qradar_id[qid]
                 if enabled is False and (stored_enabled.get(qid) or source.id not in open_ids):
                     disabled.append(source)
-                elif enabled is True and stored_enabled.get(qid) is False:
+                elif enabled is True and (
+                    stored_enabled.get(qid) is False or source.id in open_ids
+                ):
                     reenabled.append(source)
 
         await self.session.flush()

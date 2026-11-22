@@ -341,7 +341,11 @@ async def test_stale_or_none_never_writes_span(rig, mode):
             await _sync(session, instance_id, values, complete=mode != "partial-empty",
                         failed=mode == "failed", collector=True)
             await session.commit()
-    assert _edge_statements(operations) == []
+    edge_sql = _edge_statements(operations)
+    if mode in {"stale", "repeat-true"}:
+        assert len(edge_sql) == 1 and edge_sql[0].startswith("SELECT log_source_pause")
+    else:
+        assert edge_sql == []
     async with maker() as session:
         assert [(await session.get(LogSource, sid)).enabled for sid in ids] == [True, False]
         assert await session.scalar(select(func.count()).select_from(LogSourcePause)) == 0
@@ -445,7 +449,7 @@ async def test_bulk_edge_statement_counts(rig, monkeypatch, count, groups):
     )]
     assert "= ANY (" in read_sql
     assert len(params) == 2  # One UUID array and the reason, independent of fleet size.
-    assert list(params[0]) == ids[:-1]
+    assert list(params[0]) == ids
 
 
 async def test_reenable_helper_receives_sorted_ids(rig, monkeypatch):
